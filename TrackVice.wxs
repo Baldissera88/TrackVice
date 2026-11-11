@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="15DFC8E5-B837-446A-BDA2-A348FFF6E59C"
+           Name="TrackVice"
+           Language="1033"
+           Codepage="1252"
+           Version="0.0.1"
+           Manufacturer="Daniel L. Baldissera"
+           UpgradeCode="6635DE95-B38E-46BA-A802-22FD5E781A74">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="TrackVice deployment tracker"
+             Comments="Follows SCCM and Intune deployments on one device" />
+
+    <MajorUpgrade Schedule="afterInstallFinalize" DowngradeErrorMessage="A newer version of TrackVice is already installed." />
+
+    <!-- A running TrackVice holds TrackVice.exe open, so an upgrade or uninstall would stall on files in use.
+         Close it first, as SYSTEM, which also ends a copy running as administrator, before the files are installed.
+         The old version is removed after the installation, because Windows Installer allows no action
+         between InstallInitialize and RemoveExistingProducts (error 2613). -->
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+    <CustomAction Id="CloseTrackVice" Directory="SystemFolder" ExeCommand="taskkill.exe /F /IM TrackVice.exe" Execute="deferred" Impersonate="no" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="CloseTrackVice" After="InstallInitialize" />
+    </InstallExecuteSequence>
+
+    <Media Id="1" Cabinet="trackvice.cab" EmbedCab="yes" />
+
+    <Property Id="NETFX4RELEASE">
+      <RegistrySearch Id="NetFx4Release" Root="HKLM" Key="SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" Name="Release" Type="raw" Win64="yes" />
+    </Property>
+    <Condition Message="TrackVice needs .NET Framework 4.5 or later.">Installed OR NETFX4RELEASE</Condition>
+
+    <Icon Id="TrackVice.ico" SourceFile="TrackVice.ico" />
+    <Property Id="ARPPRODUCTICON" Value="TrackVice.ico" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="TrackVice">
+
+          <Component Id="TrackViceExe" Guid="A4093A12-3626-44B2-ADE3-16608812B61F" Win64="yes">
+            <File Id="TrackViceExe" Name="TrackVice.exe" Source="TrackVice.exe" KeyPath="yes" DefaultVersion="0.0.1.0">
+              <Shortcut Id="StartMenuShortcut"
+                        Directory="ProgramMenuFolder"
+                        Name="TrackVice"
+                        Description="Follows SCCM and Intune deployments on one device"
+                        WorkingDirectory="INSTALLDIR" />
+            </File>
+          </Component>
+
+          <Component Id="Registration" Guid="0A34AB2D-E591-48E1-AD4B-043CBD532BFC" Win64="yes">
+            <RegistryValue Root="HKLM" Key="Software\TrackVice" Name="InstallDir" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
+            <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\TrackVice.exe" Type="string" Value="[INSTALLDIR]TrackVice.exe" />
+          </Component>
+
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+      <Directory Id="SystemFolder" />
+    </Directory>
+
+    <Feature Id="Main" Title="TrackVice" Level="1">
+      <ComponentRef Id="TrackViceExe" />
+      <ComponentRef Id="Registration" />
+    </Feature>
+  </Product>
+</Wix>

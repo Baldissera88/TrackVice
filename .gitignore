@@ -1,0 +1,11 @@
+# Build output
+TrackVice.exe
+TrackVice.msi
+*.wixobj
+*.wixpdb
+*.pdb
+tests/*.exe
+out/
+art/png/
+__pycache__/
+.gsf-save-*

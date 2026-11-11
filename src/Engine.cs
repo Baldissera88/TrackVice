@@ -1,0 +1,180 @@
+namespace TrackVice
+{
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+
+    public static class Modes
+    {
+        public const string Live = "Live";
+        public const string Folder = "Folder";
+        public const string File = "File";
+        public const string Demo = "Demo";
+    }
+
+    // Holds the session and where it comes from. Poll can run on a background thread; Apply runs on the UI thread.
+    public sealed class Engine : IDisposable
+    {
+        public Session S;
+        public Tracker T;
+        public string Mode;
+        LiveCollector live;
+        DemoPlayer demo;
+        public double DemoSpeed = 10;
+        DateTime lastPoll = DateTime.MinValue;
+        readonly HashSet<string> notes = new HashSet<string>();
+        readonly HashSet<string> sources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        public static Engine ForLive(int hours)
+        {
+            Engine e = new Engine();
+            e.Mode = Modes.Live;
+            e.S = NewSession(Modes.Live);
+            e.S.SinceUtc = DateTime.UtcNow.AddHours(-Math.Max(1, hours));
+            e.live = new LiveCollector(e.S.SinceUtc);
+            e.T = new Tracker(e.S);
+            return e;
+        }
+
+        public static Engine ForFolder(string folder)
+        {
+            Engine e = new Engine();
+            e.Mode = Modes.Folder;
+            e.S = NewSession(Modes.Folder);
+            e.S.SourcePath = folder;
+            e.S.Computer = Path.GetFileName(folder.TrimEnd('\\', '/'));
+            e.S.OsVersion = "Logs from a folder";
+            e.S.User = null;
+            e.T = new Tracker(e.S);
+            return e;
+        }
+
+        public static Engine ForFile(string path)
+        {
+            Engine e = new Engine();
+            e.Mode = Modes.File;
+            e.S = Session.Load(path);
+            e.T = new Tracker(e.S);
+            return e;
+        }
+
+        public static Engine ForDemo(string name)
+        {
+            Engine e = new Engine();
+            e.Mode = Modes.Demo;
+            DemoScenario sc = Demo.Get(name);
+            // The scenario starts so that its starting point is now.
+            e.demo = new DemoPlayer(sc, DateTime.UtcNow.AddSeconds(-sc.StartAt));
+            e.S = NewSession(Modes.Demo);
+            e.S.Computer = sc.Computer;
+            e.S.User = sc.User;
+            e.S.OsVersion = sc.Os;
+            e.S.Elevated = true;
+            e.S.SourcePath = sc.Name;
+            e.T = new Tracker(e.S);
+            return e;
+        }
+
+        static Session NewSession(string mode)
+        {
+            Session s = new Session();
+            s.Mode = mode;
+            s.AppVersion = Program.Version;
+            s.Computer = Environment.MachineName;
+            try { s.User = Environment.UserDomainName + "\\" + Environment.UserName; } catch (Exception) { }
+            s.OsVersion = Program.OsVersion();
+            s.Elevated = Program.IsAdmin;
+            return s;
+        }
+
+        public bool CanWatch
+        {
+            get { return Mode == Modes.Live || (Mode == Modes.Demo && demo != null && !demo.Done); }
+        }
+
+        public DemoPlayer Player
+        {
+            get { return demo; }
+        }
+
+        // The time durations are measured against: the device clock, the demo clock, or the time a saved session was saved.
+        public DateTime Now
+        {
+            get
+            {
+                if (Mode == Modes.Demo && demo != null) return demo.Clock;
+                if (Mode == Modes.Live) return DateTime.UtcNow;
+                if (S.ClockUtc != DateTime.MinValue && S.ClockUtc.Year > 2000) return S.ClockUtc;
+                DateTime last = DateTime.MinValue;
+                foreach (TEvent e in S.Events) if (e.TimeUtc > last) last = e.TimeUtc;
+                return last == DateTime.MinValue ? DateTime.UtcNow : last;
+            }
+        }
+
+        public int PollIntervalMs
+        {
+            get { return Mode == Modes.Demo ? 400 : 2000; }
+        }
+
+        // Reads what is new. The first call reads everything.
+        public Batch Poll()
+        {
+            DateTime now = DateTime.UtcNow;
+            Batch b;
+            switch (Mode)
+            {
+                case Modes.Live:
+                    b = live.Read(now);
+                    break;
+                case Modes.Demo:
+                    double target = lastPoll == DateTime.MinValue ? demo.Scenario.StartAt : demo.Position + (now - lastPoll).TotalSeconds * DemoSpeed;
+                    b = demo.AdvanceTo(target);
+                    break;
+                case Modes.Folder:
+                    b = lastPoll == DateTime.MinValue ? FolderReader.Read(S.SourcePath, TimeZoneInfo.Local) : new Batch();
+                    break;
+                default:
+                    b = new Batch();
+                    break;
+            }
+            lastPoll = now;
+            return b;
+        }
+
+        // Jumps the demo to a point, for screenshots and tests.
+        public Batch DemoTo(double seconds)
+        {
+            lastPoll = DateTime.UtcNow;
+            return demo.AdvanceTo(seconds);
+        }
+
+        public void Apply(Batch b)
+        {
+            if (b == null) return;
+            foreach (Pair p in b.Info) S.SetInfo(p.Key, p.Value);
+            if (b.Names != null) T.AddNames(b.Names);
+            T.ApplyAll(b.Obs);
+            foreach (Pair a in b.Aliases) T.Alias(a.Key, a.Value);
+            if (b.Names != null) T.AddNames(b.Names);
+            foreach (string n in b.Notes) if (notes.Add(n)) S.Notes.Add(n);
+            foreach (string src in b.Sources) sources.Add(src);
+            S.ClockUtc = Now;
+            Finder.Run(S, Now, Mode == Modes.Live || Mode == Modes.Demo);
+        }
+
+        public int SourceCount
+        {
+            get { return sources.Count; }
+        }
+
+        public List<string> Sources
+        {
+            get { return new List<string>(sources); }
+        }
+
+        public void Dispose()
+        {
+            if (live != null) live.Dispose();
+        }
+    }
+}
