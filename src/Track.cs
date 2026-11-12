@@ -398,7 +398,11 @@ namespace TrackVice
                 if (i.State == State.WaitingReboot)
                     list.Add(F(FindingKinds.Reboot, 0, i, i.DisplayName + " needs a restart",
                         "It installed" + ExitText(i) + " and asked for a restart to finish.", null));
-                if (live && States.IsActive(i.State) && nowUtc - i.LastUtc > StuckAfter)
+                if (live && States.IsActive(i.State) && nowUtc - i.LastUtc > TimeSpan.FromDays(1))
+                    list.Add(F(FindingKinds.Stuck, 1, i, i.DisplayName + " has not changed since " + Txt.Local(i.LastUtc),
+                        "It is still recorded as " + States.Label(i.State).ToLowerInvariant() + ", but nothing has changed for " + Txt.DurationShort(nowUtc - i.LastUtc) + ". The deployment it belonged to probably ended without it.",
+                        "If the app should be on this device, check its install status in Intune or Software Center. The Enrollment Status Page keeps the last state it saw."));
+                else if (live && States.IsActive(i.State) && nowUtc - i.LastUtc > StuckAfter)
                     list.Add(F(FindingKinds.Stuck, 1, i, "No progress on " + i.DisplayName + " for " + Txt.DurationShort(nowUtc - i.LastUtc),
                         States.Label(i.State) + " since " + Txt.LocalTime(i.StateUtc) + ", and no source has said anything about it since " + Txt.LocalTime(i.LastUtc) + ".",
                         i.State == State.Downloading ? "Check the content location and the download logs (CAS.log, DataTransferService.log, or Delivery Optimization for Intune)." : "The installer may be waiting for input. Check that the install command is silent."));

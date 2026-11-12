@@ -8,7 +8,7 @@ It is a companion to [LogVice](https://github.com/Baldissera88/LogVice) and [Pol
 
 ![TrackVice following an Autopilot deployment](docs/images/trackvice-autopilot.png)
 
-> **Version 0.0.1 is the first preview.** Everything below works with the built-in demos and has tests, but it has not run on a real device yet. The log formats of the Intune Management Extension and the ESP registry layout are not documented by Microsoft, so expect some lines to be missed until it has been tested on real deployments. [docs/TESTING.md](docs/TESTING.md) is the checklist for that.
+> **TrackVice is a preview.** Everything below works with the built-in demos and has tests, but it has not run on a real device yet. The log formats of the Intune Management Extension and the ESP registry layout are not documented by Microsoft, so expect some lines to be missed until it has been tested on real deployments. [docs/TESTING.md](docs/TESTING.md) is the checklist for that.
 
 ## What it shows
 
@@ -68,7 +68,13 @@ Every source is mapped to one set of states: waiting, downloading, installing, d
 
 ## Watch, save and share
 
-**Watch** reads the device every 2 seconds: new log lines, ESP tracking changes and new event log records every time, and the Win32 app registry state and ConfigMgr client WMI every third time. It reads the last 24 hours when it starts; **Open > History to read** changes that.
+**Watch** reads the device every 2 seconds: new log lines, ESP tracking changes and new event log records every time, and the Win32 app registry state and ConfigMgr client WMI every third time. It reads logs from the last 24 hours when it starts. On a device that was deployed some time ago, set **History to read** to **Since install**.
+
+ESP and Win32 app states come from the registry, and always carry the time their key was written, so a deployment that finished weeks ago shows when it really happened.
+
+## Settings
+
+**Settings** (Ctrl+,) holds the theme, how far back to read (6 hours to 30 days, or everything since Windows was installed), whether to read ConfigMgr client WMI and the event logs, whether to start watching when TrackVice opens, how often to read while watching, how long to wait before an item gets a **No progress** finding, and where LogVice is. They are kept in `HKCU\Software\TrackVice`.
 
 **Save > Save the session** writes everything as one JSON file that opens on any PC. **Save > Collect the session and its logs in a zip** adds every log file the session has a line from, so a supporter can send the evidence instead of the device. **Open > Open a folder of logs** reads a CCM Logs folder, an IME Logs folder or an unpacked bundle; it reads every log TrackVice knows in it and its subfolders, including rolled-over copies.
 
@@ -96,7 +102,7 @@ TrackVice.exe /report <file.html>      Save an HTML report of this device and ex
 TrackVice.exe /csv <file.csv>          Save every event as CSV and exit
 TrackVice.exe /session <file.json>     Save the session as JSON and exit
   /folder <path>                       Read a folder of logs instead of this device
-  /hours <n>                           Hours of history to read (default 24)
+  /hours <n>                           Hours of history to read (default 24, 0 since Windows was installed)
 TrackVice.exe --demo [osd]             Play a demo
 ```
 
@@ -115,6 +121,7 @@ The exit code is 0 when done, 1 on an error and 2 when failed items were found, 
 | Ctrl+L | Open the selected item's log in LogVice |
 | Ctrl+M | Compact view |
 | Arrow keys | Move through the list; Left and Right fold and unfold a phase |
+| Ctrl+, | Settings |
 | F1 | About and the command line |
 
 ## Privacy and safety
@@ -123,7 +130,7 @@ TrackVice only reads. It never starts, retries or cancels a deployment, and writ
 
 ## Limitations
 
-- Version 0.0.1 has not been tested on a real device yet. See the note at the top.
+- It has not been tested on many real devices yet. See the note at the top.
 - LogVice opens a log file but cannot yet jump to a line, so TrackVice says in the status bar which line to look for.
 - The Intune Management Extension log format changes between IME versions. Lines TrackVice does not recognise are left out, and the ESP and Win32Apps registry keys still give the state.
 - The Windows PE part of a task sequence needs WinPE-NetFx in the boot image for TrackVice to start there.

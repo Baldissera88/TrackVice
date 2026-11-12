@@ -27,14 +27,42 @@ namespace TrackVice
 
         public static Engine ForLive(int hours)
         {
+            return ForLive(hours, true, true, 2000);
+        }
+
+        // hours 0 reads everything since Windows was installed.
+        public static Engine ForLive(int hours, bool wmi, bool events, int pollMs)
+        {
             Engine e = new Engine();
             e.Mode = Modes.Live;
             e.S = NewSession(Modes.Live);
-            e.S.SinceUtc = DateTime.UtcNow.AddHours(-Math.Max(1, hours));
+            e.S.SinceUtc = SinceFor(hours);
             e.live = new LiveCollector(e.S.SinceUtc);
+            e.live.UseWmi = wmi;
+            e.live.UseEvents = events;
+            e.pollMs = Math.Max(500, pollMs);
             e.T = new Tracker(e.S);
             return e;
         }
+
+        public static DateTime SinceFor(int hours)
+        {
+            DateTime now = DateTime.UtcNow;
+            if (hours > 0) return now.AddHours(-hours);
+            DateTime? installed = null;
+            try
+            {
+                using (LiveRegistry reg = new LiveRegistry()) installed = AutopilotInfo.WindowsInstalled(reg);
+            }
+            catch (Exception) { }
+            // A day before the install date, so the task sequence that installed Windows is read too.
+            return installed.HasValue && installed.Value < now ? installed.Value.AddDays(-1) : now.AddDays(-30);
+        }
+
+        int pollMs = 2000;
+
+        // Set when the deployment on this device started before the history TrackVice reads: the time it started.
+        public DateTime? StartedBeforeHistory;
 
         public static Engine ForFolder(string folder)
         {
@@ -113,7 +141,8 @@ namespace TrackVice
 
         public int PollIntervalMs
         {
-            get { return Mode == Modes.Demo ? 400 : 2000; }
+            get { return Mode == Modes.Demo ? 400 : pollMs; }
+            set { pollMs = Math.Max(500, value); }
         }
 
         // Reads what is new. The first call reads everything.
@@ -159,6 +188,15 @@ namespace TrackVice
             foreach (string n in b.Notes) if (notes.Add(n)) S.Notes.Add(n);
             foreach (string src in b.Sources) sources.Add(src);
             S.ClockUtc = Now;
+            if (Mode == Modes.Live && StartedBeforeHistory == null)
+            {
+                DateTime? first = S.FirstUtc;
+                if (first.HasValue && first.Value < S.SinceUtc.AddMinutes(-30))
+                {
+                    StartedBeforeHistory = first;
+                    S.Notes.Add("The deployment on this device started " + Txt.Local(first.Value) + ", before the history TrackVice reads (from " + Txt.Local(S.SinceUtc) + "). Older log lines were not read, so those items only show the state saved in the registry. To read everything, set History to read to Since Windows was installed in Settings.");
+                }
+            }
             Finder.Run(S, Now, Mode == Modes.Live || Mode == Modes.Demo);
         }
 

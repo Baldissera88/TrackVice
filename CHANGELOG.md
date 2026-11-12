@@ -1,5 +1,16 @@
 # Changelog
 
+## TrackVice 0.0.2
+
+12 November 2026.
+
+- Settings page (Ctrl+,): theme, history to read, ConfigMgr client WMI and event logs on or off, watch when TrackVice opens, how often to read, when to warn about no progress, and where LogVice is.
+- History to read can now be Since install, which reads everything since Windows was installed, for a device that was deployed some time ago.
+- Fixed: on a device that finished its deployment earlier, ESP and Win32 app states showed the time TrackVice read them instead of the time they were saved. They now carry the time their registry key was written, so the timeline, durations and the start of the deployment are right.
+- When the deployment started before the history TrackVice reads, the status bar and the Session tab say so.
+- An install the ESP still records as running from more than a day ago is called out as left over, not as stuck now.
+- The Session tab shows when Windows was installed.
+
 ## TrackVice 0.0.1
 
 First preview, 11 November 2026. It has run with the built-in demos and the tests, not yet on a real device.

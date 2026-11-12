@@ -653,6 +653,198 @@ namespace TrackVice
         }
     }
 
+    // The settings TrackVice keeps, with the choices the Settings page offers.
+    public static class Settings
+    {
+        public static readonly int[] Histories = { 6, 24, 72, 168, 720, 0 };
+        public static readonly string[] HistoryNames = { "6 h", "24 h", "3 d", "7 d", "30 d", "Since install" };
+        public static readonly string[] HistoryLong = { "6 hours", "24 hours", "3 days", "7 days", "30 days", "Since Windows was installed" };
+        public static readonly int[] Intervals = { 1000, 2000, 5000, 10000 };
+        public static readonly string[] IntervalNames = { "1 s", "2 s", "5 s", "10 s" };
+        public static readonly int[] StuckChoices = { 5, 15, 30, 60 };
+        public static readonly string[] StuckNames = { "5 min", "15 min", "30 min", "60 min" };
+
+        // 0 means everything since Windows was installed.
+        public static int Hours
+        {
+            get { return Prefs.GetInt("Hours", 24, 0, 24 * 30); }
+            set { Prefs.Set("Hours", value.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        }
+
+        public static int PollMs
+        {
+            get { return Prefs.GetInt("PollMs", 2000, 1000, 10000); }
+        }
+
+        public static int StuckMinutes
+        {
+            get { return Prefs.GetInt("StuckMinutes", 15, 5, 60); }
+        }
+
+        public static bool UseWmi
+        {
+            get { return Prefs.GetBool("UseWmi", true); }
+        }
+
+        public static bool UseEvents
+        {
+            get { return Prefs.GetBool("UseEvents", true); }
+        }
+
+        public static bool WatchOnStart
+        {
+            get { return Prefs.GetBool("WatchOnStart", true); }
+        }
+
+        public static string HoursText(int h)
+        {
+            if (h <= 0) return "everything since Windows was installed";
+            if (h < 24) return "the last " + h + " hours";
+            if (h == 24) return "the last 24 hours";
+            return "the last " + (h / 24) + " days";
+        }
+
+        public static Engine NewLive()
+        {
+            return Engine.ForLive(Hours, UseWmi, UseEvents, PollMs);
+        }
+
+        static int Index(int[] list, int value, int fallback)
+        {
+            int i = Array.IndexOf(list, value);
+            return i < 0 ? fallback : i;
+        }
+
+        public static int HistoryIndex { get { return Index(Histories, Hours, 1); } }
+        public static int IntervalIndex { get { return Index(Intervals, PollMs, 1); } }
+        public static int StuckIndex { get { return Index(StuckChoices, StuckMinutes, 1); } }
+    }
+
+    public sealed class SettingsDialog : PageForm
+    {
+        public event EventHandler ThemeChanged, IntervalChanged, StuckChanged;
+        // A setting that changes what is read was changed, so a live session should read the device again.
+        public bool ReadAgain, RestartRequested;
+        readonly SettingRow logViceRow;
+
+        public SettingsDialog(Theme t) : base("TrackVice settings", t)
+        {
+            string[] themes = { "System", "Light", "Dark", "Vice" };
+            Segmented segTheme = new Segmented(themes);
+            int ti = Array.IndexOf(themes, Prefs.Get("Theme", "System"));
+            segTheme.Selected = ti < 0 ? 0 : ti;
+            segTheme.Changed += Safe.Wrap(delegate
+            {
+                Prefs.Set("Theme", themes[segTheme.Selected]);
+                Retheme(Theme.Named(themes[segTheme.Selected]));
+                if (ThemeChanged != null) ThemeChanged(this, EventArgs.Empty);
+            });
+
+            Segmented segHistory = new Segmented(Settings.HistoryNames);
+            segHistory.Selected = Settings.HistoryIndex;
+            segHistory.Changed += Safe.Wrap(delegate
+            {
+                Settings.Hours = Settings.Histories[segHistory.Selected];
+                ReadAgain = true;
+            });
+
+            Segmented segInterval = new Segmented(Settings.IntervalNames);
+            segInterval.Selected = Settings.IntervalIndex;
+            segInterval.Changed += Safe.Wrap(delegate
+            {
+                Prefs.Set("PollMs", Settings.Intervals[segInterval.Selected].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                if (IntervalChanged != null) IntervalChanged(this, EventArgs.Empty);
+            });
+
+            Segmented segStuck = new Segmented(Settings.StuckNames);
+            segStuck.Selected = Settings.StuckIndex;
+            segStuck.Changed += Safe.Wrap(delegate
+            {
+                Prefs.Set("StuckMinutes", Settings.StuckChoices[segStuck.Selected].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                if (StuckChanged != null) StuckChanged(this, EventArgs.Empty);
+            });
+
+            Toggle watch = new Toggle();
+            watch.On = Settings.WatchOnStart;
+            watch.Changed += Safe.Wrap(delegate { Prefs.SetBool("WatchOnStart", watch.On); });
+
+            Toggle wmi = new Toggle();
+            wmi.On = Settings.UseWmi;
+            wmi.Changed += Safe.Wrap(delegate { Prefs.SetBool("UseWmi", wmi.On); ReadAgain = true; });
+
+            Toggle events = new Toggle();
+            events.On = Settings.UseEvents;
+            events.Changed += Safe.Wrap(delegate { Prefs.SetBool("UseEvents", events.On); ReadAgain = true; });
+
+            FlatButton bBrowse = SmallButton("Browse", delegate { Browse(); });
+            FlatButton bClear = SmallButton("Clear", delegate
+            {
+                Prefs.Set("LogVicePath", null);
+                UpdateLogVice();
+            });
+            logViceRow = new SettingRow(Glyphs2.Folder, "LogVice", "", new ButtonStrip(bBrowse, bClear));
+
+            Add(new SectionTitle("Appearance"));
+            Add(new SettingRow(Glyphs2.Palette, "Theme", "Light, Dark or Vice, or follow the Windows app mode. The same themes as LogVice and PolicyVice.", segTheme));
+
+            Add(new SectionTitle("Reading this device"));
+            Add(new SettingRow(Glyphs2.Calendar, "History to read", "How far back to read logs and event logs. Since install reads everything since Windows was installed. ESP and Win32 app states are always read, with the time they were saved.", segHistory));
+            Add(new SettingRow(Glyphs2.Apps, "ConfigMgr client WMI", "Read application, package and update states from root\\ccm\\ClientSDK. Turn it off on a device where WMI is slow.", wmi));
+            Add(new SettingRow(Glyphs.Log, "Event logs", "Read the Autopilot event log, and errors and warnings from the MDM, device registration and Entra ID event logs.", events));
+            if (Program.IsAdmin)
+            {
+                SettingRow admin = new SettingRow(Glyphs.Shield, "Administrator rights", "TrackVice is running as administrator, so it can read every log, ESP key and WMI class.", null);
+                admin.Value = "On";
+                Add(admin);
+            }
+            else
+            {
+                FlatButton bAdmin = SmallButton("Restart as administrator", delegate
+                {
+                    RestartRequested = true;
+                    Close();
+                });
+                Add(new SettingRow(Glyphs.Shield, "Administrator rights", "The ConfigMgr and Intune logs, the ESP keys and some event logs need administrator rights.", bAdmin));
+            }
+
+            Add(new SectionTitle("Watching"));
+            Add(new SettingRow(Glyphs.Watch, "Watch when TrackVice opens", "Start following this device as soon as TrackVice has read it. When it is off, press Watch or Ctrl+W.", watch));
+            Add(new SettingRow(Glyphs2.Sync, "Read every", "How often TrackVice reads the device while watching. Log files and registry keys are read every time, WMI every third time.", segInterval));
+            Add(new SettingRow(Glyphs2.Clock, "Warn when nothing changes for", "An item that is downloading or installing gets a No progress finding when no source has said anything about it for this long.", segStuck));
+
+            Add(new SectionTitle("LogVice"));
+            Add(logViceRow);
+            UpdateLogVice();
+
+            SettingRow store = new SettingRow(Glyphs2.Settings, "Where settings are stored", Prefs.Location, null);
+            store.MonoDesc = true;
+            Add(new SectionTitle("Data"));
+            Add(store);
+        }
+
+        void UpdateLogVice()
+        {
+            string custom = Prefs.Get("LogVicePath", null);
+            string found = LogViceLink.Find();
+            if (!string.IsNullOrEmpty(custom)) logViceRow.Desc = "Chosen: " + custom + (found == custom ? "" : " (not found)");
+            else if (found != null) logViceRow.Desc = "Found: " + found;
+            else logViceRow.Desc = "Not found. TrackVice looks for the LogVice MSI install, App Paths and LogVice.exe next to TrackVice.exe. Browse to choose it.";
+            Relayout();
+        }
+
+        void Browse()
+        {
+            using (OpenFileDialog d = new OpenFileDialog())
+            {
+                d.Filter = "LogVice|LogVice.exe|Programs|*.exe";
+                d.Title = "Locate LogVice";
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                Prefs.Set("LogVicePath", d.FileName);
+            }
+            UpdateLogVice();
+        }
+    }
+
     public sealed class AboutDialog : PageForm
     {
         public static readonly string[][] CommandLine =
@@ -664,7 +856,7 @@ namespace TrackVice
             new string[] { "/csv <file.csv>", "Save every event as CSV and exit" },
             new string[] { "/session <file.json>", "Save the session as JSON and exit" },
             new string[] { "/folder <path>", "With /report, /csv or /session: read a folder of logs instead of this device" },
-            new string[] { "/hours <n>", "Hours of history to read (default 24)" },
+            new string[] { "/hours <n>", "Hours of history to read (default 24, 0 for everything since Windows was installed)" },
             new string[] { "--demo", "Play a sample Autopilot deployment" },
             new string[] { "--demo osd", "Play a sample SCCM task sequence" },
         };
@@ -692,6 +884,7 @@ namespace TrackVice
                 new string[] { "Ctrl+E", "Export an HTML report" },
                 new string[] { "Ctrl+L", "Open the selected item's log in LogVice" },
                 new string[] { "Ctrl+M", "Compact view" },
+                new string[] { "Ctrl+,", "Settings" },
                 new string[] { "Ctrl+C", "Copy the selected row" },
                 new string[] { "F1", "This page" },
                 new string[] { "Esc", "Clear the search, or close this page" }));

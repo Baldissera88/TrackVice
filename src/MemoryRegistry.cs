@@ -8,6 +8,16 @@ namespace TrackVice
     {
         readonly Dictionary<string, Dictionary<string, RegValue>> keys = new Dictionary<string, Dictionary<string, RegValue>>(StringComparer.OrdinalIgnoreCase);
         readonly List<string> denied = new List<string>();
+        readonly Dictionary<string, DateTime> written = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+        // When set, every value written records this as its key's write time.
+        public DateTime? Clock;
+
+        public DateTime? WriteTime(string path)
+        {
+            DateTime t;
+            return written.TryGetValue(path, out t) ? (DateTime?)t : null;
+        }
 
         public List<string> Denied
         {
@@ -17,6 +27,7 @@ namespace TrackVice
         public void Set(string path, string name, string kind, string data)
         {
             Ensure(path)[name] = new RegValue(kind, data);
+            if (Clock.HasValue) written[path] = Clock.Value;
         }
 
         public void Dword(string path, string name, int data)

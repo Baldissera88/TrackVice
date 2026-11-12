@@ -11,7 +11,7 @@ namespace TrackVice
     public static class Program
     {
         public const string Developer = "Daniel L. Baldissera";
-        public const string BuildDate = "11 November 2026";
+        public const string BuildDate = "12 November 2026";
 
         [DllImport("kernel32.dll")]
         static extern bool AttachConsole(int pid);
@@ -156,6 +156,7 @@ namespace TrackVice
                 else if (low == "--tab" && i + 1 < args.Length) int.TryParse(args[++i], out o.Tab);
                 else if (low == "--select" && i + 1 < args.Length) o.Select = args[++i];
                 else if (low == "--compact") o.Compact = true;
+                else if (low == "--page" && i + 1 < args.Length) o.Page = args[++i];
                 else if (low == "--size" && i + 1 < args.Length)
                 {
                     string[] wh = args[++i].Split('x');
@@ -175,7 +176,7 @@ namespace TrackVice
 
     public sealed class StartOptions
     {
-        public string Demo, Folder, File, Shot, Theme, Select;
+        public string Demo, Folder, File, Shot, Theme, Select, Page;
         public double At = -1;
         public int Tab = -1;
         public bool Compact;
@@ -209,7 +210,7 @@ namespace TrackVice
                         case "csv": csv = Next(args, ref i); break;
                         case "session": session = Next(args, ref i); break;
                         case "folder": folder = Next(args, ref i); break;
-                        case "hours": hours = int.Parse(Next(args, ref i), CultureInfo.InvariantCulture); break;
+                        case "hours": hours = Math.Max(0, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
                         case "?":
                         case "h":
                         case "help": Usage(); return 0;

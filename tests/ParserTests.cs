@@ -215,6 +215,24 @@ namespace TrackVice.Tests
             T.Eq(Phases.DeviceSetup, moved != null ? moved.PhaseKey : null, "ESP moves it to device setup");
             T.Check(s2.FindPhase(Phases.IntuneApps) != null && s2.FindPhase(Phases.IntuneApps).Items.Count == 0, "and out of Intune apps");
 
+            // A device that finished its ESP long ago: states carry the time the key was written, not the time it was read.
+            MemoryRegistry old = new MemoryRegistry();
+            DateTime then = T0.AddDays(-40);
+            old.Clock = then;
+            old.Dword(EspWatch.Root + @"\Device\Setup\Apps\Tracking\Sidecar\Win32App_3f8a2c1e-5b6d-4a7e-9c21-7d4e5f6a8b01_1", "InstallationState", 3);
+            old.Clock = then.AddMinutes(20);
+            old.Dword(EspWatch.Root + @"\" + sid + @"\Apps\Tracking\Sidecar\Win32App_9b3e5f71-2a4c-4d8e-b6f0-1c7a3e5d9f04_1", "InstallationState", 2);
+            List<Obs> oo = new EspWatch().Read(old, T0);
+            T.Check(oo.Count == 2 && oo[0].TimeUtc == then, "ESP state gets the key's write time");
+            Session so = new Session();
+            new Tracker(so).ApplyAll(oo);
+            T.Eq((DateTime?)then, so.FirstUtc, "an old deployment starts when it really started");
+            Finder.Run(so, T0, true);
+            bool stale = false;
+            foreach (Finding f in so.Findings) if (f.Kind == FindingKinds.Stuck && f.Title.Contains("has not changed since")) stale = true;
+            T.Check(stale, "an install left over from long ago is called out as stale, not as stuck now");
+            T.Check(new EspWatch().Read(new MemoryRegistry(), T0).Count == 0, "no ESP keys, no items");
+
             T.Eq(State.Installing, EspWatch.InstallationState("2"), "InstallationState 2");
             T.Eq(State.Failed, EspWatch.InstallationState("4"), "InstallationState 4");
             T.Eq(State.Succeeded, EspWatch.InstallationState("Completed"), "InstallationState as text");
