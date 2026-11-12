@@ -258,7 +258,9 @@ namespace TrackVice
             RegValue st = reg.Get(path, "InstallationState");
             if (st != null && rel.Length > 0)
             {
-                Obs o = Entry(rel, st.Data, nowUtc);
+                // The key's write time is when the ESP set this state, which matters on a device that finished long ago.
+                DateTime? wt = reg.WriteTime(path);
+                Obs o = Entry(rel, st.Data, wt.HasValue && wt.Value <= nowUtc.AddMinutes(1) ? wt.Value : nowUtc);
                 if (o != null)
                 {
                     o.Evidence = new Evidence(EvidenceKinds.Registry, path, 0, "InstallationState = " + st.Data);
@@ -370,7 +372,9 @@ namespace TrackVice
             {
                 if (it.Kind != ImeKinds.Win32App || string.IsNullOrEmpty(it.Id)) continue;
                 Obs o = new Obs();
-                o.TimeUtc = it.Time.HasValue && it.Time.Value <= nowUtc ? it.Time.Value : nowUtc;
+                DateTime? when = it.Time;
+                if (!when.HasValue && !string.IsNullOrEmpty(it.RegistryPath)) when = reg.WriteTime(it.RegistryPath);
+                o.TimeUtc = when.HasValue && when.Value <= nowUtc.AddMinutes(1) ? when.Value : nowUtc;
                 o.Source = "IME registry";
                 o.ItemKey = IntuneKeys.App(it.Id);
                 o.ItemKind = Kinds.Win32App;
@@ -428,6 +432,8 @@ namespace TrackVice
             List<Pair> info = new List<Pair>();
             try
             {
+                DateTime? installed = WindowsInstalled(reg);
+                if (installed.HasValue) info.Add(new Pair("Windows installed", Txt.Local(installed.Value)));
                 string profile = Str(reg.Get(ProfileKey, "DeploymentProfileName"));
                 string tenant = Str(reg.Get(ProfileKey, "CloudAssignedTenantDomain"));
                 if (!string.IsNullOrEmpty(profile)) info.Add(new Pair("Autopilot profile", profile));
@@ -455,6 +461,15 @@ namespace TrackVice
             }
             catch (Exception) { }
             return info;
+        }
+
+        // InstallDate is the time Windows was installed, in seconds since 1970 (UTC). A feature update resets it.
+        public static DateTime? WindowsInstalled(IRegSource reg)
+        {
+            RegValue v = reg.Get(@"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallDate");
+            long? s = v == null ? null : ImeCodes.Parse(v.Data);
+            if (!s.HasValue || s.Value <= 0) return null;
+            return new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(s.Value);
         }
 
         static string Str(RegValue v)

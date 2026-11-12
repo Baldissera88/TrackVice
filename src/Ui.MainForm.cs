@@ -43,7 +43,7 @@ namespace TrackVice
         readonly Control[] views = new Control[4];
         readonly List<Control> plain = new List<Control>();
 
-        FlatButton bWatch, bOpen, bSave, bExport, bLogVice, bCompact, bTheme, bAbout, bAdmin;
+        FlatButton bWatch, bOpen, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout, bAdmin;
         OverallChip overall;
         StatChip cItems, cActive, cWaiting, cFailed, cFindings;
         string chipFilter;
@@ -104,6 +104,7 @@ namespace TrackVice
             tabs.SelectedChanged += Safe.Wrap(delegate { ShowView(); });
             ShowView();
             pollTimer.Tick += Safe.Wrap(delegate { Poll(); });
+            Finder.StuckAfter = TimeSpan.FromMinutes(Settings.StuckMinutes);
             clockTimer.Interval = 1000;
             clockTimer.Tick += Safe.Wrap(delegate { Tick(); });
             clockTimer.Start();
@@ -112,13 +113,13 @@ namespace TrackVice
                 if (start.Demo != null) Begin(Engine.ForDemo(start.Demo), true);
                 else if (start.File != null) Begin(Engine.ForFile(start.File), false);
                 else if (start.Folder != null) Begin(Engine.ForFolder(start.Folder), false);
-                else Begin(Engine.ForLive(Hours), true);
+                else Begin(Settings.NewLive(), true);
             });
         }
 
         static int Hours
         {
-            get { return Prefs.GetInt("Hours", 24, 1, 24 * 30); }
+            get { return Settings.Hours; }
         }
 
         // ---------- building ----------
@@ -147,10 +148,12 @@ namespace TrackVice
             bLogVice = Button("LogVice", Glyphs.Log, delegate { LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); });
             bCompact = Button("Compact", Glyphs2.Device, delegate { ToggleCompact(); });
             bTheme = Button("", Glyphs.Theme, delegate { CycleTheme(); });
+            bSettings = Button("", Glyphs2.Settings, delegate { OpenSettings(); });
             bAbout = Button("", Glyphs.Info, delegate { About(); });
             if (Fonts.Icons == null)
             {
                 bTheme.Text = "Theme";
+                bSettings.Text = "Settings";
                 bAbout.Text = "About";
             }
             Tip(bWatch, "Follow the device live, or pause (Ctrl+W)");
@@ -160,8 +163,9 @@ namespace TrackVice
             Tip(bLogVice, "Open the deployment logs in LogVice");
             Tip(bCompact, "A small window that stays on top, for OOBE and for watching over a shoulder (Ctrl+M)");
             Tip(bTheme, "Change the theme");
+            Tip(bSettings, "Settings: history to read, how often to read, sources, LogVice (Ctrl+,)");
             Tip(bAbout, "About TrackVice and the command line (F1)");
-            foreach (FlatButton b in new FlatButton[] { bWatch, bOpen, bSave, bExport, bLogVice, bCompact, bTheme, bAbout })
+            foreach (FlatButton b in new FlatButton[] { bWatch, bOpen, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout })
             {
                 b.Margin = new Padding(Dpi.S(2), 0, 0, 0);
                 toolbar.Controls.Add(b);
@@ -539,7 +543,7 @@ namespace TrackVice
             rail.Selected = null;
             banner.Visible = e.Mode == Modes.Live && !Program.IsAdmin;
             list.EmptyText = e.Mode == Modes.Live
-                ? "Nothing is deploying on this device in the last " + Hours + " hours that TrackVice can see yet.\n\nIt reads smsts.log, the ConfigMgr client logs, the Intune Management Extension logs, the ESP tracking keys and ConfigMgr client WMI. Start a deployment, or keep TrackVice open: it updates every 2 seconds while watching."
+                ? "TrackVice found no deployment on this device in " + Settings.HoursText(Hours) + ".\n\nIt reads smsts.log, the ConfigMgr client logs, the Intune Management Extension logs, the ESP tracking keys and ConfigMgr client WMI. Start a deployment and it shows up here, or change History to read in Settings to look further back."
                 : "Nothing found.";
             rail.EmptyText = e.Mode == Modes.Live ? "Phases show up here as soon as a deployment starts." : "No phases.";
             Bind();
@@ -590,9 +594,12 @@ namespace TrackVice
             Bind();
             if (first)
             {
-                if (thenWatch && e.CanWatch && start.Shot == null && start.At < 0) SetWatching(true);
+                bool auto = e.Mode != Modes.Live || Settings.WatchOnStart;
+                if (thenWatch && auto && e.CanWatch && start.Shot == null && start.At < 0) SetWatching(true);
                 else SetWatching(false);
                 Status(Summary());
+                if (e.StartedBeforeHistory.HasValue)
+                    Status("This deployment started " + Txt.Local(e.StartedBeforeHistory.Value) + ", before the history TrackVice reads, so older items show only their saved state. Settings > History to read > Since install reads everything.");
                 SelectInteresting();
                 if (start.Shot != null) Shot();
                 else if (start.Compact) ToggleCompact();
@@ -649,7 +656,7 @@ namespace TrackVice
                 return;
             }
             SetWatching(!watching);
-            Status(watching ? "Watching: TrackVice reads the device every " + (engine.PollIntervalMs / 1000.0).ToString("0.#", Inv) + " seconds." : "Paused.");
+            Status(watching ? "Watching: TrackVice reads the device every " + (engine.PollIntervalMs / 1000.0).ToString("0.#", Inv) + " second" + (engine.PollIntervalMs == 1000 ? "" : "s") + "." : "Paused.");
         }
 
         void Tick()
@@ -1105,7 +1112,7 @@ namespace TrackVice
             Field(r, "Windows", s.OsVersion, false);
             Field(r, "User", s.User, false);
             Field(r, "Administrator", engine.Mode == Modes.Live ? (s.Elevated ? "Yes" : "No: some logs and keys may be missing") : null, false);
-            if (engine.Mode == Modes.Live) Field(r, "History read", "Since " + Txt.Local(s.SinceUtc) + " (" + Hours + " hours)", false);
+            if (engine.Mode == Modes.Live) Field(r, "History read", "Since " + Txt.Local(s.SinceUtc) + " (" + Settings.HoursText(Hours) + ")", false);
             if (engine.Mode == Modes.File) Field(r, "File", s.SourcePath, true);
             if (engine.Mode == Modes.Folder) Field(r, "Folder", s.SourcePath, true);
             if (s.Info.Count > 0)
@@ -1142,21 +1149,21 @@ namespace TrackVice
         ContextMenuStrip OpenMenu()
         {
             ContextMenuStrip m = Menus.New(theme);
-            Menus.Add(m, "Watch this device", delegate { Begin(Engine.ForLive(Hours), true); });
-            ToolStripMenuItem hist = new ToolStripMenuItem("History to read: " + HoursText(Hours));
+            Menus.Add(m, "Watch this device", delegate { Begin(Settings.NewLive(), true); });
+            ToolStripMenuItem hist = new ToolStripMenuItem("History to read: " + Settings.HistoryLong[Settings.HistoryIndex].ToLowerInvariant());
             hist.ForeColor = theme.Text;
             hist.Padding = new Padding(Dpi.S(4), Dpi.S(3), Dpi.S(4), Dpi.S(3));
             m.Items.Add(hist);
-            foreach (int h in new int[] { 2, 6, 24, 72, 168 })
+            for (int k = 0; k < Settings.Histories.Length; k++)
             {
-                int hh = h;
-                ToolStripMenuItem sub = new ToolStripMenuItem(HoursText(h), null, Safe.Wrap(delegate
+                int hh = Settings.Histories[k];
+                ToolStripMenuItem sub = new ToolStripMenuItem(Settings.HistoryLong[k], null, Safe.Wrap(delegate
                 {
-                    Prefs.Set("Hours", hh.ToString(Inv));
-                    if (engine != null && engine.Mode == Modes.Live) Begin(Engine.ForLive(hh), true);
-                    else Status("TrackVice now reads the last " + HoursText(hh) + " when it watches this device.");
+                    Settings.Hours = hh;
+                    if (engine != null && engine.Mode == Modes.Live) Begin(Settings.NewLive(), true);
+                    else Status("TrackVice now reads " + Settings.HoursText(hh) + " when it watches this device.");
                 }));
-                sub.Checked = h == Hours;
+                sub.Checked = hh == Hours;
                 sub.ForeColor = theme.Text;
                 sub.BackColor = theme.Card;
                 hist.DropDownItems.Add(sub);
@@ -1170,13 +1177,6 @@ namespace TrackVice
             Menus.Add(m, "Play the Autopilot demo", delegate { Begin(Engine.ForDemo("autopilot"), true); });
             Menus.Add(m, "Play the task sequence demo", delegate { Begin(Engine.ForDemo("osd"), true); });
             return m;
-        }
-
-        static string HoursText(int h)
-        {
-            if (h < 24) return h + " hours";
-            if (h == 24) return "24 hours";
-            return (h / 24) + " days";
         }
 
         ContextMenuStrip SaveMenu()
@@ -1363,6 +1363,42 @@ namespace TrackVice
             MessageBox.Show(this, ex.Message, "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
+        void OpenSettings()
+        {
+            using (SettingsDialog d = new SettingsDialog(theme))
+            {
+                d.ThemeChanged += delegate
+                {
+                    theme = Theme.Named(Prefs.Get("Theme", "System"));
+                    ApplyTheme();
+                };
+                d.IntervalChanged += delegate
+                {
+                    if (engine != null && engine.Mode == Modes.Live)
+                    {
+                        engine.PollIntervalMs = Settings.PollMs;
+                        pollTimer.Interval = engine.PollIntervalMs;
+                    }
+                };
+                d.StuckChanged += delegate
+                {
+                    Finder.StuckAfter = TimeSpan.FromMinutes(Settings.StuckMinutes);
+                    if (engine != null) { Finder.Run(engine.S, engine.Now, engine.Mode == Modes.Live || engine.Mode == Modes.Demo); Bind(); }
+                };
+                d.ShowDialog(this);
+                if (d.RestartRequested)
+                {
+                    if (Program.RestartElevated()) { Close(); return; }
+                    Status("TrackVice was not restarted as administrator.");
+                }
+                if (d.ReadAgain && engine != null && engine.Mode == Modes.Live)
+                {
+                    Begin(Settings.NewLive(), watching || Settings.WatchOnStart);
+                    Status("Reading " + Settings.HoursText(Hours) + "\u2026");
+                }
+            }
+        }
+
         void About()
         {
             using (AboutDialog d = new AboutDialog(theme)) d.ShowDialog(this);
@@ -1397,6 +1433,15 @@ namespace TrackVice
                 else list.SelectByName(start.Select);
             }
             if (start.Compact) ToggleCompact();
+            Form page = null;
+            if (start.Page == "settings") page = new SettingsDialog(theme);
+            else if (start.Page == "about") page = new AboutDialog(theme);
+            if (page != null)
+            {
+                page.StartPosition = FormStartPosition.Manual;
+                page.Location = new Point(Left + 40, Top + 40);
+                page.Show(this);
+            }
             // Keep the pointer out of the picture, so no row shows as hovered.
             try { Cursor.Position = new Point(Screen.PrimaryScreen.Bounds.Right - 2, Screen.PrimaryScreen.Bounds.Bottom - 2); } catch (Exception) { }
             System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
@@ -1408,7 +1453,7 @@ namespace TrackVice
                 {
                     list.ClearHover();
                     list.Refresh();
-                    Form target = start.Compact && compact != null ? (Form)compact : this;
+                    Form target = page != null ? page : start.Compact && compact != null ? (Form)compact : this;
                     Rectangle b = target.Bounds;
                     using (Bitmap bmp = new Bitmap(b.Width, b.Height))
                     {
@@ -1430,8 +1475,9 @@ namespace TrackVice
             {
                 switch (keyData)
                 {
-                    case Keys.F5: if (engine != null) { if (engine.Mode == Modes.Live) Begin(Engine.ForLive(Hours), watching); else if (engine.Mode == Modes.Folder) Begin(Engine.ForFolder(engine.S.SourcePath), false); } return true;
+                    case Keys.F5: if (engine != null) { if (engine.Mode == Modes.Live) Begin(Settings.NewLive(), watching); else if (engine.Mode == Modes.Folder) Begin(Engine.ForFolder(engine.S.SourcePath), false); } return true;
                     case Keys.F1: About(); return true;
+                    case Keys.Control | Keys.Oemcomma: OpenSettings(); return true;
                     case Keys.Control | Keys.W: ToggleWatch(); return true;
                     case Keys.Control | Keys.F: tabs.Selected = TabProgress; search.Focus(); search.SelectAll(); return true;
                     case Keys.Control | Keys.S: SaveSession(); return true;

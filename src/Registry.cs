@@ -25,6 +25,8 @@ namespace TrackVice
         string[] SubKeys(string path);
         string[] ValueNames(string path);
         RegValue Get(string path, string name);
+        // When the key was last written, or null when it is not known.
+        DateTime? WriteTime(string path);
         List<string> Denied { get; }
     }
 
@@ -108,6 +110,25 @@ namespace TrackVice
             catch (System.IO.IOException) { }
             catch (ArgumentException) { }
             return lastKey;
+        }
+
+        [System.Runtime.InteropServices.DllImport("advapi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        static extern int RegQueryInfoKey(Microsoft.Win32.SafeHandles.SafeRegistryHandle hKey, IntPtr lpClass, IntPtr lpcchClass, IntPtr lpReserved, IntPtr lpcSubKeys, IntPtr lpcbMaxSubKeyLen, IntPtr lpcbMaxClassLen, IntPtr lpcValues, IntPtr lpcbMaxValueNameLen, IntPtr lpcbMaxValueLen, IntPtr lpcbSecurityDescriptor, out long lpftLastWriteTime);
+
+        public DateTime? WriteTime(string path)
+        {
+            lock (gate)
+            {
+                RegistryKey k = Key(path);
+                if (k == null) return null;
+                try
+                {
+                    long ft;
+                    if (RegQueryInfoKey(k.Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, out ft) != 0 || ft <= 0) return null;
+                    return DateTime.FromFileTimeUtc(ft);
+                }
+                catch (Exception) { return null; }
+            }
         }
 
         void Deny(string path)

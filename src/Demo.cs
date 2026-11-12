@@ -127,6 +127,7 @@ namespace TrackVice
                 DateTime t = StartUtc.AddSeconds(s.At);
                 if (s.RegPath != null)
                 {
+                    reg.Clock = t;
                     reg.Dword(s.RegPath, "InstallationState", s.RegValue);
                     b.Obs.AddRange(esp.Read(reg, t));
                     continue;
