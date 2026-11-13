@@ -4,13 +4,13 @@
 
 TrackVice follows a deployment on one Windows device while it happens: an SCCM task sequence, SCCM applications, packages and updates, Windows Autopilot with the Enrollment Status Page, and Intune Win32 apps. It shows every phase and every step, app, update and policy in it, what each one is doing right now, and the log line behind it.
 
-It can also follow **other devices** from your own PC: Autopilot deployments as Intune reports them, and task sequences from the status messages they send to your SCCM site.
+It can also follow **other devices** from your own PC: Autopilot deployments as Intune reports them, task sequences from the status messages they send to your SCCM site, and, with the [TrackVice agent](docs/AGENT.md) on the devices, everything each device itself sees while it deploys.
 
 It is a companion to [LogVice](https://github.com/Baldissera88/LogVice) and [PolicyVice](https://github.com/Baldissera88/PolicyVice): one portable exe, no installs, no cloud sign-in, and the log behind any step opens in LogVice with one click.
 
 ![TrackVice following an Autopilot deployment](docs/images/trackvice-autopilot.png)
 
-> **TrackVice is a preview.** Everything below works with the built-in demos and has tests, but it has hardly run on real devices yet, and the views of other devices have not run against a real Intune tenant or SCCM site. The log formats of the Intune Management Extension and the ESP registry layout are not documented by Microsoft, so expect some lines to be missed until it has been tested on real deployments. [docs/TESTING.md](docs/TESTING.md) is the checklist for that.
+> **TrackVice is a preview.** Everything below works with the built-in demos and has tests, but it has hardly run on real devices yet, the SCCM view of other devices has not run against a real site, and the agent has not yet been through a full Autopilot enrollment. The log formats of the Intune Management Extension and the ESP registry layout are not documented by Microsoft, so expect some lines to be missed until it has been tested on real deployments. [docs/TESTING.md](docs/TESTING.md) is the checklist for that.
 
 ## What it shows
 
@@ -116,7 +116,7 @@ Intune and SCCM only know what a device has reported. With the agent, the device
 | The list | Device, progress with the current item, deployment, profile, start, duration and last upload. Refreshed every 15 seconds |
 | One device | Everything the device itself shows. Read every 5 seconds |
 
-[docs/AGENT.md](docs/AGENT.md) has the setup step by step.
+**[docs/AGENT.md](docs/AGENT.md) is the guide**: the storage container, the three links, the platform script in Intune, testing each part first, maintenance and troubleshooting.
 
 All three have a demo with made-up devices under **Devices**, so you can see them without signing in.
 
@@ -193,7 +193,7 @@ The agent is the one exception, and only where you install it: it adds a schedul
 
 - It has not been tested on many real devices yet. See the note at the top.
 - The Intune view uses a beta Graph API, which Microsoft can change, and the status message names the SCCM view reads differ a little between ConfigMgr versions.
-- The agent has not run on a real device or a real storage account yet, only against the storage emulator and a folder.
+- The agent has uploaded to a real storage account and installed on Windows 11, but has not yet been through a full Autopilot enrollment.
 - LogVice opens a log file but cannot yet jump to a line, so TrackVice says in the status bar which line to look for.
 - The Intune Management Extension log format changes between IME versions. Lines TrackVice does not recognise are left out, and the ESP and Win32Apps registry keys still give the state.
 - The Windows PE part of a task sequence needs WinPE-NetFx in the boot image for TrackVice to start there.

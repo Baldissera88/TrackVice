@@ -2,11 +2,12 @@
 
 ## TrackVice 0.0.6
 
-13 November 2026. The agent has run against the Azure Storage emulator, a folder and the demos, not yet on a real device or storage account.
+13 November 2026. The agent has uploaded to a real Azure storage account and installed on Windows 11. It has not yet been through a full Autopilot enrollment.
 
 - The TrackVice agent: TrackVice runs on a device without a window while it deploys, and uploads its whole session as it changes, to an Azure Storage container or a folder. See docs/AGENT.md.
 - `/agent-install /upload <location>` installs it as a startup task that runs as SYSTEM, survives the restarts of a deployment and removes itself after 48 hours. `/agent-remove` removes it.
-- `agent/Install-TrackViceAgent.ps1` installs it from an Intune platform script, so it runs from the start of device setup.
+- `agent/Install-TrackViceAgent.ps1` installs it from an Intune platform script, so it runs from the start of device setup. It checks the exe's hash and reports why an install failed.
+- docs/AGENT.md is the guide: storage container, links, Intune, testing, maintenance and troubleshooting.
 - Devices > Devices with the TrackVice agent lists the uploaded sessions and follows one live, with every item, log line and finding the device itself has.
 - A demo of that list, with made-up devices that move on while you watch.
 
