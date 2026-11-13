@@ -25,6 +25,8 @@ namespace TrackVice
         readonly System.Windows.Forms.Timer clockTimer = new System.Windows.Forms.Timer();
         DateTime lastUpdate = DateTime.MinValue;
         CompactView compact;
+        IRemoteCatalog intuneCatalog, sccmCatalog;
+        GraphClient graph;
 
         readonly List<IThemed> themed = new List<IThemed>();
         readonly Panel header = new Panel();
@@ -43,7 +45,7 @@ namespace TrackVice
         readonly Control[] views = new Control[4];
         readonly List<Control> plain = new List<Control>();
 
-        FlatButton bWatch, bOpen, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout, bAdmin;
+        FlatButton bWatch, bOpen, bDevices, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout, bAdmin;
         OverallChip overall;
         StatChip cItems, cActive, cWaiting, cFailed, cFindings;
         string chipFilter;
@@ -110,6 +112,13 @@ namespace TrackVice
             clockTimer.Start();
             Shown += Safe.Wrap(delegate
             {
+                if (start.Remote != null && start.Pick != null)
+                {
+                    IRemoteCatalog c = RemoteDialog.DemoCatalog(start.Remote);
+                    foreach (RemoteDeployment d in c.List(DateTime.UtcNow.AddDays(-30)))
+                        if (d.Device.IndexOf(start.Pick, StringComparison.OrdinalIgnoreCase) >= 0) { Begin(Engine.ForRemote(c.Open(d), d), true); return; }
+                }
+                if (start.Remote != null && start.Shot == null) { Begin(Engine.ForDemo("autopilot"), true); OpenRemote(start.Remote, true); return; }
                 if (start.Demo != null) Begin(Engine.ForDemo(start.Demo), true);
                 else if (start.File != null) Begin(Engine.ForFile(start.File), false);
                 else if (start.Folder != null) Begin(Engine.ForFolder(start.Folder), false);
@@ -143,6 +152,7 @@ namespace TrackVice
 
             bWatch = Button("Watch", Glyphs.Watch, delegate { ToggleWatch(); });
             bOpen = Button("Open", Glyphs2.Folder, delegate { OpenMenu().Show(bOpen, new Point(0, bOpen.Height)); });
+            bDevices = Button("Devices", Glyphs2.Apps, delegate { DevicesMenu().Show(bDevices, new Point(0, bDevices.Height)); });
             bSave = Button("Save", Glyphs.Save, delegate { SaveMenu().Show(bSave, new Point(0, bSave.Height)); });
             bExport = Button("Export", Glyphs.Export, delegate { ExportMenu().Show(bExport, new Point(0, bExport.Height)); });
             bLogVice = Button("LogVice", Glyphs.Log, delegate { LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); });
@@ -158,6 +168,7 @@ namespace TrackVice
             }
             Tip(bWatch, "Follow the device live, or pause (Ctrl+W)");
             Tip(bOpen, "Watch this device, open a saved session or a folder of logs, or play a demo (Ctrl+O)");
+            Tip(bDevices, "Follow other devices: Autopilot deployments from Intune, or task sequences from your SCCM site (Ctrl+D)");
             Tip(bSave, "Save the session, or collect it with its logs in a zip (Ctrl+S)");
             Tip(bExport, "Export an HTML report or every event as CSV (Ctrl+E)");
             Tip(bLogVice, "Open the deployment logs in LogVice");
@@ -165,7 +176,7 @@ namespace TrackVice
             Tip(bTheme, "Change the theme");
             Tip(bSettings, "Settings: history to read, how often to read, sources, LogVice (Ctrl+,)");
             Tip(bAbout, "About TrackVice and the command line (F1)");
-            foreach (FlatButton b in new FlatButton[] { bWatch, bOpen, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout })
+            foreach (FlatButton b in new FlatButton[] { bWatch, bOpen, bDevices, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout })
             {
                 b.Margin = new Padding(Dpi.S(2), 0, 0, 0);
                 toolbar.Controls.Add(b);
@@ -679,10 +690,12 @@ namespace TrackVice
             if (engine == null) { statusRight.Text = "TrackVice " + Program.Version; return; }
             List<string> parts = new List<string>();
             if (engine.Mode == Modes.Demo) parts.Add("Demo data, " + engine.DemoSpeed.ToString("0", Inv) + "× speed");
+            else if (engine.Mode == Modes.Intune) parts.Add("Intune, read every " + (engine.PollIntervalMs / 1000) + " s");
+            else if (engine.Mode == Modes.Sccm) parts.Add("SCCM status messages, read every " + (engine.PollIntervalMs / 1000) + " s");
             else if (engine.Mode == Modes.File) parts.Add("Saved session");
             else if (engine.Mode == Modes.Folder) parts.Add("Log folder");
             if (watching) parts.Add("Watching · updated " + Txt.Ago(lastUpdate, DateTime.UtcNow));
-            else if (engine.Mode == Modes.Live) parts.Add("Paused");
+            else if (engine.Mode == Modes.Live || engine.IsRemote) parts.Add("Paused");
             if (engine.SourceCount > 0) parts.Add(engine.SourceCount + " source" + (engine.SourceCount == 1 ? "" : "s"));
             parts.Add("TrackVice " + Program.Version);
             statusRight.Text = string.Join("  ·  ", parts.ToArray());
@@ -701,6 +714,8 @@ namespace TrackVice
             Session s = engine.S;
             List<string> sub = new List<string>();
             if (engine.Mode == Modes.Demo) sub.Add("Demo data");
+            else if (engine.Mode == Modes.Intune) sub.Add("Intune");
+            else if (engine.Mode == Modes.Sccm) sub.Add("SCCM");
             sub.Add(s.Computer);
             if (s.Items.Count > 0) sub.Add(s.Kind);
             string profile = s.GetInfo("Task sequence") ?? s.GetInfo("Autopilot profile");
@@ -1107,7 +1122,7 @@ namespace TrackVice
             Session s = engine.S;
             Begin(r);
             Heading(r, s.Computer);
-            Line(r, engine.Mode == Modes.Live ? "This device" : engine.Mode == Modes.Demo ? "Demo" : engine.Mode == Modes.File ? "Saved session" : "Log folder", theme.Accent, s.Kind, theme.Text3);
+            Line(r, engine.Mode == Modes.Live ? "This device" : engine.Mode == Modes.Demo ? "Demo" : engine.Mode == Modes.File ? "Saved session" : engine.Mode == Modes.Intune ? "Intune" : engine.Mode == Modes.Sccm ? "SCCM" : "Log folder", theme.Accent, s.Kind, theme.Text3);
             Section(r, "Device");
             Field(r, "Windows", s.OsVersion, false);
             Field(r, "User", s.User, false);
@@ -1174,8 +1189,26 @@ namespace TrackVice
             Menus.Add(m, "Open a saved session…  (Ctrl+O)", delegate { OpenSession(); });
             Menus.Add(m, "Open a folder of logs…", delegate { OpenFolder(); });
             Menus.Separator(m);
+            Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
+            Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
+            Menus.Separator(m);
             Menus.Add(m, "Play the Autopilot demo", delegate { Begin(Engine.ForDemo("autopilot"), true); });
             Menus.Add(m, "Play the task sequence demo", delegate { Begin(Engine.ForDemo("osd"), true); });
+            Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
+            Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
+            return m;
+        }
+
+        ContextMenuStrip DevicesMenu()
+        {
+            ContextMenuStrip m = Menus.New(theme);
+            Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
+            Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
+            Menus.Separator(m);
+            Menus.Add(m, "This device", delegate { Begin(Settings.NewLive(), true); });
+            Menus.Separator(m);
+            Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
+            Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
             return m;
         }
 
@@ -1363,6 +1396,28 @@ namespace TrackVice
             MessageBox.Show(this, ex.Message, "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
+        void OpenRemote(string kind)
+        {
+            OpenRemote(kind, false);
+        }
+
+        // Lists deployments on other devices and watches the one picked. A demo list is never kept.
+        void OpenRemote(string kind, bool demo)
+        {
+            IRemoteCatalog existing = demo ? null : kind == RemoteDialog.Intune ? intuneCatalog : sccmCatalog;
+            using (RemoteDialog d = new RemoteDialog(kind, theme, existing, graph, demo))
+            {
+                d.ShowDialog(this);
+                if (!demo)
+                {
+                    if (kind == RemoteDialog.Intune) { intuneCatalog = d.Catalog; graph = d.Graph; }
+                    else sccmCatalog = d.Catalog;
+                }
+                if (d.Picked == null || d.Catalog == null) return;
+                Begin(Engine.ForRemote(d.Catalog.Open(d.Picked), d.Picked), true);
+            }
+        }
+
         void OpenSettings()
         {
             using (SettingsDialog d = new SettingsDialog(theme))
@@ -1436,6 +1491,12 @@ namespace TrackVice
             Form page = null;
             if (start.Page == "settings") page = new SettingsDialog(theme);
             else if (start.Page == "about") page = new AboutDialog(theme);
+            else if (start.Remote != null && start.Pick == null)
+            {
+                RemoteDialog rd = new RemoteDialog(start.Remote, theme, null, null, true);
+                rd.Shown += delegate { System.Windows.Forms.Timer st = new System.Windows.Forms.Timer(); st.Interval = 900; st.Tick += delegate { st.Stop(); if (start.Select != null) rd.SelectDevice(start.Select); }; st.Start(); };
+                page = rd;
+            }
             if (page != null)
             {
                 page.StartPosition = FormStartPosition.Manual;
@@ -1485,6 +1546,7 @@ namespace TrackVice
                     case Keys.Control | Keys.E: ExportHtml(); return true;
                     case Keys.Control | Keys.L: OpenItemLog(list.SelectedItem); return true;
                     case Keys.Control | Keys.M: ToggleCompact(); return true;
+                    case Keys.Control | Keys.D: DevicesMenu().Show(bDevices, new Point(0, bDevices.Height)); return true;
                     case Keys.Escape:
                         if (search.Focused && search.Text.Length > 0) { search.Text = ""; return true; }
                         if (tlSearch.Focused && tlSearch.Text.Length > 0) { tlSearch.Text = ""; return true; }

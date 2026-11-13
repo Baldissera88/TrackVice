@@ -816,10 +816,39 @@ namespace TrackVice
             Add(logViceRow);
             UpdateLogVice();
 
+            TextBox client = Field(Prefs.Get("GraphClientId", ""), Dpi.S(300), true);
+            client.TextChanged += Safe.Wrap(delegate
+            {
+                string v = client.Text.Trim();
+                if (v.Length == 0) Prefs.Set("GraphClientId", null);
+                else if (GraphClient.IsGuid(v)) Prefs.Set("GraphClientId", v);
+            });
+            TextBox tenant = Field(Prefs.Get("GraphTenant", ""), Dpi.S(300), false);
+            tenant.TextChanged += Safe.Wrap(delegate
+            {
+                string v = tenant.Text.Trim();
+                Prefs.Set("GraphTenant", v.Length == 0 ? null : v);
+            });
+            Add(new SectionTitle("Autopilot in Intune"));
+            Add(new SettingRow(Glyphs2.Code, "Client ID", "The app registration TrackVice signs in with. Leave it empty to use Microsoft Graph Command Line Tools (" + GraphClient.DefaultClientId + "). Your own app needs the delegated permission DeviceManagementManagedDevices.Read.All and public client flows turned on.", client));
+            Add(new SettingRow(Glyphs.Shield, "Tenant", "The tenant ID or domain, for example contoso.onmicrosoft.com. Leave it empty to sign in to the tenant of the account you use.", tenant));
+
             SettingRow store = new SettingRow(Glyphs2.Settings, "Where settings are stored", Prefs.Location, null);
             store.MonoDesc = true;
             Add(new SectionTitle("Data"));
             Add(store);
+        }
+
+        TextBox Field(string value, int width, bool mono)
+        {
+            TextBox b = new TextBox();
+            b.Width = width;
+            b.Font = mono ? Fonts.Mono : Fonts.Ui;
+            b.BorderStyle = BorderStyle.FixedSingle;
+            b.BackColor = theme.Field;
+            b.ForeColor = theme.Text;
+            b.Text = value ?? "";
+            return b;
         }
 
         void UpdateLogVice()
@@ -867,7 +896,7 @@ namespace TrackVice
             hero.Version = "Version " + Program.Version;
             hero.Detail = "Built " + Program.BuildDate;
             hero.Developer = Program.Developer;
-            hero.Blurb = "Follows a deployment on one Windows device as it happens: SCCM task sequences, applications, packages and updates, Windows Autopilot with the Enrollment Status Page, and Intune apps, on one timeline with the log line behind every step. A companion to LogVice and PolicyVice.";
+            hero.Blurb = "Follows a deployment on a Windows device as it happens: SCCM task sequences, applications, packages and updates, Windows Autopilot with the Enrollment Status Page, and Intune apps, on one timeline with the log line behind every step. It also follows other devices: Autopilot deployments as Intune reports them, and task sequences from the status messages they send to an SCCM site. A companion to LogVice and PolicyVice.";
             hero.License = "Released under the MIT license.";
             Add(hero);
             Add(new SectionTitle("Command line"));
@@ -884,6 +913,7 @@ namespace TrackVice
                 new string[] { "Ctrl+E", "Export an HTML report" },
                 new string[] { "Ctrl+L", "Open the selected item's log in LogVice" },
                 new string[] { "Ctrl+M", "Compact view" },
+                new string[] { "Ctrl+D", "Other devices: Autopilot in Intune, task sequences in SCCM" },
                 new string[] { "Ctrl+,", "Settings" },
                 new string[] { "Ctrl+C", "Copy the selected row" },
                 new string[] { "F1", "This page" },

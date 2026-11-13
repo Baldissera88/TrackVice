@@ -11,7 +11,7 @@ namespace TrackVice
     public static class Program
     {
         public const string Developer = "Daniel L. Baldissera";
-        public const string BuildDate = "12 November 2026";
+        public const string BuildDate = "13 November 2026";
 
         [DllImport("kernel32.dll")]
         static extern bool AttachConsole(int pid);
@@ -157,6 +157,8 @@ namespace TrackVice
                 else if (low == "--select" && i + 1 < args.Length) o.Select = args[++i];
                 else if (low == "--compact") o.Compact = true;
                 else if (low == "--page" && i + 1 < args.Length) o.Page = args[++i];
+                else if (low == "--remote" && i + 1 < args.Length) o.Remote = args[++i].ToLowerInvariant();
+                else if (low == "--pick" && i + 1 < args.Length) o.Pick = args[++i];
                 else if (low == "--size" && i + 1 < args.Length)
                 {
                     string[] wh = args[++i].Split('x');
@@ -176,7 +178,7 @@ namespace TrackVice
 
     public sealed class StartOptions
     {
-        public string Demo, Folder, File, Shot, Theme, Select, Page;
+        public string Demo, Folder, File, Shot, Theme, Select, Page, Remote, Pick;
         public double At = -1;
         public int Tab = -1;
         public bool Compact;

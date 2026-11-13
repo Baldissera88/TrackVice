@@ -381,6 +381,9 @@ namespace TrackVice
             List<Finding> list = new List<Finding>();
             foreach (Item i in s.Items)
             {
+                // The run item of a remote task sequence fails with it; the Task sequence failed finding covers that.
+                // It also only hears from the site when the task sequence ends, so silence is not a sign of trouble.
+                if (i.Key == SccmFeed.RunKey) continue;
                 if (i.State == State.Failed)
                 {
                     long code = i.ExitCode ?? 0;
@@ -498,7 +501,7 @@ namespace TrackVice
         static string FailText(Item i)
         {
             string where = i.Kind == Kinds.Step ? "The step" : "It";
-            if (!i.ExitCode.HasValue || i.ExitCode.Value == 0) return where + " failed. The last log line about it is in the evidence.";
+            if (!i.ExitCode.HasValue || i.ExitCode.Value == 0) return where + " failed. Its events show what was reported.";
             return where + " failed with " + Errors.Describe(i.ExitCode.Value) + ".";
         }
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## TrackVice 0.0.3
+
+13 November 2026. The views of other devices have run with demo data and tests, not yet against a real tenant or site.
+
+- Devices (Ctrl+D): follow deployments on other devices.
+- Autopilot in Intune: sign in to Microsoft Graph read-only with a device code, list Autopilot deployments, and follow one: device setup, account setup, the failure Intune recorded, and every app and policy with its status.
+- Task sequences in SCCM: connect to the SMS Provider with your Windows account, list task sequence runs, and follow one step by step from its status messages, with each step's output.
+- Settings: the client ID and tenant for the Intune sign-in.
+- Fixed: columns set to share the remaining width did not, in the timeline and findings tables.
+- Demos of both lists, with made-up devices.
+
 ## TrackVice 0.0.2
 
 12 November 2026.
