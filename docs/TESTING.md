@@ -91,6 +91,20 @@ reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking es
 - [ ] A failed step shows its exit code and its output in the evidence.
 - [ ] A device that starts from PXE as an unknown computer shows up, and under which name.
 
+## 9. The agent
+
+Start with a folder on one PC, then a storage container, then a real Autopilot deployment. docs/AGENT.md has the setup.
+
+- [ ] `TrackVice.exe /agent /upload C:\Temp\TrackVice /once` as administrator writes one session, and Devices > Devices with the TrackVice agent lists it from that folder.
+- [ ] The same with the upload link of a storage container, and the viewer link in the list. Note any error text.
+- [ ] `/agent-install /upload "<upload link>"` as administrator returns at once, the task TrackVice Agent runs as SYSTEM, and the device shows in the list within a minute.
+- [ ] `C:\Program Files\TrackVice Agent\agent.log` says it started and uploaded.
+- [ ] A standard user cannot read `HKLM\SOFTWARE\TrackVice\Agent`.
+- [ ] After a restart the device continues as the same row in the list.
+- [ ] The platform script on an Autopilot device: when the device first shows in the list compared with the ESP, and whether device preparation is in the session.
+- [ ] Watching the device shows the same items as TrackVice run on it.
+- [ ] `/agent-remove` removes the task and the key.
+
 ## What to send back
 
 For anything wrong: a screenshot, the session (Save > Collect the session and its logs in a zip), and which log line TrackVice should have read differently.

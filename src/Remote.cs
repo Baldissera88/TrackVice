@@ -243,7 +243,7 @@ namespace TrackVice
             return v == null ? null : Convert.ToString(v, CultureInfo.InvariantCulture);
         }
 
-        static HttpWebRequest Request(string url)
+        public static HttpWebRequest Request(string url)
         {
             // .NET Framework 4.5 does not offer TLS 1.2 by default.
             try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch (Exception) { }

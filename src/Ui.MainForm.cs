@@ -25,7 +25,7 @@ namespace TrackVice
         readonly System.Windows.Forms.Timer clockTimer = new System.Windows.Forms.Timer();
         DateTime lastUpdate = DateTime.MinValue;
         CompactView compact;
-        IRemoteCatalog intuneCatalog, sccmCatalog;
+        IRemoteCatalog intuneCatalog, sccmCatalog, agentCatalog;
         GraphClient graph;
 
         readonly List<IThemed> themed = new List<IThemed>();
@@ -694,6 +694,7 @@ namespace TrackVice
             if (engine.Mode == Modes.Demo) parts.Add("Demo data, " + engine.DemoSpeed.ToString("0", Inv) + "× speed");
             else if (engine.Mode == Modes.Intune) parts.Add("Intune, read every " + (engine.PollIntervalMs / 1000) + " s");
             else if (engine.Mode == Modes.Sccm) parts.Add("SCCM status messages, read every " + (engine.PollIntervalMs / 1000) + " s");
+            else if (engine.Mode == Modes.Agent) parts.Add(engine.LastUploadUtc.Year > 2000 ? "Agent, uploaded " + Txt.LocalTime(engine.LastUploadUtc) : "Agent");
             else if (engine.Mode == Modes.File) parts.Add("Saved session");
             else if (engine.Mode == Modes.Folder) parts.Add("Log folder");
             if (watching) parts.Add("Watching · updated " + Txt.Ago(lastUpdate, DateTime.UtcNow));
@@ -718,6 +719,7 @@ namespace TrackVice
             if (engine.Mode == Modes.Demo) sub.Add("Demo data");
             else if (engine.Mode == Modes.Intune) sub.Add("Intune");
             else if (engine.Mode == Modes.Sccm) sub.Add("SCCM");
+            else if (engine.Mode == Modes.Agent) sub.Add("Agent");
             sub.Add(s.Computer);
             if (s.Items.Count > 0) sub.Add(s.Kind);
             string profile = s.GetInfo("Task sequence") ?? s.GetInfo("Autopilot profile");
@@ -1124,7 +1126,7 @@ namespace TrackVice
             Session s = engine.S;
             Begin(r);
             Heading(r, s.Computer);
-            Line(r, engine.Mode == Modes.Live ? "This device" : engine.Mode == Modes.Demo ? "Demo" : engine.Mode == Modes.File ? "Saved session" : engine.Mode == Modes.Intune ? "Intune" : engine.Mode == Modes.Sccm ? "SCCM" : "Log folder", theme.Accent, s.Kind, theme.Text3);
+            Line(r, engine.Mode == Modes.Live ? "This device" : engine.Mode == Modes.Demo ? "Demo" : engine.Mode == Modes.File ? "Saved session" : engine.Mode == Modes.Intune ? "Intune" : engine.Mode == Modes.Sccm ? "SCCM" : engine.Mode == Modes.Agent ? "Uploaded by the TrackVice agent" : "Log folder", theme.Accent, s.Kind, theme.Text3);
             Section(r, "Device");
             Field(r, "Windows", s.OsVersion, false);
             Field(r, "User", s.User, false);
@@ -1192,11 +1194,13 @@ namespace TrackVice
             Menus.Add(m, "Open a folder of logs…", delegate { OpenFolder(); });
             Menus.Separator(m);
             Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
+            Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
             Menus.Separator(m);
             Menus.Add(m, "Play the Autopilot demo", delegate { Begin(Engine.ForDemo("autopilot"), true); });
             Menus.Add(m, "Play the task sequence demo", delegate { Begin(Engine.ForDemo("osd"), true); });
             Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
+            Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
             Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
             return m;
         }
@@ -1205,11 +1209,13 @@ namespace TrackVice
         {
             ContextMenuStrip m = Menus.New(theme);
             Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
+            Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
             Menus.Separator(m);
             Menus.Add(m, "This device", delegate { Begin(Settings.NewLive(), true); });
             Menus.Separator(m);
             Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
+            Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
             Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
             return m;
         }
@@ -1274,6 +1280,11 @@ namespace TrackVice
             if (engine != null && engine.Mode == Modes.Demo && !targets[0].StartsWith("evt:"))
             {
                 Status("The demo has no real log files. Open a log on a real device, or a saved session from one.");
+                return;
+            }
+            if (engine != null && engine.Mode == Modes.Agent)
+            {
+                Status("That log is on " + engine.S.Computer + ", not on this computer. The lines TrackVice read from it are in the evidence of each event.");
                 return;
             }
             string exe = LogViceLink.Find();
@@ -1406,13 +1417,14 @@ namespace TrackVice
         // Lists deployments on other devices and watches the one picked. A demo list is never kept.
         void OpenRemote(string kind, bool demo)
         {
-            IRemoteCatalog existing = demo ? null : kind == RemoteDialog.Intune ? intuneCatalog : sccmCatalog;
+            IRemoteCatalog existing = demo ? null : kind == RemoteDialog.Intune ? intuneCatalog : kind == RemoteDialog.Agents ? agentCatalog : sccmCatalog;
             using (RemoteDialog d = new RemoteDialog(kind, theme, existing, graph, demo))
             {
                 d.ShowDialog(this);
                 if (!demo)
                 {
                     if (kind == RemoteDialog.Intune) { intuneCatalog = d.Catalog; graph = d.Graph; }
+                    else if (kind == RemoteDialog.Agents) agentCatalog = d.Catalog;
                     else sccmCatalog = d.Catalog;
                 }
                 if (d.Picked == null || d.Catalog == null) return;

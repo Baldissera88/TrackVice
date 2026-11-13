@@ -25,6 +25,8 @@ namespace TrackVice
         public List<Pair> Info = new List<Pair>();
         public List<string> Notes = new List<string>();
         public List<string> Sources = new List<string>();
+        // A whole session read from somewhere else, which takes the place of the current one.
+        public Session Replace;
     }
 
     // Reads this device: logs, ESP and IME registry keys, ConfigMgr client WMI and event logs. The first read takes

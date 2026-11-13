@@ -33,6 +33,7 @@ namespace TrackVice.Tests
             TrackerTests.Run();
             DemoTests.Run();
             RemoteTests.Run();
+            AgentTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

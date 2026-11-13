@@ -10,7 +10,7 @@ namespace TrackVice
     // Signs in to Intune or connects to SCCM, lists the deployments on other devices, and lets you pick one to watch.
     public sealed class RemoteDialog : Form
     {
-        public const string Intune = "intune", Sccm = "sccm";
+        public const string Intune = "intune", Sccm = "sccm", Agents = "agents";
         public IRemoteCatalog Catalog;
         public RemoteDeployment Picked;
         public GraphClient Graph;
@@ -54,7 +54,7 @@ namespace TrackVice
             isDemo = demo;
             Catalog = existing;
             Graph = graph;
-            Text = kind == Intune ? "Autopilot in Intune" : "Task sequences in SCCM";
+            Text = kind == Intune ? "Autopilot in Intune" : kind == Agents ? "Devices with the TrackVice agent" : "Task sequences in SCCM";
             Icon = Program.AppIcon();
             Font = Fonts.Ui;
             KeyPreview = true;
@@ -78,6 +78,7 @@ namespace TrackVice
             desc.Font = Fonts.Small;
             desc.Text = kind == Intune
                 ? "Autopilot deployments as Intune reports them, read-only through Microsoft Graph. Intune only knows what the devices have reported, so it lags behind the device and has no log lines."
+                : kind == Agents ? "Devices that run the TrackVice agent upload their whole session while they deploy: every app, policy and step, with the log lines behind them. This lists what they have uploaded."
                 : "Task sequences from the status messages each step sends to the site, read-only through the SMS Provider with your Windows account.";
             head.Controls.Add(title);
             head.Controls.Add(desc);
@@ -86,7 +87,7 @@ namespace TrackVice
             connect.Height = Dpi.S(48);
             connect.Padding = new Padding(Dpi.S(22), Dpi.S(6), Dpi.S(22), 0);
             connect.WrapContents = false;
-            if (kind == Intune) BuildIntune(); else BuildSccm();
+            if (kind == Intune) BuildIntune(); else if (kind == Agents) BuildAgents(); else BuildSccm();
 
             bar.Dock = DockStyle.Top;
             bar.Height = Dpi.S(46);
@@ -116,6 +117,11 @@ namespace TrackVice
                 table.Col("User", 210, delegate (RemoteDeployment d) { return d.User; });
                 table.Col("Profile", 190, delegate (RemoteDeployment d) { return d.Profile; }).Fill = true;
             }
+            else if (kind == Agents)
+            {
+                table.Col("Deployment", 150, delegate (RemoteDeployment d) { return d.User; });
+                table.Col("Profile or task sequence", 190, delegate (RemoteDeployment d) { return d.Profile; });
+            }
             else
             {
                 table.Col("Task sequence", 220, delegate (RemoteDeployment d) { return d.Profile; }).Fill = true;
@@ -123,9 +129,9 @@ namespace TrackVice
             }
             table.Col("Started", 128, delegate (RemoteDeployment d) { return d.StartUtc.HasValue ? Txt.Local(d.StartUtc.Value).Substring(0, 16) : ""; });
             table.Col("Duration", 92, delegate (RemoteDeployment d) { return Txt.Duration(d.Duration(DateTime.UtcNow)); });
-            table.Col(kind == Intune ? "Last report" : "Last status", 100, delegate (RemoteDeployment d) { return Txt.Ago(d.LastUtc, DateTime.UtcNow); });
+            table.Col(kind == Intune ? "Last report" : kind == Agents ? "Last upload" : "Last status", 100, delegate (RemoteDeployment d) { return Txt.Ago(d.LastUtc, DateTime.UtcNow); });
             table.ForeColor = delegate (RemoteDeployment d) { return d.State == State.Failed ? theme.ErrFg : States.IsActive(d.State) ? theme.Accent : d.State == State.Unknown ? theme.Text3 : Color.Empty; };
-            table.EmptyText = kind == Intune ? "Sign in to list the Autopilot deployments in Intune." : "Connect to the SMS Provider to list task sequences.";
+            table.EmptyText = kind == Intune ? "Sign in to list the Autopilot deployments in Intune." : kind == Agents ? "Enter where the agents upload to, and connect.\n\nThat is the SAS link of the storage container, with Read and List, or a folder." : "Connect to the SMS Provider to list task sequences.";
             table.SelectionChanged += delegate { bWatch.Enabled = table.Current != null; };
             table.Grid.CellDoubleClick += delegate { Safe.Run(Pick); };
             themed.Add(table);
@@ -186,7 +192,7 @@ namespace TrackVice
             HandleCreated += delegate { Draw.TitleBar(Handle, theme); };
             HandleCreated += delegate
             {
-                try { SendMessage(search.Handle, 0x1501, (IntPtr)1, "Search devices, users and profiles"); } catch (Exception) { }
+                try { SendMessage(search.Handle, 0x1501, (IntPtr)1, kind == Agents ? "Search devices and profiles" : "Search devices, users and profiles"); } catch (Exception) { }
             };
             if (demo)
             {
@@ -194,7 +200,7 @@ namespace TrackVice
                 Label note = new Label();
                 note.AutoSize = true;
                 note.Margin = new Padding(Dpi.S(12), Dpi.S(9), 0, 0);
-                note.Text = kind == Sccm ? "Demo data." : "Demo data: made-up devices, no sign-in needed.";
+                note.Text = kind != Intune ? "Demo data: made-up devices." : "Demo data: made-up devices, no sign-in needed.";
                 note.Tag = "quiet";
                 connect.Controls.Add(note);
                 ApplyTheme(t);
@@ -219,6 +225,7 @@ namespace TrackVice
 
         public static IRemoteCatalog DemoCatalog(string kind)
         {
+            if (kind == Agents) return new AgentCatalog(new DemoAgentStore());
             return kind == Intune ? (IRemoteCatalog)new IntuneCatalog(new DemoGraph(DateTime.UtcNow)) : DemoSccmCatalog();
         }
 
@@ -429,6 +436,71 @@ namespace TrackVice
         }
 
         // ---------- SCCM ----------
+
+        void BuildAgents()
+        {
+            Label l1 = new Label();
+            l1.Text = "Upload location";
+            l1.AutoSize = true;
+            l1.Margin = new Padding(0, Dpi.S(9), Dpi.S(8), 0);
+            server = new TextBox();
+            server.Width = Dpi.S(470);
+            server.BorderStyle = BorderStyle.FixedSingle;
+            server.Margin = new Padding(0, Dpi.S(6), Dpi.S(16), 0);
+            server.Text = isDemo ? "" : Secret.Load("AgentStore");
+            bConnect = new FlatButton("Connect", Glyphs2.Sync);
+            bConnect.Primary = true;
+            bConnect.Click += Safe.Wrap(delegate { ConnectAgents(); });
+            themed.Add(bConnect);
+            Label hint = new Label();
+            hint.Text = "A container SAS link with Read and List, or a folder.";
+            hint.AutoSize = true;
+            hint.Margin = new Padding(Dpi.S(12), Dpi.S(9), 0, 0);
+            hint.Tag = "quiet";
+            connect.Controls.Add(l1);
+            connect.Controls.Add(server);
+            connect.Controls.Add(bConnect);
+            connect.Controls.Add(hint);
+            server.KeyDown += delegate (object s, KeyEventArgs e) { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Safe.Run(ConnectAgents); } };
+        }
+
+        void ConnectAgents()
+        {
+            string where = server.Text.Trim();
+            if (where.Length == 0)
+            {
+                Status("Enter where the agents upload to: the SAS link of the storage container, or a folder.");
+                server.Focus();
+                return;
+            }
+            bConnect.Enabled = false;
+            Status("Connecting\u2026");
+            Thread th = new Thread(delegate ()
+            {
+                try
+                {
+                    ISessionStore st = Stores.Open(where);
+                    st.List(AgentData.Prefix);
+                    Ui(delegate
+                    {
+                        Secret.Save("AgentStore", where);
+                        bConnect.Enabled = true;
+                        Catalog = new AgentCatalog(st);
+                        Connected();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Ui(delegate
+                    {
+                        bConnect.Enabled = true;
+                        Status("Could not connect: " + ex.Message);
+                    });
+                }
+            });
+            th.IsBackground = true;
+            th.Start();
+        }
 
         void ConnectSccm()
         {
