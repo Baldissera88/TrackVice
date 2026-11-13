@@ -112,6 +112,37 @@ namespace TrackVice
 
         // When the device last uploaded the session that is shown.
         public DateTime LastUploadUtc;
+        int uploadsSeen;
+        // The smallest difference seen between this clock and the device's, so a device clock that is off does not look like silence.
+        TimeSpan clockLag;
+
+        // How long the device has been silent, when that is longer than its agent ever waits between uploads.
+        // A running agent uploads at least every 30 seconds while something installs, and every 5 minutes when nothing does.
+        public TimeSpan? Silent
+        {
+            get
+            {
+                if (Mode != Modes.Agent || uploadsSeen == 0 || LastUploadUtc.Year < 2001) return null;
+                TimeSpan age = DateTime.UtcNow - LastUploadUtc - (uploadsSeen >= 2 ? clockLag : TimeSpan.Zero);
+                TimeSpan limit = S.CountActive > 0 ? TimeSpan.FromSeconds(100) : TimeSpan.FromMinutes(12);
+                return age > limit ? age : (TimeSpan?)null;
+            }
+        }
+
+        void MarkSilent()
+        {
+            S.Findings.RemoveAll(delegate (Finding f) { return f.Kind == FindingKinds.NoUploads; });
+            TimeSpan? silent = Silent;
+            if (!silent.HasValue) return;
+            Finding n = new Finding();
+            n.Kind = FindingKinds.NoUploads;
+            n.Severity = 1;
+            n.Title = S.Computer + " has stopped uploading";
+            n.Message = "The last upload was " + Txt.Local(LastUploadUtc) + ", " + Txt.DurationShort(silent.Value) + " ago. Everything here is the state at that time: what shows as installing may have finished, failed or been cut off.";
+            n.Hint = "The device is off, restarting, asleep or without network. The agent starts again with Windows and continues this session.";
+            n.TimeUtc = LastUploadUtc;
+            S.Findings.Insert(0, n);
+        }
 
         public bool IsRemote
         {
@@ -251,6 +282,9 @@ namespace TrackVice
                 clockAtUpload = S.ClockUtc;
                 replacedAt = DateTime.UtcNow;
                 LastUploadUtc = S.SavedUtc;
+                uploadsSeen++;
+                TimeSpan lag = replacedAt - S.SavedUtc;
+                if (uploadsSeen == 1 || lag < clockLag) clockLag = lag;
             }
             foreach (Pair p in b.Info) S.SetInfo(p.Key, p.Value);
             if (remote != null && Mode != Modes.Agent && S.GetInfo("Windows") != null) S.OsVersion = "Windows " + S.GetInfo("Windows");
@@ -263,6 +297,7 @@ namespace TrackVice
             if (Mode == Modes.Agent)
             {
                 if (b.Replace != null) Finder.Run(S, clockAtUpload, true);
+                MarkSilent();
                 return;
             }
             S.ClockUtc = Now;

@@ -42,7 +42,7 @@ namespace TrackVice
         static readonly Regex RxCommand = new Regex(@"Command line:\s*(?<c>.+?)\s*$", Ci);
         static readonly Regex RxMinutes = new Regex(@"after (?<m>\d+) minutes", Ci);
         static readonly Regex RxIdPhrase = new Regex(@"\s*(?:for |of )?(?:app|policy|application)(?: with)? id:?\s*\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}?[,.:]?", Ci);
-        static readonly Regex RxNotApplicable = new Regex(@"(?:RequirementsNotMet|requirement rule[^.]*?(?:not met|NotApplicable)|Applicability\s*[:=]\s*NotApplicable)", Ci);
+        static readonly Regex RxNotApplicable = new Regex(@"(?:RequirementsNotMet|will be reported as not applicable|requirement rule[^.]*?(?:not met|NotApplicable)|Applicability\s*[:=]\s*NotApplicable)", Ci);
 
         readonly string source;
         readonly Dictionary<string, string> currentByThread = new Dictionary<string, string>();
@@ -52,6 +52,14 @@ namespace TrackVice
         static readonly Regex RxDelta2 = new Regex("\"(?<f>EnforcementState|DetectionState|ApplicabilityState|DesiredState|ErrorCode|EnforcementErrorCode)\"\\s*:\\s*\\{\\s*\"OldValue\"\\s*:\\s*(?:null|\"(?<from>[^\"]*)\"|(?<fromn>-?\\d+))\\s*,\\s*\"NewValue\"\\s*:\\s*(?:null|\"(?<to>[^\"]*)\"|(?<ton>-?\\d+))\\s*\\}", Ci);
         readonly Dictionary<string, string> lastSaid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string, string> commandNext = new Dictionary<string, string>();
+        // A bare "id:" is only an app when the words just before it say so: "thread start with id:" and "session id:" are not.
+        static bool BareId(string t, Match m)
+        {
+            if (!m.Value.StartsWith("id:", StringComparison.OrdinalIgnoreCase)) return false;
+            string before = t.Substring(Math.Max(0, m.Index - 30), Math.Min(30, m.Index)).ToLowerInvariant();
+            return !before.Contains("app") && !before.Contains("policy");
+        }
+
         const string ZeroGuid = "00000000-0000-0000-0000-000000000000";
         readonly ScriptLog scripts = new ScriptLog();
 
@@ -81,7 +89,7 @@ namespace TrackVice
             string id = null;
             // "for user with id: <user> and app: <app>": the first ID is the user, and all zeros means the device.
             Match m = RxId.Match(t);
-            while (m.Success && (m.Groups["id"].Value == ZeroGuid || (m.Index >= 5 && t.Substring(0, m.Index).TrimEnd().EndsWith("user with", StringComparison.OrdinalIgnoreCase))))
+            while (m.Success && (m.Groups["id"].Value == ZeroGuid || BareId(t, m) || (m.Index >= 5 && t.Substring(0, m.Index).TrimEnd().EndsWith("user with", StringComparison.OrdinalIgnoreCase))))
                 m = m.NextMatch();
             if (m.Success)
             {
