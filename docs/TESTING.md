@@ -1,6 +1,6 @@
 # Testing TrackVice on a real device
 
-TrackVice 0.0.1 has only run with its demos. This checklist compares what it shows with the logs themselves during real deployments. Note anything it misses or gets wrong, together with the log lines around it, so the parsers can be fixed.
+TrackVice has run on few real devices so far. This checklist compares what it shows with the logs themselves during real deployments. Note anything it misses or gets wrong, together with the log lines around it, so the parsers can be fixed.
 
 Everything TrackVice does is read-only.
 
@@ -93,7 +93,7 @@ reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking es
 
 ## 9. The agent
 
-Start with a folder on one PC, then a storage container, then a real Autopilot deployment. docs/AGENT.md has the setup.
+Start with a folder on one PC, then a storage container, then a real Autopilot deployment. docs/AGENT.md has the setup. The folder, the storage container and the install on Windows 11 have been checked; the Autopilot enrollment has not.
 
 - [ ] `TrackVice.exe /agent /upload C:\Temp\TrackVice /once` as administrator writes one session, and Devices > Devices with the TrackVice agent lists it from that folder.
 - [ ] The same with the upload link of a storage container, and the viewer link in the list. Note any error text.
