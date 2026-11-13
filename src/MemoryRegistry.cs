@@ -30,6 +30,12 @@ namespace TrackVice
             if (Clock.HasValue) written[path] = Clock.Value;
         }
 
+        // Makes a key exist without a value.
+        public void Touch(string path)
+        {
+            Ensure(path);
+        }
+
         public void Dword(string path, string name, int data)
         {
             Set(path, name, "REG_DWORD", data.ToString());

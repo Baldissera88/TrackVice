@@ -1,5 +1,22 @@
 # Changelog
 
+## TrackVice 0.0.7
+
+13 November 2026. Built against the logs and registry of a real Autopilot enrollment.
+
+- Platform scripts: every script with its result, exit code, output and error text, in a phase of their own.
+- Microsoft 365 Apps from the Office CSP, with products, channel, languages and result.
+- MSI apps the MDM client installs, with download and install state, error and product name.
+- What the ESP waits for: policies, Wi-Fi and VPN profiles, certificates, MSI and Store apps, each with the time the ESP saw it arrive.
+- Policies: every setting the MDM client set, grouped by policy area, from the MDM event log. This part has only run in tests.
+- A folder with registry exports (.reg) is read like the registry of the device.
+- Fixed: a line about a device session made an item named after the all-zero user ID.
+- Fixed: Win32 app state changes were not read from the report lines the agent writes today, so apps stayed at their first state.
+- Fixed: the agent's first pass over every app, where it only works out what the ESP waits for, showed as an install starting.
+- The install command of a Win32 app is read from the line after the step that announces it.
+- Reporting bookkeeping no longer fills the events of an app, and the same thing is not said twice in a row.
+- The ESP's "Sidecar" shows as the Intune Management Extension.
+
 ## TrackVice 0.0.6
 
 13 November 2026. The agent has uploaded to a real Azure storage account and installed on Windows 11. It has not yet been through a full Autopilot enrollment.

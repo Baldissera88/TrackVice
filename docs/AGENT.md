@@ -254,7 +254,7 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 
 ## What is uploaded, and security
 
-One file per device session, `sessions/<id>.json.gz`, in the same format as a saved session. It holds the computer name, the Autopilot profile and tenant, app and policy names, install command lines, exit codes and the log lines about them. Install command lines can hold secrets when a package passes them that way. Treat the container like the logs themselves.
+One file per device session, `sessions/<id>.json.gz`, in the same format as a saved session. It holds the computer name, the Autopilot profile and tenant, app and policy names, install command lines, exit codes and the log lines about them, the policy settings the MDM client set, and the output and error text of platform scripts. Install command lines and script output can hold secrets when a package passes them that way. Treat the container like the logs themselves.
 
 | | |
 |---|---|

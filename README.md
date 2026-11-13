@@ -36,9 +36,16 @@ It is a companion to [LogVice](https://github.com/Baldissera88/LogVice) and [Pol
 | SCCM software updates | Software updates | `UpdatesDeployment.log`, `UpdatesHandler.log` and `CCM_SoftwareUpdate` |
 | Autopilot and the ESP | Device preparation, device setup, account setup | `HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking`, the Autopilot profile, the ESP time limit, and the Autopilot event log |
 | Intune Win32 apps | Intune apps, or the ESP phase that waits for them | `IntuneManagementExtension.log`, `AppWorkload.log`, `AgentExecutor.log` and the `Win32Apps` key |
+| What the ESP waits for | Device setup, account setup | The policies, Wi-Fi and VPN profiles, certificates, MSI and Store apps under `EnrollmentStatusTracking\ESPTrackingInfo\Diagnostics`, with the time of each change |
+| Microsoft 365 Apps | The ESP phase that waits for it, or Intune apps | `HKLM\SOFTWARE\Microsoft\OfficeCSP`: products, channel, languages and result |
+| MSI apps from Intune | The ESP phase that waits for them, or Intune apps | `HKLM\SOFTWARE\Microsoft\EnterpriseDesktopAppManagement`: download and install state, error and product name |
+| Platform scripts | Platform scripts | `IntuneManagementExtension.log`, `AgentExecutor.log` and the `IntuneManagementExtension\Policies` key: result, exit code, output and error text |
+| MDM policies | Policies, one item per policy area | Every setting the MDM client set, from the DeviceManagement Admin event log |
 | MDM and Entra | On the timeline | The DeviceManagement Admin, User Device Registration and AAD event logs, errors and warnings only |
 
-Every source is mapped to one set of states: waiting, downloading, installing, detecting, restart needed, done, failed, skipped and not applicable. The original code stays on the event. Win32 app names come from the IME logs, the same way PolicyVice finds them.
+Every source is mapped to one set of states: waiting, downloading, installing, detecting, restart needed, done, failed, skipped and not applicable. The original code stays on the event. Win32 app names come from the IME logs, the same way PolicyVice finds them. Platform scripts and configuration profiles have no names on the device, only IDs, so a script shows as "Platform script" with the start of its ID, and policies show by policy area and setting.
+
+A folder you open can also hold registry exports (`.reg`) of those keys. TrackVice reads them like the registry of the device they came from.
 
 ## Findings
 

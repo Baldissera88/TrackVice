@@ -40,6 +40,7 @@ namespace TrackVice
         readonly SmstsParser smsts = new SmstsParser();
         readonly EspWatch esp = new EspWatch();
         readonly Win32AppWatch win32 = new Win32AppWatch();
+        readonly MdmWatch mdm = new MdmWatch();
         readonly WmiWatch wmi = new WmiWatch();
         readonly EventWatch events = new EventWatch();
         readonly LiveRegistry reg = new LiveRegistry();
@@ -191,6 +192,7 @@ namespace TrackVice
             }
             b.Obs.AddRange(esp.Read(reg, nowUtc));
             if (reads == 1 || reads % 3 == 0) b.Obs.AddRange(win32.Read(reg, nowUtc));
+            if (reads == 1 || reads % 2 == 0) b.Obs.AddRange(mdm.Read(reg, nowUtc));
             if (reads == 1 || reads % 10 == 0)
             {
                 List<Pair> info = AutopilotInfo.Read(reg);
@@ -399,7 +401,7 @@ namespace TrackVice
         public static readonly string[][] Channels =
         {
             new string[] { "Microsoft-Windows-ModernDeployment-Diagnostics-Provider/Autopilot", "Autopilot", "all" },
-            new string[] { "Microsoft-Windows-DeviceManagement-Enterprise-Diagnostics-Provider/Admin", "MDM", "errors" },
+            new string[] { "Microsoft-Windows-DeviceManagement-Enterprise-Diagnostics-Provider/Admin", "MDM", "errors+policy" },
             new string[] { "Microsoft-Windows-User Device Registration/Admin", "Device registration", "errors" },
             new string[] { "Microsoft-Windows-AAD/Operational", "Entra ID", "errors" },
         };
@@ -411,18 +413,19 @@ namespace TrackVice
             List<Obs> list = new List<Obs>();
             foreach (string[] ch in Channels)
             {
-                try { ReadChannel(ch[0], ch[1], ch[2] == "errors", sinceUtc, list); }
+                try { ReadChannel(ch[0], ch[1], ch[2], sinceUtc, list); }
                 catch (Exception) { }
             }
             return list;
         }
 
-        void ReadChannel(string channel, string source, bool errorsOnly, DateTime? sinceUtc, List<Obs> list)
+        void ReadChannel(string channel, string source, string what, DateTime? sinceUtc, List<Obs> list)
         {
+            bool errorsOnly = what != "all", policy = what == "errors+policy";
             long after;
             lastRecord.TryGetValue(channel, out after);
             StringBuilder q = new StringBuilder("*[System[");
-            q.Append(errorsOnly ? "(Level=1 or Level=2 or Level=3)" : "(Level>=0)");
+            q.Append(policy ? "(Level=1 or Level=2 or Level=3 or EventID=813 or EventID=814)" : errorsOnly ? "(Level=1 or Level=2 or Level=3)" : "(Level>=0)");
             if (after > 0) q.Append(" and (EventRecordID>").Append(after.ToString(CultureInfo.InvariantCulture)).Append(")");
             else if (sinceUtc.HasValue) q.Append(" and TimeCreated[@SystemTime>='").Append(sinceUtc.Value.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture)).Append("']");
             q.Append("]]");
@@ -430,7 +433,7 @@ namespace TrackVice
             int n = 0;
             using (EventLogReader r = new EventLogReader(query))
             {
-                for (EventRecord e = r.ReadEvent(); e != null && n < 2000; e = r.ReadEvent(), n++)
+                for (EventRecord e = r.ReadEvent(); e != null && n < 4000; e = r.ReadEvent(), n++)
                 {
                     using (e)
                     {
@@ -438,6 +441,19 @@ namespace TrackVice
                         if (rec > after) lastRecord[channel] = Math.Max(rec, lastRecord.ContainsKey(channel) ? lastRecord[channel] : 0);
                         string msg = null;
                         try { msg = e.FormatDescription(); } catch (Exception) { }
+                        if (policy && (e.Id == MdmEvents.SetInt || e.Id == MdmEvents.SetString))
+                        {
+                            // A policy the MDM client set: it goes under its policy area, not on the list of errors.
+                            try
+                            {
+                                List<object> props = new List<object>();
+                                foreach (EventProperty p in e.Properties) props.Add(p.Value);
+                                Obs po = MdmEvents.Map(e.Id, props, e.TimeCreated.HasValue ? e.TimeCreated.Value.ToUniversalTime() : DateTime.UtcNow, channel, rec, msg);
+                                if (po != null) list.Add(po);
+                            }
+                            catch (Exception) { }
+                            continue;
+                        }
                         if (string.IsNullOrEmpty(msg)) msg = "Event " + e.Id;
                         Obs o = new Obs();
                         o.TimeUtc = e.TimeCreated.HasValue ? e.TimeCreated.Value.ToUniversalTime() : DateTime.UtcNow;
@@ -490,8 +506,41 @@ namespace TrackVice
             foreach (string dir in DirsWith(files, LogParser.ImeLogs))
                 foreach (KeyValuePair<string, string> kv in ImeLogParser.NamesFromFolder(dir)) names[kv.Key] = kv.Value;
             b.Names = names;
-            if (files.Count == 0) b.Notes.Add("No logs TrackVice reads were found in " + folder + ". It reads smsts.log, AppEnforce.log, AppDiscovery.log, AppIntentEval.log, execmgr.log, CAS.log, UpdatesDeployment.log, UpdatesHandler.log and the Intune Management Extension logs.");
+            int regs = ReadRegistryExports(folder, names, b);
+            if (files.Count == 0 && regs == 0) b.Notes.Add("No logs TrackVice reads were found in " + folder + ". It reads smsts.log, AppEnforce.log, AppDiscovery.log, AppIntentEval.log, execmgr.log, CAS.log, UpdatesDeployment.log, UpdatesHandler.log and the Intune Management Extension logs.");
             return b;
+        }
+
+        // Registry exports (.reg) in the folder are read like the registry of the device they came from.
+        static int ReadRegistryExports(string folder, Dictionary<string, string> names, Batch b)
+        {
+            MemoryRegistry mem = new MemoryRegistry();
+            DateTime now = DateTime.MinValue;
+            int n = 0;
+            foreach (FileInfo f in new DirectoryInfo(folder).GetFiles("*.reg", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    mem.Clock = f.LastWriteTimeUtc;
+                    RegFile.Load(f.FullName, mem);
+                    if (f.LastWriteTimeUtc > now) now = f.LastWriteTimeUtc;
+                    b.Sources.Add(f.FullName);
+                    n++;
+                }
+                catch (Exception ex) { b.Notes.Add("Could not read " + f.FullName + ": " + ex.Message); }
+            }
+            if (n == 0) return 0;
+            Func<string, string> name = delegate (string id) { string v; return id != null && names.TryGetValue(id, out v) ? v : null; };
+            EspWatch esp = new EspWatch();
+            esp.Names = name;
+            Win32AppWatch win32 = new Win32AppWatch();
+            win32.Names = name;
+            b.Obs.AddRange(esp.Read(mem, now));
+            b.Obs.AddRange(win32.Read(mem, now));
+            b.Obs.AddRange(new MdmWatch().Read(mem, now));
+            try { b.Info.AddRange(AutopilotInfo.Read(mem)); } catch (Exception) { }
+            b.Notes.Add("Registry exports in this folder were read. They have no times of their own, so their states carry the time the export was saved, except where the registry itself holds a time.");
+            return n;
         }
 
         static List<string> DirsWith(List<FileInfo> files, string[] bases)

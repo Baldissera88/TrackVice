@@ -82,6 +82,8 @@ namespace TrackVice
         public const string Profile = "Profile";
         public const string Enrollment = "Enrollment";
         public const string Agent = "Agent";
+        public const string Script = "Script";
+        public const string Office = "Office";
     }
 
     public static class Origins
@@ -105,6 +107,8 @@ namespace TrackVice
         public const string SccmUpdates = "cm:updates";
         public const string Content = "cm:content";
         public const string IntuneApps = "intune:apps";
+        public const string Scripts = "intune:scripts";
+        public const string Policies = "mdm:policies";
 
         public static string Name(string key)
         {
@@ -121,6 +125,8 @@ namespace TrackVice
                 case SccmUpdates: return "Software updates";
                 case Content: return "Content downloads";
                 case IntuneApps: return "Intune apps";
+                case Scripts: return "Platform scripts";
+                case Policies: return "Policies";
                 default: return key;
             }
         }
@@ -140,6 +146,8 @@ namespace TrackVice
                 case SccmPackages: return 75;
                 case SccmUpdates: return 80;
                 case IntuneApps: return 90;
+                case Scripts: return 92;
+                case Policies: return 95;
                 default: return 200;
             }
         }
@@ -650,7 +658,7 @@ namespace TrackVice
                     else if (p.Key.StartsWith("esp:")) esp = true;
                     else if (p.Key.StartsWith("cm:")) cm = true;
                     else if (p.Key == "intune:autopilot" || p.Key.StartsWith("intune:esp")) esp = true;
-                    else if (p.Key.StartsWith("intune:")) intune = true;
+                    else if (p.Key.StartsWith("intune:") || p.Key.StartsWith("mdm:")) intune = true;
                 }
                 if (ts) parts.Add("Task sequence");
                 if (esp) parts.Add("Autopilot");
