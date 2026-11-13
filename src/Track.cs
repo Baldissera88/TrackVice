@@ -121,7 +121,7 @@ namespace TrackVice
             {
                 string id = i.Get("ID");
                 string n;
-                if (id != null && names.TryGetValue(id, out n) && (string.IsNullOrEmpty(i.Name) || i.Name == id || i.Name == i.Key))
+                if (id != null && names.TryGetValue(id, out n) && (string.IsNullOrEmpty(i.Name) || i.Name == id || i.Name == i.Key || (i.Kind == Kinds.Script && i.Name == MdmWatch.ScriptName(id))) && i.Name != n)
                 {
                     i.Name = n;
                     Changes++;

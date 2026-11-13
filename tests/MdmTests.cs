@@ -46,6 +46,61 @@ namespace TrackVice.Tests
             Scripts();
             Registry();
             Events();
+            Names();
+        }
+
+        sealed class PagedGraph : IGraph
+        {
+            public int Calls;
+
+            public Dictionary<string, object> Get(string url)
+            {
+                Calls++;
+                string json = url == IntuneNames.ScriptsUrl
+                    ? "{\"value\":[{\"id\":\"" + ScriptA + "\",\"displayName\":\"Set time zone\"},{\"id\":\"x\",\"displayName\":null}],\"@odata.nextLink\":\"https://graph.microsoft.com/beta/next\"}"
+                    : "{\"value\":[{\"id\":\"" + ScriptB.ToUpperInvariant() + "\",\"displayName\":\"Install TrackVice agent\"}]}";
+                return (Dictionary<string, object>)ImeJson.Parse(json);
+            }
+        }
+
+        static void Names()
+        {
+            PagedGraph g = new PagedGraph();
+            Dictionary<string, string> names = IntuneNames.Scripts(g);
+            T.Eq(2, g.Calls, "script names are read page by page");
+            T.Eq(2, names.Count, "a script without a name is left out");
+
+            // A device session with two scripts, named by Intune, then replaced by a new upload from the device.
+            Engine dev = Engine.ForDemo("autopilot");
+            List<Obs> o = new List<Obs>();
+            ImeLogParser ime = new ImeLogParser("IntuneManagementExtension");
+            ime.Read(L("[PowerShell] Processing policy with id = " + ScriptA + " for user " + Zero, 1), o);
+            ime.Read(L("[PowerShell] Processing policy with id = " + ScriptB + " for user " + Zero, 2), o);
+            Batch b = new Batch();
+            b.Obs.AddRange(o);
+            dev.Apply(b);
+            T.Eq("Platform script " + ScriptA.Substring(0, 8), dev.S.Find(MdmWatch.ScriptKey(ScriptA)).Name, "a script is named by its ID until Intune is asked");
+            T.Eq(2, dev.AddNames(names), "both scripts get their name");
+            T.Eq("Set time zone", dev.S.Find(MdmWatch.ScriptKey(ScriptA)).Name, "the name from Intune");
+            T.Eq("Install TrackVice agent", dev.S.Find(MdmWatch.ScriptKey(ScriptB)).Name, "IDs match whatever their case");
+            T.Eq(0, dev.AddNames(names), "names are set once");
+
+            Engine fresh = Engine.ForDemo("autopilot");
+            fresh.Apply(b);
+            Batch upload = new Batch();
+            upload.Replace = Session.FromJson(fresh.S.ToJson());
+            dev.Apply(upload);
+            T.Eq("Set time zone", dev.S.Find(MdmWatch.ScriptKey(ScriptA)).Name, "the names survive a new upload from the device");
+
+            EventWatch w = new EventWatch();
+            T.Check(w.FromEnrollment(new List<object> { "p", "a", "ANY" }), "without known enrollments every policy counts");
+            w.Enrollments.Add("265C9166-0000-0000-0000-3DFF5AA66768");
+            T.Check(w.FromEnrollment(new List<object> { "p", "a", "265c9166-0000-0000-0000-3dff5aa66768", "device", "1" }), "a policy from the device's MDM enrollment");
+            T.Check(!w.FromEnrollment(new List<object> { "p", "a", "fc01e91f-0000-0000-0000-0b2e5fbedf64", "device", "1" }), "a policy from the Windows image is left out");
+            MemoryRegistry r = new MemoryRegistry();
+            r.Sz(EventWatch.EnrollmentsKey + @"\265C9166-0000-0000-0000-3DFF5AA66768", "ProviderID", "MS DM Server");
+            r.Dword(EventWatch.EnrollmentsKey + @"\18DCFFD4-0000-0000-0000-4266FDBB8E49", "EnrollmentType", 1);
+            T.Eq(1, EventWatch.ReadEnrollments(r).Count, "only enrollments with a management server count");
         }
 
         static void RegExport()

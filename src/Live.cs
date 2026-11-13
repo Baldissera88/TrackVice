@@ -218,6 +218,11 @@ namespace TrackVice
             }
             if (UseEvents)
             {
+                if (reads == 1 || reads % 10 == 0)
+                {
+                    try { foreach (string id in EventWatch.ReadEnrollments(reg)) events.Enrollments.Add(id); }
+                    catch (Exception) { }
+                }
                 try { b.Obs.AddRange(events.Read(reads == 1 ? SinceUtc : (DateTime?)null)); }
                 catch (Exception) { }
             }
@@ -407,6 +412,27 @@ namespace TrackVice
         };
 
         readonly Dictionary<string, long> lastRecord = new Dictionary<string, long>();
+        // The device's MDM enrollments. Policies set by anything else, such as the Windows image, are left out.
+        public readonly HashSet<string> Enrollments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        public const string EnrollmentsKey = @"HKLM\SOFTWARE\Microsoft\Enrollments";
+
+        public static List<string> ReadEnrollments(IRegSource reg)
+        {
+            List<string> l = new List<string>();
+            foreach (string id in reg.SubKeys(EnrollmentsKey))
+            {
+                RegValue v = reg.Get(EnrollmentsKey + "\\" + id, "ProviderID");
+                if (v != null && !string.IsNullOrEmpty(v.Data)) l.Add(id);
+            }
+            return l;
+        }
+
+        public bool FromEnrollment(IList<object> props)
+        {
+            if (Enrollments.Count == 0) return true;
+            return props.Count > 2 && Enrollments.Contains(Convert.ToString(props[2], CultureInfo.InvariantCulture) ?? "");
+        }
 
         public List<Obs> Read(DateTime? sinceUtc)
         {
@@ -448,6 +474,7 @@ namespace TrackVice
                             {
                                 List<object> props = new List<object>();
                                 foreach (EventProperty p in e.Properties) props.Add(p.Value);
+                                if (!FromEnrollment(props)) continue;
                                 Obs po = MdmEvents.Map(e.Id, props, e.TimeCreated.HasValue ? e.TimeCreated.Value.ToUniversalTime() : DateTime.UtcNow, channel, rec, msg);
                                 if (po != null) list.Add(po);
                             }

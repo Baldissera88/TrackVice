@@ -43,7 +43,7 @@ It is a companion to [LogVice](https://github.com/Baldissera88/LogVice) and [Pol
 | MDM policies | Policies, one item per policy area | Every setting the MDM client set, from the DeviceManagement Admin event log |
 | MDM and Entra | On the timeline | The DeviceManagement Admin, User Device Registration and AAD event logs, errors and warnings only |
 
-Every source is mapped to one set of states: waiting, downloading, installing, detecting, restart needed, done, failed, skipped and not applicable. The original code stays on the event. Win32 app names come from the IME logs, the same way PolicyVice finds them. Platform scripts and configuration profiles have no names on the device, only IDs, so a script shows as "Platform script" with the start of its ID, and policies show by policy area and setting.
+Every source is mapped to one set of states: waiting, downloading, installing, detecting, restart needed, done, failed, skipped and not applicable. The original code stays on the event. Win32 app names come from the IME logs, the same way PolicyVice finds them. Platform scripts and configuration profiles have no names on the device, only IDs, so a script shows as "Platform script" with the start of its ID, and policies show by policy area and setting. **Devices > Get script names from Intune** reads the script names from Intune with your sign-in and the permission `DeviceManagementScripts.Read.All`.
 
 A folder you open can also hold registry exports (`.reg`) of those keys. TrackVice reads them like the registry of the device they came from.
 

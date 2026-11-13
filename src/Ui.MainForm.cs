@@ -598,6 +598,7 @@ namespace TrackVice
         void Loaded(Engine e, Exception err, bool thenWatch)
         {
             busyBar.Running = false;
+            if (intuneNames != null && err == null) e.AddNames(intuneNames);
             if (err != null) Status("Reading failed: " + err.Message);
             lastUpdate = DateTime.UtcNow;
             bool first = !loadedOnce;
@@ -1212,6 +1213,8 @@ namespace TrackVice
             Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
             Menus.Separator(m);
+            Menus.Add(m, "Get script names from Intune", delegate { NamesFromIntune(); });
+            Menus.Separator(m);
             Menus.Add(m, "This device", delegate { Begin(Settings.NewLive(), true); });
             Menus.Separator(m);
             Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
@@ -1423,13 +1426,75 @@ namespace TrackVice
                 d.ShowDialog(this);
                 if (!demo)
                 {
-                    if (kind == RemoteDialog.Intune) { intuneCatalog = d.Catalog; graph = d.Graph; }
+                    if (kind == RemoteDialog.Intune) { intuneCatalog = d.Catalog; graph = d.Graph; if (intuneNames == null) LoadIntuneNames(false); }
                     else if (kind == RemoteDialog.Agents) agentCatalog = d.Catalog;
                     else sccmCatalog = d.Catalog;
                 }
                 if (d.Picked == null || d.Catalog == null) return;
                 Begin(Engine.ForRemote(d.Catalog.Open(d.Picked), d.Picked), true);
             }
+        }
+
+        // A device knows its platform scripts by ID only. Their names are read from Intune, which needs a sign-in
+        // with one more read permission. Once used, later sign-ins ask for it too and the names come by themselves.
+        void NamesFromIntune()
+        {
+            if (engine == null) return;
+            Prefs.Set("IntuneNames", "1");
+            if (graph == null || !graph.SignedIn || !graph.CanReadScripts)
+            {
+                intuneCatalog = null;
+                graph = null;
+                using (RemoteDialog d = new RemoteDialog(RemoteDialog.Intune, theme, null, null, false))
+                {
+                    d.Text = "Sign in to read script names";
+                    d.NamesOnly = true;
+                    d.ShowDialog(this);
+                    intuneCatalog = d.Catalog;
+                    graph = d.Graph;
+                }
+                if (graph == null || !graph.SignedIn)
+                {
+                    Status("Not signed in, so the script names were not read.");
+                    return;
+                }
+            }
+            LoadIntuneNames(true);
+        }
+
+        Dictionary<string, string> intuneNames;
+
+        void LoadIntuneNames(bool say)
+        {
+            GraphClient g = graph;
+            if (g == null || !g.SignedIn || !g.CanReadScripts) return;
+            if (say) Status("Reading script names from Intune\u2026");
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                Dictionary<string, string> names = null;
+                Exception err = null;
+                try { names = IntuneNames.Scripts(g); }
+                catch (Exception ex) { err = ex; }
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        Safe.Run(delegate
+                        {
+                            if (err != null)
+                            {
+                                Status("The script names could not be read: " + err.Message + " The account needs an Intune role that can read scripts, and the sign-in app needs consent for DeviceManagementScripts.Read.All.");
+                                return;
+                            }
+                            intuneNames = names;
+                            int n = engine != null ? engine.AddNames(names) : 0;
+                            if (n > 0) Bind();
+                            if (say || n > 0) Status(names.Count + " platform script" + (names.Count == 1 ? "" : "s") + " in Intune, " + n + " named here.");
+                        });
+                    });
+                }
+                catch (Exception) { }
+            });
         }
 
         void OpenSettings()

@@ -221,9 +221,26 @@ namespace TrackVice
             return demo.AdvanceTo(seconds);
         }
 
+        // Names from Intune, kept so they survive a new upload from the device.
+        readonly Dictionary<string, string> extraNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        public int AddNames(Dictionary<string, string> found)
+        {
+            foreach (KeyValuePair<string, string> kv in found) extraNames[kv.Key] = kv.Value;
+            int before = T.Changes;
+            T.AddNames(extraNames);
+            return T.Changes - before;
+        }
+
         public void Apply(Batch b)
         {
             if (b == null) return;
+            try { ApplyBatch(b); }
+            finally { if (extraNames.Count > 0) T.AddNames(extraNames); }
+        }
+
+        void ApplyBatch(Batch b)
+        {
             if (b.Replace != null)
             {
                 string key = S.SourcePath;

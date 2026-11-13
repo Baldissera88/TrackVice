@@ -2,7 +2,7 @@ namespace TrackVice
 {
     public static class Program
     {
-        public static string Version { get { return "0.0.8"; } }
+        public static string Version { get { return "0.0.9"; } }
         public static bool IsAdmin { get { return false; } }
         public static string OsVersion() { return "Test OS"; }
         public static string Location { get { return "TrackVice.exe"; } }
