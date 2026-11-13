@@ -555,7 +555,7 @@ namespace TrackVice
             banner.Visible = e.Mode == Modes.Live && !Program.IsAdmin;
             list.EmptyText = e.Mode == Modes.Live
                 ? "TrackVice found no deployment on this device in " + Settings.HoursText(Hours) + ".\n\nIt reads smsts.log, the ConfigMgr client logs, the Intune Management Extension logs, the ESP tracking keys and ConfigMgr client WMI. Start a deployment and it shows up here, or change History to read in Settings to look further back."
-                : "Nothing found.";
+                : e.IsRemote ? "Reading this deployment\u2026" : "Nothing found.";
             rail.EmptyText = e.Mode == Modes.Live ? "Phases show up here as soon as a deployment starts." : "No phases.";
             Bind();
             busyBar.Running = true;
@@ -608,7 +608,9 @@ namespace TrackVice
                 bool auto = e.Mode != Modes.Live || Settings.WatchOnStart;
                 if (thenWatch && auto && e.CanWatch && start.Shot == null && start.At < 0) SetWatching(true);
                 else SetWatching(false);
-                Status(Summary());
+                Status(err != null ? "Reading failed: " + err.Message : Summary());
+                if (err != null && e.IsRemote) list.EmptyText = "This deployment could not be read.\n\n" + err.Message;
+                if (err != null) list.Rebuild();
                 if (e.StartedBeforeHistory.HasValue)
                     Status("This deployment started " + Txt.Local(e.StartedBeforeHistory.Value) + ", before the history TrackVice reads, so older items show only their saved state. Settings > History to read > Since install reads everything.");
                 SelectInteresting();

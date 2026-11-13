@@ -25,8 +25,40 @@ namespace TrackVice.Tests
             Messages();
         }
 
+        // A tenant where Graph only answers for the list: one deployment by ID and its policy details are refused.
+        sealed class ListOnlyGraph : IGraph
+        {
+            readonly IGraph inner;
+            public ListOnlyGraph(IGraph g) { inner = g; }
+
+            public Dictionary<string, object> Get(string url)
+            {
+                if (url != IntuneCatalog.EventsUrl) throw new GraphException("Resource not found for the segment.", 400);
+                return inner.Get(url);
+            }
+        }
+
+        static void IntuneListOnly()
+        {
+            IntuneCatalog c = new IntuneCatalog(new ListOnlyGraph(new DemoGraph(DateTime.UtcNow)));
+            List<RemoteDeployment> l = c.List(DateTime.UtcNow.AddDays(-30));
+            Session s = Watch(c, Find(l, "CONTOSO-LT0388"));
+            T.Check(s.Items.Count >= 3, "Intune, list only: the deployment still shows its phases");
+            Item whole = s.Find("intune:deployment");
+            T.Check(whole != null && whole.State == State.Succeeded, "Intune, list only: the deployment as a whole");
+            bool told = false;
+            foreach (string n in s.Notes) if (n.Contains("could not be read")) told = true;
+            T.Check(told, "Intune, list only: says the apps and policies could not be read");
+
+            bool threw = false;
+            try { new IntuneFeed(new ListOnlyGraph(new DemoGraph(DateTime.UtcNow)), "no-such-id").Read(DateTime.UtcNow); }
+            catch (GraphException) { threw = true; }
+            T.Check(threw, "Intune: an unknown deployment is an error, not an empty window");
+        }
+
         static void Intune()
         {
+            IntuneListOnly();
             IntuneCatalog c = new IntuneCatalog(new DemoGraph(DateTime.UtcNow));
             List<RemoteDeployment> l = c.List(DateTime.UtcNow.AddDays(-30));
             T.Eq(7, l.Count, "Intune: every deployment in 30 days");

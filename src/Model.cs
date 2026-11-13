@@ -829,6 +829,7 @@ namespace TrackVice
         {
             TimeSpan d = nowUtc - utc;
             if (d.TotalSeconds < 5) return "just now";
+            if (d.TotalHours >= 48) return ((int)d.TotalDays).ToString(CultureInfo.InvariantCulture) + " days ago";
             return DurationShort(d) + " ago";
         }
     }
