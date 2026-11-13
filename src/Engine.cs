@@ -10,6 +10,8 @@ namespace TrackVice
         public const string Folder = "Folder";
         public const string File = "File";
         public const string Demo = "Demo";
+        public const string Intune = "Intune";
+        public const string Sccm = "SCCM";
     }
 
     // Holds the session and where it comes from. Poll can run on a background thread; Apply runs on the UI thread.
@@ -86,6 +88,31 @@ namespace TrackVice
             return e;
         }
 
+        // Another device, through Intune or SCCM.
+        public static Engine ForRemote(IRemoteFeed feed, RemoteDeployment d)
+        {
+            Engine e = new Engine();
+            e.Mode = feed.Mode;
+            e.remote = feed;
+            e.S = new Session();
+            e.S.Mode = feed.Mode;
+            e.S.AppVersion = Program.Version;
+            e.S.Computer = d.Device;
+            e.S.User = feed.Mode == Modes.Intune ? d.User : null;
+            e.S.OsVersion = null;
+            e.S.SourcePath = d.Key;
+            e.pollMs = feed.PollMs;
+            e.T = new Tracker(e.S);
+            return e;
+        }
+
+        IRemoteFeed remote;
+
+        public bool IsRemote
+        {
+            get { return remote != null; }
+        }
+
         public static Engine ForDemo(string name)
         {
             Engine e = new Engine();
@@ -117,7 +144,7 @@ namespace TrackVice
 
         public bool CanWatch
         {
-            get { return Mode == Modes.Live || (Mode == Modes.Demo && demo != null && !demo.Done); }
+            get { return Mode == Modes.Live || remote != null || (Mode == Modes.Demo && demo != null && !demo.Done); }
         }
 
         public DemoPlayer Player
@@ -131,7 +158,7 @@ namespace TrackVice
             get
             {
                 if (Mode == Modes.Demo && demo != null) return demo.Clock;
-                if (Mode == Modes.Live) return DateTime.UtcNow;
+                if (Mode == Modes.Live || remote != null) return DateTime.UtcNow;
                 if (S.ClockUtc != DateTime.MinValue && S.ClockUtc.Year > 2000) return S.ClockUtc;
                 DateTime last = DateTime.MinValue;
                 foreach (TEvent e in S.Events) if (e.TimeUtc > last) last = e.TimeUtc;
@@ -159,6 +186,10 @@ namespace TrackVice
                     double target = lastPoll == DateTime.MinValue ? demo.Scenario.StartAt : demo.Position + (now - lastPoll).TotalSeconds * DemoSpeed;
                     b = demo.AdvanceTo(target);
                     break;
+                case Modes.Intune:
+                case Modes.Sccm:
+                    b = remote.Read(now);
+                    break;
                 case Modes.Folder:
                     b = lastPoll == DateTime.MinValue ? FolderReader.Read(S.SourcePath, TimeZoneInfo.Local) : new Batch();
                     break;
@@ -181,6 +212,7 @@ namespace TrackVice
         {
             if (b == null) return;
             foreach (Pair p in b.Info) S.SetInfo(p.Key, p.Value);
+            if (remote != null && S.GetInfo("Windows") != null) S.OsVersion = "Windows " + S.GetInfo("Windows");
             if (b.Names != null) T.AddNames(b.Names);
             T.ApplyAll(b.Obs);
             foreach (Pair a in b.Aliases) T.Alias(a.Key, a.Value);
@@ -197,7 +229,7 @@ namespace TrackVice
                     S.Notes.Add("The deployment on this device started " + Txt.Local(first.Value) + ", before the history TrackVice reads (from " + Txt.Local(S.SinceUtc) + "). Older log lines were not read, so those items only show the state saved in the registry. To read everything, set History to read to Since Windows was installed in Settings.");
                 }
             }
-            Finder.Run(S, Now, Mode == Modes.Live || Mode == Modes.Demo);
+            Finder.Run(S, Now, Mode == Modes.Live || Mode == Modes.Demo || Mode == Modes.Sccm);
         }
 
         public int SourceCount

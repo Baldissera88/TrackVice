@@ -72,6 +72,25 @@ reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking es
 - [ ] The HTML report opens in a browser in light and dark mode.
 - [ ] `TrackVice.exe /report report.html` writes a report and returns 2 when something failed.
 
+## 7. Other devices: Autopilot in Intune
+
+- [ ] Devices > Autopilot in Intune > Sign in gives a code, and signing in at microsoft.com/devicelogin works. If consent is needed, note the message.
+- [ ] The list matches Devices > Monitor > Windows Autopilot deployments in the Intune admin center: devices, states and start times.
+- [ ] Start an Autopilot deployment. It shows as In progress, and how long after the device it changes.
+- [ ] Watch one device: device setup and account setup states and durations match the report.
+- [ ] Apps and policies are listed with the right status. Note whether "the ESP waits for" matches the ESP profile's blocking apps.
+- [ ] A failed deployment shows the failure text from Intune.
+- [ ] After more than an hour of watching it still updates (the sign-in is renewed).
+
+## 8. Other devices: task sequences in SCCM
+
+- [ ] Devices > Task sequences in SCCM connects with only the SMS Provider name, and finds the site code.
+- [ ] The list matches Monitoring > Deployments for the task sequence. Check the Started time against the console: a shift of whole hours means the time zone handling is wrong.
+- [ ] Watch a running task sequence: steps appear in order under their groups, a little after they finish on the device.
+- [ ] Note the exact status message names for a completed, failed and skipped step, and for the task sequence ending. TrackVice reads the state from these names.
+- [ ] A failed step shows its exit code and its output in the evidence.
+- [ ] A device that starts from PXE as an unknown computer shows up, and under which name.
+
 ## What to send back
 
 For anything wrong: a screenshot, the session (Save > Collect the session and its logs in a zip), and which log line TrackVice should have read differently.

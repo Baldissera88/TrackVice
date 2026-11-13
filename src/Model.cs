@@ -157,6 +157,8 @@ namespace TrackVice
         public const string Registry = "Registry value";
         public const string Wmi = "WMI instance";
         public const string EventRecord = "Event record";
+        public const string Graph = "Microsoft Graph";
+        public const string StatusMessage = "Status message";
     }
 
     [DataContract]
@@ -647,6 +649,7 @@ namespace TrackVice
                     if (p.Key.StartsWith("ts:")) ts = true;
                     else if (p.Key.StartsWith("esp:")) esp = true;
                     else if (p.Key.StartsWith("cm:")) cm = true;
+                    else if (p.Key == "intune:autopilot" || p.Key.StartsWith("intune:esp")) esp = true;
                     else if (p.Key.StartsWith("intune:")) intune = true;
                 }
                 if (ts) parts.Add("Task sequence");

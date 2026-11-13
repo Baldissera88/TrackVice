@@ -407,8 +407,22 @@ namespace TrackVice
         public string Header;
         public Func<T, string> Text;
         public int Width;
-        public bool Fill;
         public bool Mono;
+        internal DataGridViewColumn GridColumn;
+        bool fill;
+
+        // The column takes a share of the width that is left. It can be set after the column was added.
+        public bool Fill
+        {
+            get { return fill; }
+            set
+            {
+                fill = value;
+                if (GridColumn == null) return;
+                GridColumn.AutoSizeMode = value ? DataGridViewAutoSizeColumnMode.Fill : DataGridViewAutoSizeColumnMode.NotSet;
+                if (value) GridColumn.FillWeight = Width;
+            }
+        }
 
         public Column(string header, int width, Func<T, string> text)
         {
@@ -623,6 +637,7 @@ namespace TrackVice
                 col.FillWeight = c.Width;
             }
             if (c.Mono) col.DefaultCellStyle.Font = Fonts.Mono;
+            c.GridColumn = col;
             Grid.Columns.Add(col);
         }
 
