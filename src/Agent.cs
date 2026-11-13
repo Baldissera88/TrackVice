@@ -455,6 +455,33 @@ namespace TrackVice
         {
             return new AgentFeed(store, d.Key);
         }
+
+        public ISessionStore Store
+        {
+            get { return store; }
+        }
+
+        // One uploaded session, whole.
+        public Session Load(string key)
+        {
+            return AgentData.Unpack(store.Get(key));
+        }
+
+        // Every session uploaded since a time, newest first, at most max of them. A session that cannot be read is skipped.
+        public List<Session> LoadAll(DateTime sinceUtc, int max, Action<int, int> progress)
+        {
+            List<RemoteDeployment> list = List(sinceUtc);
+            if (list.Count > max) list.RemoveRange(max, list.Count - max);
+            List<Session> sessions = new List<Session>();
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (progress != null) progress(i, list.Count);
+                try { sessions.Add(Load(list[i].Key)); }
+                catch (Exception) { }
+            }
+            if (progress != null) progress(list.Count, list.Count);
+            return sessions;
+        }
     }
 
     // Follows one uploaded session. Each read that finds a newer upload replaces the whole session.
