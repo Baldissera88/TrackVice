@@ -1493,7 +1493,9 @@ namespace TrackVice
             else if (start.Page == "about") page = new AboutDialog(theme);
             else if (start.Remote != null && start.Pick == null)
             {
-                RemoteDialog rd = new RemoteDialog(start.Remote, theme, null, null, true);
+                bool sign = start.Select != null && start.Select.StartsWith("signin");
+                RemoteDialog rd = new RemoteDialog(start.Remote, theme, null, null, !sign);
+                if (sign) { string st = start.Select.Substring(6).TrimStart('-'); start.Select = null; rd.Shown += delegate { rd.PreviewSignIn(st); }; }
                 rd.Shown += delegate { System.Windows.Forms.Timer st = new System.Windows.Forms.Timer(); st.Interval = 900; st.Tick += delegate { st.Stop(); if (start.Select != null) rd.SelectDevice(start.Select); }; st.Start(); };
                 page = rd;
             }
