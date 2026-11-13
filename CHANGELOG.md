@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 0.0.4
+
+13 November 2026.
+
+- The Intune sign-in is one button: it gets the code, copies it and opens the sign-in page, shows the code large while it waits, and explains the common sign-in errors.
+
 ## TrackVice 0.0.3
 
 13 November 2026. The views of other devices have run with demo data and tests, not yet against a real tenant or site.
@@ -10,7 +16,6 @@
 - Settings: the client ID and tenant for the Intune sign-in.
 - Fixed: columns set to share the remaining width did not, in the timeline and findings tables.
 - Demos of both lists, with made-up devices.
-- The Intune sign-in is one button: it gets the code, copies it and opens the sign-in page, shows the code large while it waits, and explains the common sign-in errors.
 
 ## TrackVice 0.0.2
 
