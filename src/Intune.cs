@@ -27,7 +27,7 @@ namespace TrackVice
     // does not know only ends up on the timeline of the app it names.
     public sealed class ImeLogParser : LogParser
     {
-        static readonly Regex RxId = new Regex(@"(?:app with id|policy with id|app id|appid|application id|for app|of app|\(id =|id:|app:)\s*:?\s*\{?(?<id>[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})", Ci);
+        static readonly Regex RxId = new Regex(@"(?:app with id|policy with id|app ids|app id|appid|application id|for app|of app|\(id =|id:|app:)\s*:?\s*\{?(?<id>[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})", Ci);
         static readonly Regex RxDelta = new Regex("\"(?<f>EnforcementState|DetectionState|ApplicabilityState|ErrorCode)\"\\s*:\\s*\"(?<from>[^\"]*?)\\s*->\\s*(?<to>[^\"]*)\"", Ci);
         static readonly Regex RxDetect = new Regex(@"detection state:?\s*(?<d>NotDetected|Detected)|resulted in[^.]*?\b(?<d2>NotDetected|Detected)\b|detection (?:result|returned)[^.]*?\b(?<d3>NotDetected|Detected)\b", Ci);
         static readonly Regex RxExit = new Regex(@"(?:lpExitCode|exit code|exitcode)[:= ]+(?<c>-?\d+)", Ci);
@@ -46,6 +46,14 @@ namespace TrackVice
 
         readonly string source;
         readonly Dictionary<string, string> currentByThread = new Dictionary<string, string>();
+
+        static readonly Regex RxNoise = new Regex(@"Not sending (?:ESP )?status update|Saved AppInstallStatusReport|Real time status is not reportable|Sending status to company portal|prior AppAuthority|\[GRSManager\]|\[ReevaluationScheduleManager\]|\[V3Processor\]|Found native machine|Failed to parse \w+TimeUTC|Saving DownloadTime|LogonUser failed|Skip PopToastNotification|Detection running|could not be determined|resulted in action status|\[EspAppLockInCalculator\]|Handler (?:invoked|completed)", Ci);
+        // The delta as the agent writes it today: "EnforcementState":{"OldValue":"InProgress","NewValue":"Success"}.
+        static readonly Regex RxDelta2 = new Regex("\"(?<f>EnforcementState|DetectionState|ApplicabilityState|DesiredState|ErrorCode|EnforcementErrorCode)\"\\s*:\\s*\\{\\s*\"OldValue\"\\s*:\\s*(?:null|\"(?<from>[^\"]*)\"|(?<fromn>-?\\d+))\\s*,\\s*\"NewValue\"\\s*:\\s*(?:null|\"(?<to>[^\"]*)\"|(?<ton>-?\\d+))\\s*\\}", Ci);
+        readonly Dictionary<string, string> lastSaid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, string> commandNext = new Dictionary<string, string>();
+        const string ZeroGuid = "00000000-0000-0000-0000-000000000000";
+        readonly ScriptLog scripts = new ScriptLog();
 
         public ImeLogParser(string src)
         {
@@ -67,10 +75,14 @@ namespace TrackVice
         public override void Read(LogLine l, List<Obs> output)
         {
             string t = l.Text ?? "";
+            if (source != "AppWorkload" && scripts.Read(l, source, output)) return;
             if (t.IndexOf("Win32App", StringComparison.OrdinalIgnoreCase) < 0 && source != "AgentExecutor" && source != "AppWorkload") return;
             string thread = l.Thread ?? "";
             string id = null;
+            // "for user with id: <user> and app: <app>": the first ID is the user, and all zeros means the device.
             Match m = RxId.Match(t);
+            while (m.Success && (m.Groups["id"].Value == ZeroGuid || (m.Index >= 5 && t.Substring(0, m.Index).TrimEnd().EndsWith("user with", StringComparison.OrdinalIgnoreCase))))
+                m = m.NextMatch();
             if (m.Success)
             {
                 id = m.Groups["id"].Value.ToLowerInvariant();
@@ -78,6 +90,23 @@ namespace TrackVice
             }
             else currentByThread.TryGetValue(thread, out id);
             if (id == null) return;
+            // The agent first walks through every app without doing anything, to work out what the ESP has to wait for.
+            if (t.IndexOf("[Simulated", StringComparison.OrdinalIgnoreCase) >= 0) return;
+            // The install command is on a line of its own, right after the step that announces it.
+            if (t.IndexOf("===Step=== InstallBehavior", StringComparison.OrdinalIgnoreCase) >= 0) { commandNext[thread] = id; return; }
+            string pending;
+            if (commandNext.TryGetValue(thread, out pending))
+            {
+                commandNext.Remove(thread);
+                if (!t.StartsWith("[") && t.Trim().Length > 0 && pending == id)
+                {
+                    Obs c = ForApp(l, id);
+                    c.Command = t.Trim();
+                    c.Text = "Install command: " + Txt.Short(t.Trim(), 300);
+                    output.Add(c);
+                    return;
+                }
+            }
 
             Obs o = ForApp(l, id);
             bool useful = m.Success;
@@ -86,17 +115,40 @@ namespace TrackVice
             if (cm.Success) o.Command = cm.Groups["c"].Value;
 
             // "Report delta" lines from the reporting manager: the most reliable state change in the log.
-            foreach (Match d in RxDelta.Matches(t))
+            List<string[]> deltas = new List<string[]>();
+            foreach (Match d in RxDelta.Matches(t)) deltas.Add(new string[] { d.Groups["f"].Value, d.Groups["from"].Value.Trim(), d.Groups["to"].Value.Trim() });
+            foreach (Match d in RxDelta2.Matches(t))
+                deltas.Add(new string[] { d.Groups["f"].Value, d.Groups["from"].Success ? d.Groups["from"].Value : d.Groups["fromn"].Value, d.Groups["to"].Success ? d.Groups["to"].Value : d.Groups["ton"].Value });
+            foreach (string[] d in deltas)
             {
-                string f = d.Groups["f"].Value, to = d.Groups["to"].Value.Trim();
+                string f = d[0], from = d[1], to = d[2];
                 useful = true;
                 if (f.Equals("EnforcementState", StringComparison.OrdinalIgnoreCase))
                 {
                     o.State = Enforcement(to, ref o.Reboot) ?? o.State;
-                    say = "Enforcement state: " + Txt.SplitCamel(d.Groups["from"].Value.Trim()) + " \u2192 " + Txt.SplitCamel(to);
+                    say = "Enforcement state: " + (from.Length > 0 ? Txt.SplitCamel(from) + " \u2192 " : "") + Txt.SplitCamel(to);
+                }
+                else if (f.Equals("DetectionState", StringComparison.OrdinalIgnoreCase))
+                {
+                    o.AddInfo("Last detection", Txt.SplitCamel(to));
+                    if (say == null) say = "Detection: " + Txt.SplitCamel(to).ToLowerInvariant();
+                }
+                else if (f.Equals("DesiredState", StringComparison.OrdinalIgnoreCase))
+                {
+                    o.AddInfo("Desired state", Txt.SplitCamel(to));
+                    if (say == null) say = "Desired state: " + Txt.SplitCamel(to).ToLowerInvariant();
+                }
+                else if (f.Equals("ApplicabilityState", StringComparison.OrdinalIgnoreCase) && to.Equals("Applicable", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (say == null) say = "Applicable to this device";
+                }
+                else if (f.Equals("ApplicabilityState", StringComparison.OrdinalIgnoreCase) && to.Length > 0 && to.IndexOf("NotApplicable", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    o.State = State.NotApplicable;
+                    say = "Not applicable: " + Txt.SplitCamel(to).ToLowerInvariant();
                 }
                 else if (f.Equals("ApplicabilityState", StringComparison.OrdinalIgnoreCase) && to.IndexOf("NotApplicable", StringComparison.OrdinalIgnoreCase) >= 0) o.State = State.NotApplicable;
-                else if (f.Equals("ErrorCode", StringComparison.OrdinalIgnoreCase))
+                else if (f.Equals("ErrorCode", StringComparison.OrdinalIgnoreCase) || f.Equals("EnforcementErrorCode", StringComparison.OrdinalIgnoreCase))
                 {
                     long? c = Errors.Parse(to);
                     if (c.HasValue && c.Value != 0) o.ExitCode = c;
@@ -161,6 +213,15 @@ namespace TrackVice
                 }
             }
             if (!useful && l.Severity < 1) return;
+            // Bookkeeping about reporting says nothing about the app itself.
+            if (say == null && o.State == null && !o.ExitCode.HasValue && RxNoise.IsMatch(t)) return;
+            // The same thing said again for the same app adds nothing.
+            if (say != null && o.State != State.Failed && !o.ExitCode.HasValue)
+            {
+                string prev;
+                if (lastSaid.TryGetValue(id, out prev) && prev == say) return;
+                lastSaid[id] = say;
+            }
             // A plain sentence for the list and the timeline; the raw line stays in the evidence.
             o.Text = say ?? RxIdPhrase.Replace(t, "").Trim();
             if (o.State == State.Failed) o.Severity = 2;
@@ -173,6 +234,7 @@ namespace TrackVice
             if (v.IndexOf("Reboot", StringComparison.OrdinalIgnoreCase) >= 0) reboot = true;
             string s = v.ToLowerInvariant();
             if (s.StartsWith("success")) return State.Succeeded;
+            if (s.Contains("downloadcompleted")) return State.Installing;
             if (s.Contains("download")) return State.Downloading;
             if (s.StartsWith("inprogress") || s.StartsWith("in progress")) return State.Installing;
             if (s.Contains("requirementsnotmet") || s.Contains("notapplicable")) return State.NotApplicable;
@@ -306,7 +368,8 @@ namespace TrackVice
                 o.ItemName = Names != null ? Names(id) : null;
                 o.AddInfo("ID", id);
             }
-            else if (parent.Equals("SidecarProvisioning", StringComparison.OrdinalIgnoreCase) || leaf.Equals("SidecarProvisioning", StringComparison.OrdinalIgnoreCase))
+            else if (parent.Equals("SidecarProvisioning", StringComparison.OrdinalIgnoreCase) || leaf.Equals("SidecarProvisioning", StringComparison.OrdinalIgnoreCase)
+                || (leaf.Equals("Sidecar", StringComparison.OrdinalIgnoreCase) && parent.Equals("PolicyProviders", StringComparison.OrdinalIgnoreCase)))
             {
                 o.ItemKind = Kinds.Agent;
                 o.ItemKey = "esp:" + phase + ":ime";

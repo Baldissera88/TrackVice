@@ -105,6 +105,30 @@ Start with a folder on one PC, then a storage container, then a real Autopilot d
 - [ ] Watching the device shows the same items as TrackVice run on it.
 - [ ] `/agent-remove` removes the task and the key.
 
+## 10. Scripts, Office, MSI apps and policies
+
+- [ ] Every platform script assigned to the device is under Platform scripts, with the right result. A failed one shows its error text.
+- [ ] Microsoft 365 Apps shows as installing while it installs and done after, with the right products.
+- [ ] MSI line-of-business apps show with their product name once installed.
+- [ ] Policies lists the policy areas, and the settings under one area match the profile in Intune.
+- [ ] What the ESP waits for matches the ESP profile: blocking apps, certificates, Wi-Fi.
+- [ ] Account setup after the user signs in: note anything missing compared with the ESP screen.
+
+To collect the same data for a parser fix, run this on the device as administrator and send the zip:
+
+```cmd
+md C:\tv
+xcopy C:\ProgramData\Microsoft\IntuneManagementExtension\Logs C:\tv\IME\ /e /y
+reg export "HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking" C:\tv\esp.reg /y
+reg export "HKLM\SOFTWARE\Microsoft\IntuneManagementExtension" C:\tv\ime.reg /y
+reg export "HKLM\SOFTWARE\Microsoft\EnterpriseDesktopAppManagement" C:\tv\msi.reg /y
+reg export "HKLM\SOFTWARE\Microsoft\OfficeCSP" C:\tv\office.reg /y
+wevtutil epl Microsoft-Windows-DeviceManagement-Enterprise-Diagnostics-Provider/Admin C:\tv\mdm-admin.evtx
+powershell Compress-Archive C:\tv\* C:\tv.zip
+```
+
+TrackVice opens the unpacked folder directly.
+
 ## What to send back
 
 For anything wrong: a screenshot, the session (Save > Collect the session and its logs in a zip), and which log line TrackVice should have read differently.
