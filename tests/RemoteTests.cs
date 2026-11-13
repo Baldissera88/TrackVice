@@ -152,6 +152,12 @@ namespace TrackVice.Tests
 
         static void Messages()
         {
+            DateTime t = new DateTime(2026, 11, 13, 12, 15, 0, DateTimeKind.Utc);
+            T.Eq("20261113121500.000000+***", SccmWmi.Dmtf(t), "a time for the SMS Provider has no time zone");
+            T.Eq((object)t, SccmWmi.FromDmtf("20261113121500.000000+***"), "a time without a time zone is UTC");
+            T.Eq((object)t, SccmWmi.FromDmtf("20261113131500.000000+060"), "a time with an offset is moved to UTC");
+            T.Eq((object)t, SccmWmi.FromDmtf("20261113071500.000000-300"), "also with a negative offset");
+            T.Check(SccmWmi.FromDmtf("soon") == null, "something that is not a time");
             Func<long, string, string, int> k = delegate (long id, string name, string action)
             {
                 Dictionary<string, object> r = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);

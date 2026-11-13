@@ -1,5 +1,13 @@
 # Changelog
 
+## TrackVice 0.0.8
+
+13 November 2026.
+
+- Fixed: listing task sequences from a real SCCM site failed with "Generic failure". The time in the query was written with a time zone offset, which the SMS Provider does not take. Not yet confirmed on a real site.
+- Times from the SMS Provider are read as UTC, so they are no longer shifted by the time zone of your PC.
+- When the SMS Provider refuses a query, the message now gives its reason and the query.
+
 ## TrackVice 0.0.7
 
 13 November 2026. Built against the logs and registry of a real Autopilot enrollment.
