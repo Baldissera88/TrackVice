@@ -132,6 +132,11 @@ namespace TrackVice.Tests
                 "powershell.exe -noprofile -executionpolicy bypass -file .\\Install.ps1",
                 "[Win32App] Launch Win32AppInstaller in machine session");
             T.Check(s.Find(IntuneKeys.App(Zero)) == null, "the user ID of a device session is not an app");
+            Session push = Feed(new ImeLogParser("AppWorkload"),
+                "[Win32App] PushNotification workload thread start with id: 98c0bcc8-d800-4dd9-976a-c48f62c4f749",
+                "[Win32Apps] App policy with id: " + Portal + " will not be evaluated as it has user install context and this is a userless check-in. The app will be reported as not applicable.");
+            T.Eq(1, push.Items.Count, "the ID of a workload thread is not an app");
+            T.Check(push.Items[0].State == State.NotApplicable, "a user app in the device phase is not applicable, not unknown");
             T.Eq(1, s.Items.Count, "one app from the real line formats");
             Item i = s.Find(IntuneKeys.App(App));
             T.Check(i != null && i.State == State.Installing, "download completed means installing");

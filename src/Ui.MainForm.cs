@@ -695,6 +695,7 @@ namespace TrackVice
             if (engine.Mode == Modes.Demo) parts.Add("Demo data, " + engine.DemoSpeed.ToString("0", Inv) + "× speed");
             else if (engine.Mode == Modes.Intune) parts.Add("Intune, read every " + (engine.PollIntervalMs / 1000) + " s");
             else if (engine.Mode == Modes.Sccm) parts.Add("SCCM status messages, read every " + (engine.PollIntervalMs / 1000) + " s");
+            else if (engine.Mode == Modes.Agent && engine.Silent.HasValue) parts.Add("Agent, NO UPLOAD for " + Txt.DurationShort(engine.Silent.Value));
             else if (engine.Mode == Modes.Agent) parts.Add(engine.LastUploadUtc.Year > 2000 ? "Agent, uploaded " + Txt.LocalTime(engine.LastUploadUtc) : "Agent");
             else if (engine.Mode == Modes.File) parts.Add("Saved session");
             else if (engine.Mode == Modes.Folder) parts.Add("Log folder");

@@ -474,6 +474,7 @@ namespace TrackVice
     public static class FindingKinds
     {
         public const string Failed = "Failed";
+        public const string NoUploads = "No uploads";
         public const string NotDetected = "Not detected after install";
         public const string Retries = "Retry loop";
         public const string Stuck = "No progress";

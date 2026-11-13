@@ -118,6 +118,26 @@ namespace TrackVice.Tests
                 Session before = viewer.S;
                 viewer.Apply(viewer.Poll());
                 T.Check(object.ReferenceEquals(before, viewer.S), "an unchanged upload keeps the session");
+                T.Check(viewer.Silent.HasValue, "a session uploaded long ago is called silent when it is opened");
+                T.Eq(FindingKinds.NoUploads, viewer.S.Findings[0].Kind, "and a finding says the device stopped uploading");
+                viewer.Apply(new Batch());
+                int silentFindings = 0;
+                foreach (Finding f in viewer.S.Findings) if (f.Kind == FindingKinds.NoUploads) silentFindings++;
+                T.Eq(1, silentFindings, "the finding is there once");
+
+                // A device that uploads now is not silent, also when its clock is ten minutes behind.
+                Engine live = Engine.ForDemo("autopilot");
+                live.Apply(live.DemoTo(10 * 60));
+                Agent la = new Agent(st, "dev-live", DateTime.UtcNow);
+                la.Cycle(live.S, DateTime.UtcNow.AddMinutes(-10), o, true);
+                RemoteDeployment ld = null;
+                foreach (RemoteDeployment x in cat.List(DateTime.UtcNow.AddYears(-5))) if (x.Key.Contains("dev-live")) ld = x;
+                Engine lv = Engine.ForRemote(cat.Open(ld), ld);
+                lv.Apply(lv.Poll());
+                live.Apply(live.DemoTo(11 * 60));
+                la.Cycle(live.S, DateTime.UtcNow.AddMinutes(-10), o, true);
+                lv.Apply(lv.Poll());
+                T.Check(!lv.Silent.HasValue, "a device with a slow clock that keeps uploading is not silent");
 
                 device.Apply(device.DemoTo(20 * 60));
                 T.Check(!a.Cycle(device.S, now.AddSeconds(35), o, false), "a change right after an upload waits");
