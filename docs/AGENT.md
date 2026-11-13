@@ -6,7 +6,7 @@ On your own PC, **Devices > Devices with the TrackVice agent** lists every devic
 
 ![Devices with the TrackVice agent](images/trackvice-agent-list.png)
 
-> **Preview.** The upload to a real Azure storage account, the install as a scheduled task on Windows 11 and the list have been tested. A full Autopilot enrollment with the platform script has not been tested yet.
+> **Preview.** Tested on real Autopilot enrollments through device setup: the platform script, the scheduled task, the upload to an Azure storage account and the list. Account setup and the Win32 app route have not been tested yet.
 
 ## Contents
 
@@ -19,6 +19,7 @@ On your own PC, **Devices > Devices with the TrackVice agent** lists every devic
 - [Step 5: fill in and test the script](#step-5-fill-in-and-test-the-script)
 - [Step 6: the platform script in Intune](#step-6-the-platform-script-in-intune)
 - [Step 7: follow the devices](#step-7-follow-the-devices)
+- [Assigning it to all devices](#assigning-it-to-all-devices)
 - [Alternative: a Win32 app](#alternative-a-win32-app)
 - [Alternative: a folder instead of a storage account](#alternative-a-folder-instead-of-a-storage-account)
 - [Maintenance](#maintenance)
@@ -87,13 +88,21 @@ Give TrackVice its own container. A link gives access to the whole container it 
 (Get-FileHash .\TrackVice.exe -Algorithm SHA256).Hash
 ```
 
+Instead of uploading the exe, the script can download it from this repository's release. Then you need no download link, only the hash of that release's `TrackVice.exe`, which is in the release notes:
+
+```powershell
+$Download = 'https://github.com/Baldissera88/TrackVice/releases/download/v0.0.10/TrackVice.exe'
+```
+
+Your own container keeps you independent of GitHub and lets you decide when devices get a new version.
+
 ## Step 3: the three links
 
 A link is a shared access signature (SAS): a URL with a token that allows only what you tick. You need three.
 
 | Link | Made on | Permissions | Goes into |
 |---|---|---|---|
-| Download | The blob `TrackVice.exe` | Read | `$Download` in the script |
+| Download | The blob `TrackVice.exe` | Read | `$Download` in the script. Not needed when you download from GitHub, see below |
 | Upload | The container `trackvice` | Create, Write | `$Upload` in the script |
 | Viewer | The container `trackvice` | Read, List | TrackVice on your PC |
 
@@ -195,6 +204,14 @@ Enroll or reset the test device and keep the list open on your PC. The device ap
 The viewer link is saved encrypted for your Windows account, so you only paste it once.
 
 **Demo: devices with the agent** in the same menu shows the view with made-up devices.
+
+## Assigning it to all devices
+
+A platform script runs once on every device it is assigned to, also on devices that were enrolled long ago. Those would each install the agent, upload their history for 48 hours and fill your list.
+
+To avoid that, set `$MaxAgeHours` in the script, for example to `24`. The script then only installs the agent on a device whose Intune Management Extension folder is younger than that, which means a device that has just enrolled. Older devices exit with success and install nothing. Leave it at `0` while you test on your own PC.
+
+Editing a script in Intune makes it run again on the devices that already ran it.
 
 ## Alternative: a Win32 app
 
