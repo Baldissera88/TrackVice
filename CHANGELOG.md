@@ -1,5 +1,14 @@
 # Changelog
 
+## TrackVice 0.0.5
+
+13 November 2026.
+
+- Fixed: watching a device from the Intune list could show an empty window. When Intune does not return a deployment on its own, TrackVice now shows it from the list, and says why the rest is missing.
+- A deployment from Intune always shows the deployment as a whole, with its state and duration.
+- A read error is shown in the window and the status bar instead of "Nothing found".
+- Times more than two days back read as days, not hours.
+
 ## TrackVice 0.0.4
 
 13 November 2026.

@@ -387,7 +387,9 @@ namespace TrackVice
 
         public IRemoteFeed Open(RemoteDeployment d)
         {
-            return new IntuneFeed(graph, d.Key);
+            Dictionary<string, object> seed;
+            lock (raw) raw.TryGetValue(d.Key, out seed);
+            return new IntuneFeed(graph, d.Key, seed);
         }
 
         public static RemoteDeployment ToDeployment(Dictionary<string, object> e)
@@ -470,10 +472,51 @@ namespace TrackVice
         readonly SnapshotDiff diff = new SnapshotDiff();
         bool first = true;
 
-        public IntuneFeed(IGraph g, string eventId)
+        Dictionary<string, object> last;
+        readonly HashSet<string> said = new HashSet<string>();
+
+        public IntuneFeed(IGraph g, string eventId) : this(g, eventId, null) { }
+
+        // seed is the deployment as the list returned it, shown when Intune will not return it on its own.
+        public IntuneFeed(IGraph g, string eventId, Dictionary<string, object> seed)
         {
             graph = g;
             id = eventId;
+            last = seed;
+        }
+
+        // The deployment by its ID, or from the list when Graph does not answer for a single one.
+        Dictionary<string, object> ReadEvent(out string problem)
+        {
+            problem = null;
+            try
+            {
+                Dictionary<string, object> e = graph.Get(IntuneCatalog.EventsUrl + "/" + Uri.EscapeDataString(id));
+                if (!string.IsNullOrEmpty(Http.Str(e, "id"))) return e;
+                problem = "Intune returned no deployment for this ID.";
+            }
+            catch (GraphException ex) { problem = ex.Message; }
+            try
+            {
+                string url = IntuneCatalog.EventsUrl;
+                int pages = 0;
+                while (!string.IsNullOrEmpty(url) && pages++ < 50)
+                {
+                    Dictionary<string, object> r = graph.Get(url);
+                    List<object> value = ImeJson.Get(r, "value") as List<object>;
+                    if (value != null)
+                    {
+                        foreach (object o in value)
+                        {
+                            Dictionary<string, object> x = o as Dictionary<string, object>;
+                            if (x != null && string.Equals(Http.Str(x, "id"), id, StringComparison.OrdinalIgnoreCase)) return x;
+                        }
+                    }
+                    url = Http.Str(r, "@odata.nextLink");
+                }
+            }
+            catch (GraphException ex) { problem = ex.Message; }
+            return null;
         }
 
         public string Mode
@@ -488,23 +531,36 @@ namespace TrackVice
 
         public Batch Read(DateTime nowUtc)
         {
-            Dictionary<string, object> e = graph.Get(IntuneCatalog.EventsUrl + "/" + Uri.EscapeDataString(id));
+            string problem;
+            Dictionary<string, object> e = ReadEvent(out problem);
+            bool stale = e == null;
+            if (e == null) e = last;
+            if (e == null) throw new GraphException("Intune did not return this deployment. " + (problem ?? ""));
+            last = e;
             List<Dictionary<string, object>> details = new List<Dictionary<string, object>>();
-            string url = IntuneCatalog.EventsUrl + "/" + Uri.EscapeDataString(id) + "/policyStatusDetails";
-            int pages = 0;
-            while (!string.IsNullOrEmpty(url) && pages++ < 20)
+            string detailProblem = null;
+            try
             {
-                Dictionary<string, object> r = graph.Get(url);
-                List<object> value = ImeJson.Get(r, "value") as List<object>;
-                if (value != null) foreach (object o in value) { Dictionary<string, object> x = o as Dictionary<string, object>; if (x != null) details.Add(x); }
-                url = Http.Str(r, "@odata.nextLink");
+                string url = IntuneCatalog.EventsUrl + "/" + Uri.EscapeDataString(id) + "/policyStatusDetails";
+                int pages = 0;
+                while (!string.IsNullOrEmpty(url) && pages++ < 20)
+                {
+                    Dictionary<string, object> r = graph.Get(url);
+                    List<object> value = ImeJson.Get(r, "value") as List<object>;
+                    if (value != null) foreach (object o in value) { Dictionary<string, object> x = o as Dictionary<string, object>; if (x != null) details.Add(x); }
+                    url = Http.Str(r, "@odata.nextLink");
+                }
             }
+            catch (GraphException ex) { detailProblem = ex.Message; }
             Batch b = Map(e, details, nowUtc, diff);
             if (first)
             {
                 b.Notes.Add("This deployment is read from Intune with Microsoft Graph. It is only as current as the device's last report to Intune, and it has no log lines. Run TrackVice on the device itself to see every step as it happens.");
                 first = false;
             }
+            if (stale && said.Add("stale")) b.Notes.Add("Intune did not answer for this deployment just now, so it is shown as the list had it. " + (problem ?? ""));
+            if (detailProblem != null && said.Add("details")) b.Notes.Add("The apps and policies of this deployment could not be read from Intune: " + detailProblem);
+            else if (detailProblem == null && details.Count == 0 && said.Add("nodetails")) b.Notes.Add("Intune has no app or policy status for this deployment. It keeps that detail for a limited time, and only for what the Enrollment Status Page tracked.");
             return b;
         }
 
@@ -538,6 +594,10 @@ namespace TrackVice
             Phase(b, diff, "intune:devicesetup", "Device setup", Http.Str(e, "deviceSetupStatus"), start, devDur, d.LastUtc, nowUtc);
             DateTime accStart = devDur.HasValue ? start + devDur.Value : start;
             Phase(b, diff, "intune:accountsetup", "Account setup", Http.Str(e, "accountSetupStatus"), accStart, accDur, d.LastUtc, nowUtc);
+            // The deployment as a whole is always shown, so a device Intune knows little about is never an empty window.
+            TimeSpan? total = Dur(Http.Str(e, "deploymentTotalDuration")) ?? Dur(Http.Str(e, "deploymentDuration"));
+            if (!total.HasValue && d.EndUtc.HasValue && d.EndUtc.Value > start) total = d.EndUtc.Value - start;
+            Phase(b, diff, "intune:deployment", "Autopilot deployment", Http.Str(e, "deploymentState") ?? "unknown", start, total, d.LastUtc, nowUtc);
             if (!string.IsNullOrEmpty(d.Detail) && diff.Changed("detail", d.Detail))
             {
                 Obs o = Base(d.LastUtc, "intune:deployment", "Autopilot deployment", Kinds.Enrollment, AutopilotPhase);
@@ -585,7 +645,7 @@ namespace TrackVice
         {
             if (string.IsNullOrEmpty(status)) return;
             State st = IntuneCatalog.DeploymentState(status);
-            if (st == State.Unknown && !dur.HasValue) return;
+            if (st == State.Unknown && !dur.HasValue && key != "intune:deployment") return;
             string sig = st + "|" + (dur.HasValue ? dur.Value.Ticks : 0);
             if (!diff.Changed(key, sig)) return;
             // A start observation first, so the item has its real start and duration.
