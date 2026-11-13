@@ -12,6 +12,7 @@ namespace TrackVice
         public const string Demo = "Demo";
         public const string Intune = "Intune";
         public const string Sccm = "SCCM";
+        public const string Agent = "Agent";
     }
 
     // Holds the session and where it comes from. Poll can run on a background thread; Apply runs on the UI thread.
@@ -107,6 +108,10 @@ namespace TrackVice
         }
 
         IRemoteFeed remote;
+        DateTime replacedAt, clockAtUpload;
+
+        // When the device last uploaded the session that is shown.
+        public DateTime LastUploadUtc;
 
         public bool IsRemote
         {
@@ -158,6 +163,13 @@ namespace TrackVice
             get
             {
                 if (Mode == Modes.Demo && demo != null) return demo.Clock;
+                if (Mode == Modes.Agent)
+                {
+                    // The device's own clock at its last upload, moved on a little so durations keep counting between uploads.
+                    if (clockAtUpload.Year < 2001) return DateTime.UtcNow;
+                    TimeSpan since = DateTime.UtcNow - replacedAt;
+                    return clockAtUpload + (since > TimeSpan.FromSeconds(90) ? TimeSpan.FromSeconds(90) : since < TimeSpan.Zero ? TimeSpan.Zero : since);
+                }
                 if (Mode == Modes.Live || remote != null) return DateTime.UtcNow;
                 if (S.ClockUtc != DateTime.MinValue && S.ClockUtc.Year > 2000) return S.ClockUtc;
                 DateTime last = DateTime.MinValue;
@@ -188,6 +200,7 @@ namespace TrackVice
                     break;
                 case Modes.Intune:
                 case Modes.Sccm:
+                case Modes.Agent:
                     b = remote.Read(now);
                     break;
                 case Modes.Folder:
@@ -211,14 +224,30 @@ namespace TrackVice
         public void Apply(Batch b)
         {
             if (b == null) return;
+            if (b.Replace != null)
+            {
+                string key = S.SourcePath;
+                S = b.Replace;
+                S.Mode = Mode;
+                S.SourcePath = key;
+                T = new Tracker(S);
+                clockAtUpload = S.ClockUtc;
+                replacedAt = DateTime.UtcNow;
+                LastUploadUtc = S.SavedUtc;
+            }
             foreach (Pair p in b.Info) S.SetInfo(p.Key, p.Value);
-            if (remote != null && S.GetInfo("Windows") != null) S.OsVersion = "Windows " + S.GetInfo("Windows");
+            if (remote != null && Mode != Modes.Agent && S.GetInfo("Windows") != null) S.OsVersion = "Windows " + S.GetInfo("Windows");
             if (b.Names != null) T.AddNames(b.Names);
             T.ApplyAll(b.Obs);
             foreach (Pair a in b.Aliases) T.Alias(a.Key, a.Value);
             if (b.Names != null) T.AddNames(b.Names);
             foreach (string n in b.Notes) if (notes.Add(n)) S.Notes.Add(n);
             foreach (string src in b.Sources) sources.Add(src);
+            if (Mode == Modes.Agent)
+            {
+                if (b.Replace != null) Finder.Run(S, clockAtUpload, true);
+                return;
+            }
             S.ClockUtc = Now;
             if (Mode == Modes.Live && StartedBeforeHistory == null)
             {

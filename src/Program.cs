@@ -199,7 +199,8 @@ namespace TrackVice
 
         public static int Run(string[] args)
         {
-            string report = null, csv = null, session = null, folder = null;
+            string report = null, csv = null, session = null, folder = null, agent = null;
+            AgentOptions ao = new AgentOptions();
             int hours = 24;
             try
             {
@@ -213,12 +214,27 @@ namespace TrackVice
                         case "session": session = Next(args, ref i); break;
                         case "folder": folder = Next(args, ref i); break;
                         case "hours": hours = Math.Max(0, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
+                        case "agent": agent = "run"; break;
+                        case "agent-install": agent = "install"; break;
+                        case "agent-remove": agent = "remove"; break;
+                        case "upload": ao.Upload = Next(args, ref i); break;
+                        case "keep": ao.KeepHours = Math.Max(1, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
+                        case "once": ao.Once = true; break;
                         case "?":
                         case "h":
                         case "help": Usage(); return 0;
                         default: throw new ArgumentException("Unknown option: " + args[i]);
                     }
                 }
+                if (agent == "install") return Agent.Install(ao, System.Reflection.Assembly.GetExecutingAssembly().Location);
+                if (agent == "remove")
+                {
+                    if (!Program.IsAdmin) throw new UnauthorizedAccessException("Removing the agent needs administrator rights.");
+                    Agent.Remove();
+                    Console.WriteLine("The TrackVice agent is removed. Delete " + Agent.InstallDir + " to remove its files.");
+                    return 0;
+                }
+                if (agent == "run") return Agent.Run(ao);
                 if (report == null && csv == null && session == null)
                 {
                     Usage();

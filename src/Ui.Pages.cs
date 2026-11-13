@@ -886,6 +886,10 @@ namespace TrackVice
             new string[] { "/session <file.json>", "Save the session as JSON and exit" },
             new string[] { "/folder <path>", "With /report, /csv or /session: read a folder of logs instead of this device" },
             new string[] { "/hours <n>", "Hours of history to read (default 24, 0 for everything since Windows was installed)" },
+            new string[] { "/agent-install /upload <location>", "Install the agent: it uploads this device's session while it deploys. The location is a storage container SAS link or a folder" },
+            new string[] { "/agent-remove", "Remove the agent" },
+            new string[] { "/agent /upload <location>", "Run the agent here without installing it. /once uploads one time and exits" },
+            new string[] { "/keep <hours>", "With /agent-install: how long the agent stays before it removes itself (default 48)" },
             new string[] { "--demo", "Play a sample Autopilot deployment" },
             new string[] { "--demo osd", "Play a sample SCCM task sequence" },
         };

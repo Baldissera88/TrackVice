@@ -102,7 +102,23 @@ Status messages arrive a little after each step, and a step only shows once it h
 
 ![A task sequence followed through the site](docs/images/trackvice-sccm-remote.png)
 
-Both have a demo with made-up devices under **Devices**, so you can see them without signing in.
+### Devices with the TrackVice agent
+
+Intune and SCCM only know what a device has reported. With the agent, the device sends everything: TrackVice runs on it without a window while it deploys, and uploads its whole session as it changes to an Azure Storage container or a folder. The list shows every device that has uploaded, and watching one gives the same view as running TrackVice on it, with the log lines behind every event.
+
+![Devices with the TrackVice agent](docs/images/trackvice-agent-list.png)
+
+| | |
+|---|---|
+| Install | An Intune platform script (`agent/Install-TrackViceAgent.ps1`) or a Win32 app that runs `TrackVice.exe /agent-install /upload "<location>"` |
+| On the device | A startup task that runs as SYSTEM, survives restarts, and removes itself after 48 hours |
+| Location | A container SAS link: Create and Write for the devices, Read and List for the viewer. Or a folder |
+| The list | Device, progress with the current item, deployment, profile, start, duration and last upload. Refreshed every 15 seconds |
+| One device | Everything the device itself shows. Read every 5 seconds |
+
+[docs/AGENT.md](docs/AGENT.md) has the setup step by step.
+
+All three have a demo with made-up devices under **Devices**, so you can see them without signing in.
 
 ## Watch, save and share
 
@@ -141,6 +157,10 @@ TrackVice.exe /csv <file.csv>          Save every event as CSV and exit
 TrackVice.exe /session <file.json>     Save the session as JSON and exit
   /folder <path>                       Read a folder of logs instead of this device
   /hours <n>                           Hours of history to read (default 24, 0 since Windows was installed)
+TrackVice.exe /agent-install /upload <location>   Install the agent, see docs/AGENT.md
+  /keep <hours>                        How long the agent stays (default 48)
+TrackVice.exe /agent-remove            Remove the agent
+TrackVice.exe /agent /upload <location> [/once]   Run the agent without installing it
 TrackVice.exe --demo [osd]             Play a demo
 ```
 
@@ -165,12 +185,15 @@ The exit code is 0 when done, 1 on an error and 2 when failed items were found, 
 
 ## Privacy and safety
 
-TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open **Devices**: then it talks to Microsoft Graph, or to the SMS Provider you name, and nothing else.
+TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open **Devices**: then it talks to Microsoft Graph, to the SMS Provider you name, or to the upload location you enter, and nothing else.
+
+The agent is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes its task and key when its time is up.
 
 ## Limitations
 
 - It has not been tested on many real devices yet. See the note at the top.
 - The Intune view uses a beta Graph API, which Microsoft can change, and the status message names the SCCM view reads differ a little between ConfigMgr versions.
+- The agent has not run on a real device or a real storage account yet, only against the storage emulator and a folder.
 - LogVice opens a log file but cannot yet jump to a line, so TrackVice says in the status bar which line to look for.
 - The Intune Management Extension log format changes between IME versions. Lines TrackVice does not recognise are left out, and the ESP and Win32Apps registry keys still give the state.
 - The Windows PE part of a task sequence needs WinPE-NetFx in the boot image for TrackVice to start there.
