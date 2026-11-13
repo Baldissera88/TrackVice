@@ -65,32 +65,59 @@ namespace TrackVice
             EnumerationOptions opt = new EnumerationOptions();
             opt.Timeout = TimeSpan.FromSeconds(60);
             opt.ReturnImmediately = false;
-            using (ManagementObjectSearcher s = new ManagementObjectSearcher(scope, new ObjectQuery(wql), opt))
-            using (ManagementObjectCollection c = s.Get())
+            try
             {
-                foreach (ManagementBaseObject o in c)
+                using (ManagementObjectSearcher s = new ManagementObjectSearcher(scope, new ObjectQuery(wql), opt))
+                using (ManagementObjectCollection c = s.Get())
                 {
-                    Dictionary<string, object> row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                    foreach (PropertyData p in o.Properties)
+                    foreach (ManagementBaseObject o in c)
                     {
-                        object v = p.Value;
-                        if (v != null && p.Type == CimType.DateTime)
+                        Dictionary<string, object> row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                        foreach (PropertyData p in o.Properties)
                         {
-                            try { v = ManagementDateTimeConverter.ToDateTime((string)v).ToUniversalTime(); }
-                            catch (Exception) { v = null; }
+                            object v = p.Value;
+                            if (v != null && p.Type == CimType.DateTime) v = FromDmtf(v as string);
+                            row[p.Name] = v;
                         }
-                        row[p.Name] = v;
+                        rows.Add(row);
+                        o.Dispose();
                     }
-                    rows.Add(row);
-                    o.Dispose();
                 }
+            }
+            catch (ManagementException ex)
+            {
+                // "Generic failure" alone says nothing. The SMS Provider puts the reason in the extended error.
+                string why = null;
+                try { if (ex.ErrorInformation != null) why = Convert.ToString(ex.ErrorInformation["Description"], CultureInfo.InvariantCulture); }
+                catch (Exception) { }
+                throw new InvalidOperationException(ex.Message.Trim() + (string.IsNullOrEmpty(why) ? "" : ": " + why.Trim()) + " (query: " + wql + ")", ex);
             }
             return rows;
         }
 
+        // The SMS Provider keeps times in UTC and writes them without a time zone: 20261113121500.000000+***.
         public static string Dmtf(DateTime utc)
         {
-            return ManagementDateTimeConverter.ToDmtfDateTime(utc.ToLocalTime());
+            return utc.ToUniversalTime().ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + ".000000+***";
+        }
+
+        // The same time with a zero offset, for a provider that does not take the form above.
+        public static string DmtfZero(DateTime utc)
+        {
+            return utc.ToUniversalTime().ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + ".000000+000";
+        }
+
+        // A time from the SMS Provider as UTC. Without a time zone (+***) it is UTC already; with an offset in minutes it is local to that offset.
+        public static object FromDmtf(string s)
+        {
+            if (s == null || s.Length < 14) return null;
+            DateTime t;
+            if (!DateTime.TryParseExact(s.Substring(0, 14), "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out t)) return null;
+            t = DateTime.SpecifyKind(t, DateTimeKind.Utc);
+            int offset;
+            if (s.Length >= 25 && (s[21] == '+' || s[21] == '-') && int.TryParse(s.Substring(22, 3), NumberStyles.None, CultureInfo.InvariantCulture, out offset))
+                t = t.AddMinutes(s[21] == '+' ? -offset : offset);
+            return t;
         }
     }
 
@@ -128,7 +155,16 @@ namespace TrackVice
 
         public List<RemoteDeployment> List(DateTime sinceUtc)
         {
-            List<Dictionary<string, object>> rows = q.Query("SELECT ResourceID, AdvertisementID, PackageID, ExecutionTime, LastStatusMsgID, LastStatusMsgName, ExitCode, Step, ActionName FROM SMS_TaskSequenceExecutionStatus WHERE ExecutionTime >= '" + Dmtf(sinceUtc) + "'");
+            const string select = "SELECT ResourceID, AdvertisementID, PackageID, ExecutionTime, LastStatusMsgID, LastStatusMsgName, ExitCode, Step, ActionName FROM SMS_TaskSequenceExecutionStatus WHERE ExecutionTime >= '";
+            List<Dictionary<string, object>> rows;
+            try { rows = q.Query(select + Dmtf(sinceUtc) + "'"); }
+            catch (InvalidOperationException)
+            {
+                // Some providers only take a time with an offset. The one that works is kept for the device view.
+                if (Dmtf != SccmWmi.Dmtf) throw;
+                rows = q.Query(select + SccmWmi.DmtfZero(sinceUtc) + "'");
+                Dmtf = SccmWmi.DmtfZero;
+            }
             Dictionary<string, List<Dictionary<string, object>>> groups = new Dictionary<string, List<Dictionary<string, object>>>(StringComparer.OrdinalIgnoreCase);
             foreach (Dictionary<string, object> r in rows)
             {
