@@ -7,6 +7,7 @@
 - When a device with the agent stops uploading, the window says so: a finding with the time of the last upload, and "NO UPLOAD" in the status bar. Until now it kept showing the last state as if it were live.
 - Fixed: the ID of a workload thread in the IME log became an app named after that ID.
 - Fixed: a user app in the device phase showed as unknown. It is not applicable there, as the agent itself reports.
+- The platform script can skip devices that were enrolled long ago (`$MaxAgeHours`), so it can be assigned to all devices.
 
 ## TrackVice 0.0.9
 

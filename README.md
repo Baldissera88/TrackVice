@@ -10,7 +10,11 @@ It is a companion to [LogVice](https://github.com/Baldissera88/LogVice) and [Pol
 
 ![TrackVice following an Autopilot deployment](docs/images/trackvice-autopilot.png)
 
-> **TrackVice is a preview.** Everything below works with the built-in demos and has tests, but it has hardly run on real devices yet, the SCCM view of other devices has not run against a real site, and the agent has not yet been through a full Autopilot enrollment. The log formats of the Intune Management Extension and the ESP registry layout are not documented by Microsoft, so expect some lines to be missed until it has been tested on real deployments. [docs/TESTING.md](docs/TESTING.md) is the checklist for that.
+> **TrackVice is a preview.** It has followed real Autopilot enrollments through device setup, with the agent uploading to Azure storage, and it has listed Autopilot deployments from a real Intune tenant and task sequences from a real SCCM site. It has not yet been checked on account setup, on a full task sequence on the device itself, or on many different tenants. The log formats of the Intune Management Extension and the ESP registry layout are not documented by Microsoft, so expect some lines to be missed. [docs/TESTING.md](docs/TESTING.md) is the checklist for testing it.
+
+## Download
+
+Get `TrackVice.msi` or the portable `TrackVice.exe` from the [latest release](https://github.com/Baldissera88/TrackVice/releases/latest). It needs .NET Framework 4.5 or later, which Windows 10 and 11 have. The files are not code signed, so SmartScreen warns on the first start.
 
 ## What it shows
 

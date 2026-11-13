@@ -8,12 +8,22 @@ $Download  = ''   # Link to TrackVice.exe
 $Sha256    = ''   # SHA-256 of that TrackVice.exe, from Get-FileHash
 $Upload    = ''   # Where the agent uploads: the container SAS link with Create and Write
 $KeepHours = 48   # The agent removes itself after this long
+$MaxAgeHours = 0  # Only install on a device enrolled within this many hours. 0 installs on every device
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 if (-not $Download -or -not $Sha256 -or -not $Upload) {
     throw 'Fill in $Download, $Sha256 and $Upload at the top of the script.'
+}
+
+# Without this, a device that was enrolled long ago also installs the agent when the script is assigned to it.
+if ($MaxAgeHours -gt 0) {
+    $enrolled = Get-Item -Path (Join-Path $env:ProgramData 'Microsoft\IntuneManagementExtension') -ErrorAction SilentlyContinue
+    if ($enrolled -and $enrolled.CreationTime -lt (Get-Date).AddHours(-$MaxAgeHours)) {
+        Write-Output 'Not a new enrollment. The TrackVice agent was not installed.'
+        exit 0
+    }
 }
 
 $exe = Join-Path $env:TEMP 'TrackVice.exe'
