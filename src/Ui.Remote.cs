@@ -38,9 +38,12 @@ namespace TrackVice
         bool loading;
 
         // Intune
-        FlatButton bSignIn, bCode;
+        FlatButton bSignIn;
         Label codeText;
         DeviceCode code;
+        SignInPanel signIn;
+        ManualResetEvent attempt;
+        readonly bool isDemo;
         // SCCM
         TextBox server, site;
         FlatButton bConnect;
@@ -48,6 +51,7 @@ namespace TrackVice
         public RemoteDialog(string kind, Theme t, IRemoteCatalog existing, GraphClient graph, bool demo)
         {
             theme = t;
+            isDemo = demo;
             Catalog = existing;
             Graph = graph;
             Text = kind == Intune ? "Autopilot in Intune" : "Task sequences in SCCM";
@@ -133,6 +137,21 @@ namespace TrackVice
             border.Tag = "border";
             table.Grid.Dock = DockStyle.Fill;
             border.Controls.Add(table.Grid);
+            if (kind == Intune)
+            {
+                signIn = new SignInPanel();
+                signIn.Dock = DockStyle.Fill;
+                signIn.Visible = existing == null && !demo;
+                signIn.Main.Click += Safe.Wrap(delegate { SignIn(); });
+                signIn.Copy.Click += Safe.Wrap(delegate { if (code != null) { Menus.Copy(code.UserCode); signIn.Copied(); } });
+                signIn.Open.Click += Safe.Wrap(delegate { OpenSignIn(); });
+                signIn.Cancel.Click += Safe.Wrap(delegate { CancelSignIn(); });
+                themed.Add(signIn);
+                border.Controls.Add(signIn);
+                signIn.BringToFront();
+                connect.Visible = !signIn.Visible;
+                bar.Visible = !signIn.Visible;
+            }
             card.Controls.Add(border);
 
             footer.Dock = DockStyle.Bottom;
@@ -185,7 +204,7 @@ namespace TrackVice
                 if (Catalog != null) Connected();
                 else if (demo) { Catalog = DemoCatalog(kind); Connected(); }
             });
-            FormClosed += delegate { cancel.Set(); auto.Stop(); };
+            FormClosed += delegate { cancel.Set(); if (attempt != null) attempt.Set(); auto.Stop(); };
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
@@ -205,25 +224,18 @@ namespace TrackVice
 
         void BuildIntune()
         {
-            bSignIn = new FlatButton("Sign in", Glyphs.Shield);
-            bSignIn.Primary = true;
-            bSignIn.Margin = new Padding(0, 0, Dpi.S(12), 0);
-            bSignIn.Click += Safe.Wrap(delegate { SignIn(); });
-            themed.Add(bSignIn);
             codeText = new Label();
             codeText.AutoSize = true;
             codeText.Margin = new Padding(0, Dpi.S(9), Dpi.S(12), 0);
-            codeText.Text = "Read-only, with " + (Prefs.Get("GraphClientId", null) != null ? "the client ID set in Settings" : "Microsoft Graph Command Line Tools") + ". Needs DeviceManagementManagedDevices.Read.All.";
-            bCode = new FlatButton("Copy code and open the sign-in page", Glyphs.Copy);
-            bCode.Compact = true;
-            bCode.AutoWidth();
-            bCode.Margin = new Padding(0, Dpi.S(2), 0, 0);
-            bCode.Visible = false;
-            bCode.Click += Safe.Wrap(delegate { OpenSignIn(); });
-            themed.Add(bCode);
-            connect.Controls.Add(bSignIn);
+            codeText.Text = "Signed in to Intune, read-only.";
+            bSignIn = new FlatButton("Use another account", Glyphs.Shield);
+            bSignIn.Compact = true;
+            bSignIn.AutoWidth();
+            bSignIn.Margin = new Padding(0, Dpi.S(2), 0, 0);
+            bSignIn.Click += Safe.Wrap(delegate { SwitchAccount(); });
+            themed.Add(bSignIn);
             connect.Controls.Add(codeText);
-            connect.Controls.Add(bCode);
+            connect.Controls.Add(bSignIn);
         }
 
         void BuildSccm()
@@ -290,6 +302,18 @@ namespace TrackVice
             if (IsHandleCreated) Draw.TitleBar(Handle, t);
         }
 
+        // Shows a state of the sign-in panel without signing in, for screenshots.
+        public void PreviewSignIn(string state)
+        {
+            if (signIn == null) return;
+            auto.Stop();
+            Catalog = null;
+            ShowSignIn(true);
+            if (state == "code") { signIn.ShowCode("GG9PRR88C", "https://login.microsoft.com/device", DateTime.UtcNow.AddMinutes(15)); signIn.Opened(true, true); }
+            else if (state == "error") signIn.ShowError(SignInHelp("AADSTS65001: The user or administrator has not consented to use the application."));
+            else signIn.Show(SignInPanel.Start);
+        }
+
         void Status(string s)
         {
             status.Text = s;
@@ -303,37 +327,66 @@ namespace TrackVice
 
         // ---------- Intune ----------
 
+        void ShowSignIn(bool show)
+        {
+            if (signIn == null) return;
+            signIn.Visible = show;
+            connect.Visible = !show;
+            bar.Visible = !show;
+            if (show) signIn.BringToFront();
+        }
+
+        // Back to the sign-in panel, to sign in with a different account.
+        void SwitchAccount()
+        {
+            if (isDemo) return;
+            auto.Stop();
+            Catalog = null;
+            Graph = null;
+            all = new List<RemoteDeployment>();
+            Bind();
+            signIn.Show(SignInPanel.Start);
+            ShowSignIn(true);
+            Status("");
+        }
+
+        void CancelSignIn()
+        {
+            if (attempt != null) attempt.Set();
+            code = null;
+            signIn.Show(SignInPanel.Start);
+            Status("");
+        }
+
+        // Gets a code, copies it and opens the sign-in page, then waits until the person has signed in.
         void SignIn()
         {
-            if (Graph == null || Graph.SignedIn) Graph = new GraphClient(Prefs.Get("GraphClientId", null), Prefs.Get("GraphTenant", null));
+            Graph = new GraphClient(Prefs.Get("GraphClientId", null), Prefs.Get("GraphTenant", null));
             GraphClient g = Graph;
-            bSignIn.Enabled = false;
-            Status("Getting a sign-in code…");
+            ManualResetEvent mine = new ManualResetEvent(false);
+            attempt = mine;
+            signIn.Show(SignInPanel.Working);
+            Status("");
             Thread th = new Thread(delegate ()
             {
                 try
                 {
                     DeviceCode d = g.Start();
+                    if (mine.WaitOne(0)) return;
                     Ui(delegate
                     {
+                        if (attempt != mine || mine.WaitOne(0)) return;
                         code = d;
-                        codeText.Text = "Code " + d.UserCode + ": open " + d.VerificationUri + " and sign in with an account that can read Intune devices.";
-                        codeText.Font = Fonts.UiSemibold;
-                        codeText.ForeColor = theme.Text;
-                        bCode.Visible = true;
-                        Status("Waiting for you to sign in. The code works for " + (d.ExpiresIn / 60) + " minutes.");
+                        signIn.ShowCode(d.UserCode, d.VerificationUri, DateTime.UtcNow.AddSeconds(d.ExpiresIn));
+                        OpenSignIn();
                     });
-                    g.Wait(d, cancel);
+                    g.Wait(d, mine);
                     Ui(delegate
                     {
+                        if (attempt != mine) return;
                         Catalog = new IntuneCatalog(g);
-                        codeText.Font = Fonts.Ui;
-                        bCode.Visible = false;
-                        bSignIn.Text = "Sign in again";
-                        bSignIn.Primary = false;
-                        bSignIn.AutoWidth();
-                        bSignIn.Enabled = true;
-                        bSignIn.ApplyTheme(theme);
+                        codeText.Text = string.IsNullOrEmpty(g.Account) ? "Signed in to Intune, read-only." : "Signed in as " + g.Account + ", read-only.";
+                        ShowSignIn(false);
                         Connected();
                     });
                 }
@@ -342,10 +395,8 @@ namespace TrackVice
                 {
                     Ui(delegate
                     {
-                        bSignIn.Enabled = true;
-                        bCode.Visible = false;
-                        codeText.Font = Fonts.Ui;
-                        Status("Sign-in failed: " + ex.Message);
+                        if (attempt != mine) return;
+                        signIn.ShowError(SignInHelp(ex.Message));
                     });
                 }
             });
@@ -353,13 +404,28 @@ namespace TrackVice
             th.Start();
         }
 
+        // Says what to do about the sign-in errors people actually meet.
+        static string SignInHelp(string m)
+        {
+            m = (m ?? "").Trim();
+            string low = m.ToLowerInvariant();
+            if (low.Contains("aadsts65001") || low.Contains("consent") || low.Contains("aadsts90094"))
+                return "Your organization has not approved this yet. An administrator has to consent to DeviceManagementManagedDevices.Read.All for Microsoft Graph Command Line Tools, or for your own app set in Settings.\n\n" + m;
+            if (low.Contains("expired")) return "The code expired before the sign-in was finished. Try again: you get a new code.";
+            if (low.Contains("declined") || low.Contains("access_denied")) return "The sign-in was cancelled or declined in the browser.";
+            if (low.Contains("could not reach")) return "TrackVice could not reach Microsoft's sign-in service. Check the internet connection and any proxy.\n\n" + m;
+            if (low.Contains("aadsts50059") || low.Contains("aadsts90002") || low.Contains("tenant")) return "The tenant in Settings was not found. Clear it to sign in to the tenant of your account.\n\n" + m;
+            return m;
+        }
+
         void OpenSignIn()
         {
             if (code == null) return;
-            Menus.Copy(code.UserCode);
+            bool copied = Menus.Copy(code.UserCode);
+            bool opened = true;
             try { Process.Start(code.VerificationUri); }
-            catch (Exception) { }
-            Status("The code " + code.UserCode + " is on the clipboard. Paste it on the sign-in page.");
+            catch (Exception) { opened = false; }
+            signIn.Opened(opened, copied);
         }
 
         // ---------- SCCM ----------
@@ -504,6 +570,215 @@ namespace TrackVice
             if (keyData == Keys.F5) { Safe.Run(LoadList); return true; }
             if (keyData == Keys.Enter && table.Grid.Focused) { Safe.Run(Pick); return true; }
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+    }
+
+    // The sign-in for Intune, in the middle of the list: one button to start, then the code, large, with what to do next.
+    public sealed class SignInPanel : FlatControl
+    {
+        public const int Start = 0, Working = 1, Code = 2, Error = 3;
+        public readonly FlatButton Main = new FlatButton("Sign in with Microsoft", Glyphs.Shield);
+        public readonly FlatButton Copy = new FlatButton("Copy the code", Glyphs.Copy);
+        public readonly FlatButton Open = new FlatButton("Open the sign-in page", null);
+        public readonly FlatButton Cancel = new FlatButton("Cancel", null);
+        int mode;
+        string code = "", url = "", error = "", hint = "";
+        DateTime expires, copiedAt;
+        float spin;
+        readonly System.Windows.Forms.Timer anim = new System.Windows.Forms.Timer();
+        Font codeFont;
+
+        public SignInPanel()
+        {
+            Main.Primary = true;
+            Main.Height = Dpi.S(38);
+            Main.Width += Dpi.S(24);
+            Copy.Primary = true;
+            foreach (FlatButton b in new FlatButton[] { Main, Copy, Open, Cancel }) Controls.Add(b);
+            anim.Interval = 60;
+            anim.Tick += delegate
+            {
+                spin = (spin + 14) % 360;
+                if (Visible && (mode == Working || mode == Code)) Invalidate();
+            };
+            anim.Start();
+            Show(Start);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) { anim.Dispose(); if (codeFont != null) codeFont.Dispose(); }
+            base.Dispose(disposing);
+        }
+
+        public override void ApplyTheme(Theme t)
+        {
+            base.ApplyTheme(t);
+            BackColor = t.Card;
+            foreach (Control c in Controls) { IThemed x = c as IThemed; if (x != null) x.ApplyTheme(t); }
+        }
+
+        public void Show(int m)
+        {
+            mode = m;
+            Main.Text = m == Error ? "Try again" : "Sign in with Microsoft";
+            Main.AutoWidth();
+            Main.Width += Dpi.S(24);
+            Main.Visible = m == Start || m == Error;
+            Copy.Visible = Open.Visible = m == Code;
+            Cancel.Visible = m == Code || m == Working;
+            Place();
+            Invalidate();
+        }
+
+        public void ShowCode(string userCode, string page, DateTime expiresUtc)
+        {
+            code = userCode ?? "";
+            url = page ?? "";
+            expires = expiresUtc;
+            hint = "";
+            Show(Code);
+        }
+
+        public void ShowError(string message)
+        {
+            error = message ?? "";
+            Show(Error);
+        }
+
+        // After the code was copied and the page opened (or not).
+        public void Opened(bool opened, bool copied)
+        {
+            if (opened && copied) hint = "Your browser has opened the sign-in page, and the code is copied. Paste it there with Ctrl+V and sign in.";
+            else if (opened) hint = "Your browser has opened the sign-in page. Type the code there and sign in.";
+            else hint = "Open " + url + " in a browser, enter the code and sign in.";
+            if (copied) copiedAt = DateTime.UtcNow;
+            Place();
+            Invalidate();
+        }
+
+        public void Copied()
+        {
+            copiedAt = DateTime.UtcNow;
+            Invalidate();
+        }
+
+        int ColW
+        {
+            get { return Math.Min(Dpi.S(560), Math.Max(Dpi.S(240), Width - Dpi.S(48))); }
+        }
+
+        Font CodeFont
+        {
+            get
+            {
+                if (codeFont == null) codeFont = new Font(Fonts.Mono.FontFamily, 26f, FontStyle.Bold);
+                return codeFont;
+            }
+        }
+
+        string Lead
+        {
+            get
+            {
+                if (mode == Code) return hint.Length > 0 ? hint : "Enter this code on the sign-in page.";
+                if (mode == Working) return "Getting a sign-in code from Microsoft\u2026";
+                if (mode == Error) return error;
+                return "TrackVice reads the Autopilot deployment status from Intune. It is read-only: it cannot change devices, apps or policies. The sign-in is kept in memory and never saved.";
+            }
+        }
+
+        string Heading
+        {
+            get { return mode == Code ? "Enter this code to sign in" : mode == Error ? "The sign-in did not work" : mode == Working ? "One moment" : "Sign in to see Autopilot deployments"; }
+        }
+
+        const string Small1 = "Use an account that can read devices in Intune. The first time, your organization may ask an administrator to approve read access (DeviceManagementManagedDevices.Read.All).";
+
+        // Heights of the parts, so painting and button placement agree.
+        void Measure(out int top, out int leadH, out int codeY, out int buttonsY, out int footY)
+        {
+            int w = ColW;
+            leadH = Draw.WrapHeight(Lead, Fonts.Ui, w);
+            int markH = mode == Code || mode == Working ? 0 : Dpi.S(56) + Dpi.S(14);
+            int headH = Fonts.Title.Height + Dpi.S(8);
+            int codeH = mode == Code ? Dpi.S(76) + Dpi.S(18) : 0;
+            int btnH = mode == Working ? 0 : Dpi.S(38) + Dpi.S(18);
+            int footH = mode == Start ? Draw.WrapHeight(Small1, Fonts.Small, w) : mode == Code || mode == Working ? Dpi.S(56) : 0;
+            int total = markH + headH + leadH + Dpi.S(18) + codeH + btnH + footH;
+            top = Math.Max(Dpi.S(16), (Height - total) / 2);
+            int y = top + markH + headH + leadH + Dpi.S(18);
+            codeY = y;
+            y += codeH;
+            buttonsY = y;
+            y += btnH;
+            footY = y;
+        }
+
+        void Place()
+        {
+            if (Width <= 0) return;
+            int top, leadH, codeY, buttonsY, footY;
+            Measure(out top, out leadH, out codeY, out buttonsY, out footY);
+            int cx = Width / 2;
+            if (mode == Start || mode == Error) Main.Location = new Point(cx - Main.Width / 2, buttonsY);
+            if (mode == Code)
+            {
+                int gap = Dpi.S(10), w = Copy.Width + gap + Open.Width;
+                Copy.Location = new Point(cx - w / 2, buttonsY + Dpi.S(3));
+                Open.Location = new Point(Copy.Right + gap, buttonsY + Dpi.S(3));
+            }
+            if (mode == Code || mode == Working) Cancel.Location = new Point(cx - Cancel.Width / 2, footY + Dpi.S(28));
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            Place();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.Clear(T.Card);
+            int top, leadH, codeY, buttonsY, footY;
+            Measure(out top, out leadH, out codeY, out buttonsY, out footY);
+            int w = ColW, x = (Width - w) / 2, y = top;
+            TextFormatFlags center = TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+            if (mode == Start || mode == Error)
+            {
+                int m = Dpi.S(56);
+                Draw.Mark(g, new RectangleF(Width / 2f - m / 2f, y, m, m));
+                y += m + Dpi.S(14);
+            }
+            TextRenderer.DrawText(g, Heading, Fonts.Title, new Rectangle(x, y, w, Fonts.Title.Height + 2), mode == Error ? T.ErrFg : T.Text, center);
+            y += Fonts.Title.Height + Dpi.S(8);
+            TextRenderer.DrawText(g, Lead, Fonts.Ui, new Rectangle(x, y, w, leadH + 2), T.Text2, center | TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+            if (mode == Code)
+            {
+                Size cs = TextRenderer.MeasureText(code, CodeFont, Size.Empty, TextFormatFlags.NoPadding);
+                int bw = Math.Min(w, cs.Width + Dpi.S(72)), bh = Dpi.S(76);
+                RectangleF box = new RectangleF(Width / 2f - bw / 2f, codeY, bw, bh);
+                Shapes.Fill(g, box, Dpi.S(10), T.AccentSoft);
+                Shapes.Stroke(g, box, Dpi.S(10), T.Accent, 1.5f);
+                TextRenderer.DrawText(g, code, CodeFont, Rectangle.Round(box), T.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+            }
+            if (mode == Start) TextRenderer.DrawText(g, Small1, Fonts.Small, new Rectangle(x, footY, w, Height - footY), T.Text3, center | TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+            if (mode == Code || mode == Working)
+            {
+                string wait;
+                if (mode == Working) wait = "Contacting Microsoft";
+                else
+                {
+                    double left = (expires - DateTime.UtcNow).TotalMinutes;
+                    wait = (DateTime.UtcNow - copiedAt).TotalSeconds < 4 ? "Code copied" : "Waiting for you to sign in \u00b7 the code works for " + Math.Max(1, (int)Math.Ceiling(left)) + " more min";
+                }
+                Size ws = TextRenderer.MeasureText(wait, Fonts.Ui, Size.Empty, TextFormatFlags.NoPadding);
+                int ic = Dpi.S(16), tw = ic + Dpi.S(8) + ws.Width, sx = Width / 2 - tw / 2;
+                int sy = mode == Working ? buttonsY : footY;
+                StateLook.Icon(g, State.Installing, new RectangleF(sx, sy + 1, ic, ic), T, spin);
+                TextRenderer.DrawText(g, wait, Fonts.Ui, new Point(sx + ic + Dpi.S(8), sy), T.Text3, TextFormatFlags.NoPadding);
+            }
         }
     }
 }

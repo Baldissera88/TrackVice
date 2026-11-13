@@ -10,6 +10,7 @@
 - Settings: the client ID and tenant for the Intune sign-in.
 - Fixed: columns set to share the remaining width did not, in the timeline and findings tables.
 - Demos of both lists, with made-up devices.
+- The Intune sign-in is one button: it gets the code, copies it and opens the sign-in page, shows the code large while it waits, and explains the common sign-in errors.
 
 ## TrackVice 0.0.2
 
