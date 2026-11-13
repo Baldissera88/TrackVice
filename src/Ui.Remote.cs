@@ -14,6 +14,8 @@ namespace TrackVice
         public IRemoteCatalog Catalog;
         public RemoteDeployment Picked;
         public GraphClient Graph;
+        // Opened only to sign in: the dialog closes as soon as that is done.
+        public bool NamesOnly;
 
         Theme theme;
         readonly ManualResetEvent cancel = new ManualResetEvent(false);
@@ -369,6 +371,7 @@ namespace TrackVice
         void SignIn()
         {
             Graph = new GraphClient(Prefs.Get("GraphClientId", null), Prefs.Get("GraphTenant", null));
+            if (Prefs.Get("IntuneNames", "0") == "1") Graph.Scopes += " " + GraphClient.ScriptScope;
             GraphClient g = Graph;
             ManualResetEvent mine = new ManualResetEvent(false);
             attempt = mine;
@@ -561,6 +564,7 @@ namespace TrackVice
 
         void Connected()
         {
+            if (NamesOnly) { Close(); return; }
             table.EmptyText = "No deployments in this period.";
             auto.Interval = Math.Max(15, Catalog.RefreshSeconds) * 1000;
             auto.Start();

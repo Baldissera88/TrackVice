@@ -49,6 +49,32 @@ namespace TrackVice
         int PollMs { get; }
     }
 
+    // Names that are only in Intune: a device knows its platform scripts by ID alone.
+    public static class IntuneNames
+    {
+        public const string ScriptsUrl = "https://graph.microsoft.com/beta/deviceManagement/deviceManagementScripts?$select=id,displayName";
+
+        public static Dictionary<string, string> Scripts(IGraph g)
+        {
+            Dictionary<string, string> names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string url = ScriptsUrl;
+            for (int page = 0; page < 50 && url != null; page++)
+            {
+                Dictionary<string, object> r = g.Get(url);
+                List<object> list = ImeJson.Get(r, "value") as List<object>;
+                if (list != null)
+                    foreach (object o in list)
+                    {
+                        Dictionary<string, object> d = o as Dictionary<string, object>;
+                        string id = Http.Str(d, "id"), name = Http.Str(d, "displayName");
+                        if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name)) names[id] = name;
+                    }
+                url = Http.Str(r, "@odata.nextLink");
+            }
+            return names;
+        }
+    }
+
     // Turns snapshots of states into observations, so a state read again unchanged adds nothing to the timeline.
     public sealed class SnapshotDiff
     {
@@ -98,6 +124,14 @@ namespace TrackVice
         // Microsoft Graph Command Line Tools, the app Microsoft Graph PowerShell signs in with.
         public const string DefaultClientId = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
         public const string Scope = "https://graph.microsoft.com/DeviceManagementManagedDevices.Read.All";
+        // Reading the names of platform scripts needs a permission of its own.
+        public const string ScriptScope = "https://graph.microsoft.com/DeviceManagementScripts.Read.All";
+        public string Scopes = Scope;
+
+        public bool CanReadScripts
+        {
+            get { return Scopes.IndexOf(ScriptScope, StringComparison.OrdinalIgnoreCase) >= 0; }
+        }
 
         public readonly string ClientId;
         public readonly string Tenant;
@@ -130,7 +164,7 @@ namespace TrackVice
 
         public DeviceCode Start()
         {
-            Dictionary<string, object> r = Http.Post(Authority + "devicecode", "client_id=" + Uri.EscapeDataString(ClientId) + "&scope=" + Uri.EscapeDataString(Scope + " offline_access"));
+            Dictionary<string, object> r = Http.Post(Authority + "devicecode", "client_id=" + Uri.EscapeDataString(ClientId) + "&scope=" + Uri.EscapeDataString(Scopes + " offline_access"));
             string err = Http.Str(r, "error_description") ?? Http.Str(r, "error");
             if (err != null) throw new GraphException(err);
             DeviceCode d = new DeviceCode();
@@ -203,7 +237,7 @@ namespace TrackVice
             lock (gate) rt = refresh;
             if (rt == null) throw new GraphException("The sign-in has expired. Sign in again.");
             Dictionary<string, object> r = Http.Post(Authority + "token",
-                "grant_type=refresh_token&client_id=" + Uri.EscapeDataString(ClientId) + "&refresh_token=" + Uri.EscapeDataString(rt) + "&scope=" + Uri.EscapeDataString(Scope + " offline_access"));
+                "grant_type=refresh_token&client_id=" + Uri.EscapeDataString(ClientId) + "&refresh_token=" + Uri.EscapeDataString(rt) + "&scope=" + Uri.EscapeDataString(Scopes + " offline_access"));
             if (!Take(r)) throw new GraphException("The sign-in has expired. Sign in again. (" + (Http.Str(r, "error_description") ?? Http.Str(r, "error") ?? "no token") + ")");
         }
 

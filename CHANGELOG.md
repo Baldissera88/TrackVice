@@ -1,5 +1,12 @@
 # Changelog
 
+## TrackVice 0.0.9
+
+13 November 2026.
+
+- Devices > Get script names from Intune: platform scripts show their name from Intune instead of the start of their ID. It signs in with one more read permission, DeviceManagementScripts.Read.All, and only when you ask for it. After that, the names are read at every Intune sign-in and kept while a device uploads again.
+- Fixed: the Policies group could show a duration of over a year. It counted policies the Windows image set before the device was enrolled. Only policies from the device's own MDM enrollments count now.
+
 ## TrackVice 0.0.8
 
 13 November 2026.
