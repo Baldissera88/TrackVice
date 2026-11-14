@@ -372,7 +372,7 @@ namespace TrackVice
         void SignIn()
         {
             Graph = new GraphClient(Prefs.Get("GraphClientId", null), Prefs.Get("GraphTenant", null));
-            if (Prefs.Get("IntuneNames", "0") == "1") Graph.Scopes += " " + GraphClient.ScriptScope;
+            Graph.Scopes += NamesDialog.ExtraScopes();
             GraphClient g = Graph;
             ManualResetEvent mine = new ManualResetEvent(false);
             attempt = mine;
