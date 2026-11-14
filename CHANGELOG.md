@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.0.4
+
+14 November 2026.
+
+- Fixed: the ESP steps of account setup showed as done as soon as they started. Windows counts each step's time while it runs, so a step is now running while its count still goes on, and done when it stops.
+
 ## TrackVice 1.0.3
 
 14 November 2026.
