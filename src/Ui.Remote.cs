@@ -199,7 +199,8 @@ namespace TrackVice
             };
             if (demo)
             {
-                foreach (Control c in connect.Controls) c.Enabled = false;
+                // The hint on what to enter gives way to the demo note, so the row fits.
+                foreach (Control c in connect.Controls) { c.Enabled = false; if ("quiet".Equals(c.Tag)) c.Visible = false; }
                 Label note = new Label();
                 note.AutoSize = true;
                 note.Margin = new Padding(Dpi.S(12), Dpi.S(9), 0, 0);
