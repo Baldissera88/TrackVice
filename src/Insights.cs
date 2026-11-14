@@ -73,9 +73,10 @@ namespace TrackVice
             get { return Timed == 0 ? 0 : TotalSeconds / Timed; }
         }
 
+        // Out of the devices where it has finished, so devices still working on it do not lower the rate.
         public double FailRate
         {
-            get { return Devices == 0 ? 0 : Failed * 100.0 / Devices; }
+            get { return Done + Failed == 0 ? 0 : Failed * 100.0 / (Done + Failed); }
         }
     }
 
@@ -84,8 +85,14 @@ namespace TrackVice
     {
         public string Computer, Kind, Profile, Slowest, Key;
         public DateTime? StartUtc, EndUtc;
-        public int Items, Done, Failed, Running;
+        public int Items, Done, Failed, Running, Waiting;
         public double Seconds, SlowestSeconds;
+
+        // Nothing runs and nothing waits any more.
+        public bool Finished
+        {
+            get { return Items > 0 && Running == 0 && Waiting == 0 && Seconds > 0; }
+        }
     }
 
     public sealed class FleetStats
@@ -95,10 +102,17 @@ namespace TrackVice
         public double AvgSeconds, MedianSeconds, LongestSeconds;
         public int Finished, WithFailures;
 
-        // Policies arrive in an instant and say nothing about time, so they are left out of the timing.
+        // Policies and profiles arrive in an instant and say nothing about time, so they are left out.
         static bool Timed(Item i)
         {
-            return i.PhaseKey != Phases.Policies && i.Key != SccmFeed.RunKey;
+            return i.PhaseKey != Phases.Policies && i.Kind != Kinds.Policy && i.Kind != Kinds.Profile && i.Key != SccmFeed.RunKey;
+        }
+
+        // Only items that ran to an end count towards the times. Skipped and not applicable ones did not run.
+        static bool Ran(Item i)
+        {
+            State st = i.State;
+            return st == State.Succeeded || st == State.Failed || (st == State.WaitingReboot && i.EndUtc.HasValue);
         }
 
         public static FleetRun RunOf(Session s, DateTime nowUtc)
@@ -115,6 +129,7 @@ namespace TrackVice
                 if (States.IsComplete(i.State)) r.Done++;
                 if (i.State == State.Failed) r.Failed++;
                 if (States.IsActive(i.State)) r.Running++;
+                if (i.State == State.Pending) r.Waiting++;
                 DateTime a = i.StartUtc ?? i.FirstUtc;
                 DateTime b = i.EndUtc ?? (States.IsFinal(i.State) ? i.LastUtc : (s.ClockUtc.Year > 2000 ? s.ClockUtc : nowUtc));
                 if (a.Year < 2001) continue;
@@ -135,15 +150,25 @@ namespace TrackVice
 
         public static FleetStats Build(IEnumerable<Session> sessions, DateTime nowUtc)
         {
+            return Build(sessions, null, nowUtc);
+        }
+
+        // keys, when given, holds the upload name of each session in the same order, kept on its run.
+        public static FleetStats Build(IEnumerable<Session> sessions, IList<string> keys, DateTime nowUtc)
+        {
             FleetStats st = new FleetStats();
             Dictionary<string, FleetItem> byName = new Dictionary<string, FleetItem>(StringComparer.OrdinalIgnoreCase);
             List<double> totals = new List<double>();
+            int n = 0;
             foreach (Session s in sessions)
             {
+                if (s == null) { n++; continue; }
                 FleetRun run = RunOf(s, nowUtc);
+                if (keys != null && n < keys.Count) run.Key = keys[n];
+                n++;
                 st.Runs.Add(run);
                 if (run.Failed > 0) st.WithFailures++;
-                if (run.Running == 0 && run.Items > 0 && run.Seconds > 0)
+                if (run.Finished)
                 {
                     st.Finished++;
                     totals.Add(run.Seconds);
@@ -171,19 +196,23 @@ namespace TrackVice
                     }
                     else if (States.IsComplete(i.State)) f.Done++;
                     else if (States.IsActive(i.State)) f.Running++;
-                    if (!States.IsFinal(i.State)) continue;
+                    if (!Ran(i)) continue;
                     TimeSpan? d = i.Duration(nowUtc);
                     if (!d.HasValue) continue;
                     f.Timed++;
                     f.TotalSeconds += d.Value.TotalSeconds;
-                    if (d.Value.TotalSeconds >= f.MaxSeconds)
+                    if (f.SlowestOn == null || d.Value.TotalSeconds > f.MaxSeconds)
                     {
                         f.MaxSeconds = d.Value.TotalSeconds;
                         f.SlowestOn = s.Computer;
                     }
                 }
             }
-            st.Items.Sort(delegate (FleetItem a, FleetItem b) { return b.AvgSeconds.CompareTo(a.AvgSeconds); });
+            st.Items.Sort(delegate (FleetItem a, FleetItem b)
+            {
+                int c = b.AvgSeconds.CompareTo(a.AvgSeconds);
+                return c != 0 ? c : string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            });
             st.Runs.Sort(delegate (FleetRun a, FleetRun b) { return (b.StartUtc ?? DateTime.MinValue).CompareTo(a.StartUtc ?? DateTime.MinValue); });
             if (totals.Count > 0)
             {
@@ -197,19 +226,42 @@ namespace TrackVice
             return st;
         }
 
+        // The apps, scripts and steps, one per line.
         public string ToCsv()
         {
-            StringBuilder b = new StringBuilder("Name;Kind;Devices;Done;Failed;Fail rate %;Average s;Longest s;Slowest on\r\n");
+            StringBuilder b = new StringBuilder("Name,Kind,Devices,Done,Failed,Fail rate %,Average s,Longest s,Slowest on\r\n");
             foreach (FleetItem f in Items)
-                b.Append(Q(f.Name)).Append(';').Append(Q(f.Kind)).Append(';').Append(f.Devices).Append(';').Append(f.Done).Append(';').Append(f.Failed).Append(';')
-                    .Append(f.FailRate.ToString("0.#", CultureInfo.InvariantCulture)).Append(';').Append(f.AvgSeconds.ToString("0", CultureInfo.InvariantCulture)).Append(';')
-                    .Append(f.MaxSeconds.ToString("0", CultureInfo.InvariantCulture)).Append(';').Append(Q(f.SlowestOn)).Append("\r\n");
+                b.Append(Q(f.Name)).Append(',').Append(Q(f.Kind)).Append(',').Append(f.Devices).Append(',').Append(f.Done).Append(',').Append(f.Failed).Append(',')
+                    .Append(N(f.FailRate, "0.#")).Append(',').Append(N(f.AvgSeconds, "0")).Append(',')
+                    .Append(N(f.MaxSeconds, "0")).Append(',').Append(Q(f.SlowestOn)).Append("\r\n");
             return b.ToString();
+        }
+
+        // The enrollments, one per line. Times are UTC.
+        public string RunsToCsv()
+        {
+            StringBuilder b = new StringBuilder("Device,Deployment,Profile,Started (UTC),Ended (UTC),Duration s,Finished,Items,Done,Failed,Slowest part,Slowest part s\r\n");
+            foreach (FleetRun r in Runs)
+                b.Append(Q(r.Computer)).Append(',').Append(Q(r.Kind)).Append(',').Append(Q(r.Profile)).Append(',')
+                    .Append(Q(r.StartUtc.HasValue ? r.StartUtc.Value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : "")).Append(',')
+                    .Append(Q(r.EndUtc.HasValue ? r.EndUtc.Value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : "")).Append(',')
+                    .Append(N(r.Seconds, "0")).Append(',').Append(r.Finished ? "Yes" : "No").Append(',')
+                    .Append(r.Items).Append(',').Append(r.Done).Append(',').Append(r.Failed).Append(',')
+                    .Append(Q(r.Slowest)).Append(',').Append(N(r.SlowestSeconds, "0")).Append("\r\n");
+            return b.ToString();
+        }
+
+        static string N(double v, string format)
+        {
+            return v.ToString(format, CultureInfo.InvariantCulture);
         }
 
         static string Q(string s)
         {
-            return "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
+            s = s ?? "";
+            // Keep spreadsheets from running a value as a formula.
+            if (s.Length > 0 && "=+-@".IndexOf(s[0]) >= 0) s = "'" + s;
+            return "\"" + s.Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ") + "\"";
         }
     }
 
