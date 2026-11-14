@@ -533,6 +533,9 @@ namespace TrackVice
         public int UploadSeconds = 10;
         public int HeartbeatSeconds = 30;
         public bool Once;
+        public string Alert;
+        public bool AlertTest;
+        public bool Mask = true;
     }
 
     // Runs on the device while it deploys: reads it like the window does, and uploads the session as it changes.
@@ -579,7 +582,7 @@ namespace TrackVice
             try
             {
                 s.SavedUtc = nowUtc;
-                store.Put(AgentData.BlobName(id), AgentData.Pack(s), AgentData.Summary(s, nowUtc, idle));
+                store.Put(AgentData.BlobName(id), AgentData.Pack(o.Mask ? Secrets.MaskedCopy(s) : s), AgentData.Summary(s, nowUtc, idle));
                 lastUpload = nowUtc;
                 Uploads++;
                 LastError = null;
@@ -661,12 +664,28 @@ namespace TrackVice
                 DateTime t;
                 if (installed && DateTime.TryParse(Reg("StartedUtc"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out t)) started = t;
                 else if (installed) SetReg("StartedUtc", started.ToString("o", CultureInfo.InvariantCulture));
+                if (installed && o.Alert == null) o.Alert = Reg("Alert");
+                if (installed && Reg("Mask") == "0") o.Mask = false;
                 int keep;
                 if (installed && int.TryParse(Reg("KeepHours"), NumberStyles.Integer, CultureInfo.InvariantCulture, out keep) && keep > 0) o.KeepHours = keep;
                 DateTime until = started.AddHours(o.KeepHours);
                 Log("Agent " + Program.Version + " started, session " + sid + ", uploading to " + store.Title + " until " + until.ToString("u", CultureInfo.InvariantCulture));
 
                 Agent a = new Agent(store, sid, DateTime.UtcNow);
+                AgentAlerts alerts = null;
+                if (!string.IsNullOrWhiteSpace(o.Alert))
+                {
+                    string problem = AlertSender.Problem(o.Alert);
+                    if (problem != null) Log("Alerts are off: " + problem);
+                    else
+                    {
+                        string url = o.Alert.Trim();
+                        alerts = new AgentAlerts(installed ? AgentAlerts.StatePath(InstallDir) : null, sid, started.AddHours(-2), delegate (Alert x) { AlertSender.Send(url, x); }, Log);
+                        alerts.Mask = o.Mask;
+                    }
+                }
+                bool mask = o.Mask;
+                LogUploads logs = new LogUploads(store, AgentData.BlobName(sid), delegate (Session x) { return LogBundle.Make(mask ? Secrets.MaskedCopy(x) : x); }, Log);
                 string shownError = null;
                 // Everything since Windows was installed: after a restart the session is read again in full.
                 using (Engine e = Engine.ForLive(0, true, true, 2000))
@@ -683,6 +702,9 @@ namespace TrackVice
                             shownError = a.LastError;
                             Log(shownError != null ? "Upload failed: " + shownError : "Upload works again.");
                         }
+                        bool idle = a.Idle(e.S, now, o.IdleMinutes);
+                        if (alerts != null) alerts.Cycle(e.S, idle, now);
+                        logs.Cycle(e.S, idle, last, now);
                         if (last) break;
                         Thread.Sleep(a.Idle(e.S, now, o.IdleMinutes) ? 15000 : 2000);
                     }
@@ -703,6 +725,7 @@ namespace TrackVice
         public static int Install(AgentOptions o, string exePath)
         {
             if (string.IsNullOrWhiteSpace(o.Upload)) throw new ArgumentException("Give the upload location: /agent-install /upload <SAS link or folder>");
+            if (o.Alert != null && AlertSender.Problem(o.Alert) != null) throw new ArgumentException(AlertSender.Problem(o.Alert));
             if (!Program.IsAdmin) throw new UnauthorizedAccessException("Installing the agent needs administrator rights.");
             Stores.Open(o.Upload);
             string dir = InstallDir;
@@ -734,7 +757,12 @@ namespace TrackVice
                 k.SetValue("Version", Program.Version);
                 k.DeleteValue("SessionId", false);
                 k.DeleteValue("StartedUtc", false);
+                if (!string.IsNullOrWhiteSpace(o.Alert)) k.SetValue("Alert", o.Alert.Trim());
+                else k.DeleteValue("Alert", false);
+                if (!o.Mask) k.SetValue("Mask", "0");
+                else k.DeleteValue("Mask", false);
             }
+            try { File.Delete(AgentAlerts.StatePath(dir)); } catch (Exception) { }
             string xml = Path.Combine(dir, "task.xml");
             File.WriteAllText(xml, TaskXml(target), Encoding.Unicode);
             try

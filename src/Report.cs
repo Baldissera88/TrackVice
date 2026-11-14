@@ -149,7 +149,23 @@ namespace TrackVice
         }
 
         // A zip with the session and the log files its evidence points to, for sending to someone else.
+        // Logs that are worth having even when the session did not point at them: every IME log, and the task sequence logs.
+        public static readonly string[][] ExtraLogs =
+        {
+            new string[] { @"C:\ProgramData\Microsoft\IntuneManagementExtension\Logs", "*.log" },
+            new string[] { @"C:\Windows\CCM\Logs", "smsts*.log" },
+            new string[] { @"X:\Windows\Temp\SMSTSLog", "*.log" },
+        };
+
+        // A log above this size goes into the bundle as its last part, which holds the newest lines.
+        public const long MaxLogBytes = 20L * 1024 * 1024;
+
         public static int Bundle(Session s, string zipPath)
+        {
+            return Bundle(s, zipPath, ExtraLogs);
+        }
+
+        public static int Bundle(Session s, string zipPath, string[][] extra)
         {
             string tmp = Path.Combine(Path.GetTempPath(), "TrackVice-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tmp);
@@ -159,6 +175,16 @@ namespace TrackVice
                 s.Save(Path.Combine(tmp, "session.json"));
                 HashSet<string> logs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (TEvent e in s.Events) if (e.Evidence != null && e.Evidence.IsLogFile) logs.Add(e.Evidence.Path);
+                if (extra != null)
+                    foreach (string[] x in extra)
+                    {
+                        try
+                        {
+                            if (Directory.Exists(x[0]))
+                                foreach (string f in Directory.GetFiles(x[0], x[1])) logs.Add(Path.GetFullPath(f));
+                        }
+                        catch (Exception) { }
+                    }
                 foreach (string log in logs)
                 {
                     try
@@ -169,7 +195,11 @@ namespace TrackVice
                         int k = 2;
                         while (File.Exists(dest)) dest = Path.Combine(tmp, Path.GetFileNameWithoutExtension(name) + " (" + k++ + ")" + Path.GetExtension(name));
                         using (FileStream src = new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-                        using (FileStream dst = File.Create(dest)) src.CopyTo(dst);
+                        using (FileStream dst = File.Create(dest))
+                        {
+                            if (src.Length > MaxLogBytes) src.Seek(-MaxLogBytes, SeekOrigin.End);
+                            src.CopyTo(dst);
+                        }
                         files++;
                     }
                     catch (Exception) { }

@@ -14,46 +14,107 @@ namespace TrackVice
     // Hides passwords, keys and tokens in command lines, script output and log lines before a session leaves the device.
     public static class Secrets
     {
-        const string Names = @"\w*passw(?:or)?d\w*|\w*passwd|\w*pwd|\w*secret\w*|\w*token|api_?key|access_?key|license_?key|product_?key|pidkey|serial_?key|client_?secret|sig";
-        // name=value, name: value, with the value bare or quoted.
-        static readonly Regex RxPair = new Regex(@"(?<n>\b(?:" + Names + @"))(?<s>\s*[=:]\s*)(?<v>""[^""]*""|'[^']*'|[^\s""'&;,]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        const string Names = @"\w*passw(?:or)?d\w*|\w*passwd|\w*pwd|\w*secret\w*|\w*token|\w*api_?key|access_?key|account_?key|shared_?access_?key|license_?key|product_?key|pidkey|serial_?key|client_?secret|sig";
+        // name=value, name: value, "name": "value", with the value bare or quoted.
+        static readonly Regex RxPair = new Regex(@"(?<n>\b(?:" + Names + @"))(?<s>""?\s*[=:]\s*)(?<v>""[^""]*""|'[^']*'|[^\s""'&;,]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         // -Password value, --token value, /password value.
-        static readonly Regex RxSwitch = new Regex(@"(?<n>(?:--?|/)(?:" + Names + @"))(?<s>\s+)(?<v>""[^""]*""|'[^']*'|[^\s""'-/][^\s]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxSwitch = new Regex(@"(?<n>(?:(?<![\w-])--?|(?<![\w/])/)(?:" + Names + @"))(?<s>\s+)(?<v>""[^""]*""|'[^']*'|[^\s""'\-/][^\s]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // Authorization: Bearer eyJ..., Basic dXNlcjpwYXNz.
+        static readonly Regex RxBearer = new Regex(@"(?<n>\b(?i:Bearer|Basic))(?<s>\s+)(?<v>(?=[A-Za-z0-9\-._~+/]*[0-9+/.])[A-Za-z0-9\-._~+/]{12,}=*)", RegexOptions.Compiled);
+        // https://user:password@host
+        static readonly Regex RxUserInfo = new Regex(@"(?<n>\b[a-z][a-z0-9+.\-]*://[^\s/:@]+)(?<s>:)(?<v>[^\s/@]+)(?=@)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // ConvertTo-SecureString "text" -AsPlainText, and net user name password.
+        static readonly Regex RxSecure = new Regex(@"(?<n>ConvertTo-SecureString(?:\s+-String)?)(?<s>\s+)(?<v>""[^""]*""|'[^']*'|[^\s""'\-$][^\s]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxNetUser = new Regex(@"(?<n>\bnet(?:1|\.exe)?\s+user\s+(?:""[^""]+""|\S+))(?<s>\s+)(?<v>""[^""]*""|[^\s/""*][^\s]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // Settings about passwords and keys, such as PasswordExpirationDays, are not secrets themselves.
+        static readonly Regex RxSetting = new Regex(@"(?:Enabled|Disabled|Length|Complexity|History|Age|Expiration|Expiry|Expires|ExpirationDays|Required|Policy|Count|Type|Mode|Changed|Prompt|Hint|Lifetime|Url|Uri|Path|File|Name|Id)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxPlain = new Regex(@"^(?:\$\w[\w:]*|%\w+%|\$\{[^}]+\}|true|false|\$true|\$false|\$null|null|none|yes|no|\*+|<[^>]*>)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         public const string Hidden = "***";
+
+        static string Hide(Match m)
+        {
+            string n = m.Groups["n"].Value, v = m.Groups["v"].Value;
+            string bare = v.Trim('"', '\'');
+            if (bare.Length == 0 || bare == Hidden || RxPlain.IsMatch(bare)) return m.Value;
+            string word = n.TrimStart('-', '/');
+            if (RxSetting.IsMatch(word)) return m.Value;
+            string q = v.Length > 1 && (v[0] == '"' || v[0] == '\'') && v[v.Length - 1] == v[0] ? v.Substring(0, 1) : "";
+            return n + m.Groups["s"].Value + q + Hidden + q;
+        }
 
         public static string Mask(string s)
         {
             if (string.IsNullOrEmpty(s) || s.Length < 6) return s;
-            string r = RxPair.Replace(s, delegate (Match m) { return m.Groups["v"].Value == Hidden ? m.Value : m.Groups["n"].Value + m.Groups["s"].Value + Hidden; });
-            return RxSwitch.Replace(r, delegate (Match m) { return m.Groups["v"].Value == Hidden ? m.Value : m.Groups["n"].Value + m.Groups["s"].Value + Hidden; });
+            MatchEvaluator h = Hide;
+            string r = RxPair.Replace(s, h);
+            r = RxSwitch.Replace(r, h);
+            r = RxBearer.Replace(r, h);
+            r = RxUserInfo.Replace(r, h);
+            r = RxSecure.Replace(r, h);
+            r = RxNetUser.Replace(r, h);
+            return r == s ? s : r;
+        }
+
+        static int MaskPairs(List<Pair> list)
+        {
+            int n = 0;
+            if (list == null) return 0;
+            foreach (Pair p in list)
+            {
+                string m = Mask(p.Value);
+                if (m != p.Value) { p.Value = m; n++; }
+            }
+            return n;
+        }
+
+        static int MaskEvidence(Evidence e)
+        {
+            if (e == null) return 0;
+            string x = Mask(e.Text);
+            if (x == e.Text) return 0;
+            e.Text = x;
+            return 1;
         }
 
         // Masks every text of a session in place. Returns how many texts changed.
         public static int MaskSession(Session s)
         {
-            int n = 0;
+            int n = MaskPairs(s.Info);
+            for (int k = 0; k < s.Notes.Count; k++)
+            {
+                string m = Mask(s.Notes[k]);
+                if (m != s.Notes[k]) { s.Notes[k] = m; n++; }
+            }
             foreach (Item i in s.Items)
-                foreach (Pair p in i.Info)
+            {
+                n += MaskPairs(i.Info);
+                foreach (Attempt a in i.Attempts)
                 {
-                    string m = Mask(p.Value);
-                    if (!ReferenceEquals(m, p.Value) && m != p.Value) { p.Value = m; n++; }
+                    string c = Mask(a.Command);
+                    if (c != a.Command) { a.Command = c; n++; }
                 }
+            }
             foreach (TEvent e in s.Events)
             {
                 string t = Mask(e.Text);
                 if (t != e.Text) { e.Text = t; n++; }
-                if (e.Evidence != null)
-                {
-                    string x = Mask(e.Evidence.Text);
-                    if (x != e.Evidence.Text) { e.Evidence.Text = x; n++; }
-                }
+                n += MaskEvidence(e.Evidence);
             }
             foreach (Finding f in s.Findings)
             {
-                f.Message = Mask(f.Message);
-                if (f.Evidence != null) f.Evidence.Text = Mask(f.Evidence.Text);
+                string m = Mask(f.Message);
+                if (m != f.Message) { f.Message = m; n++; }
+                n += MaskEvidence(f.Evidence);
             }
             return n;
+        }
+
+        // A masked copy, so the session the agent keeps reading stays as it is.
+        public static Session MaskedCopy(Session s)
+        {
+            Session c = Session.FromJson(s.ToJson());
+            MaskSession(c);
+            return c;
         }
     }
 
@@ -363,6 +424,9 @@ namespace TrackVice
         readonly HashSet<string> sent = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool sawActive;
 
+        // Failures that ended before this time are history, not news: a device enrolled long ago has plenty.
+        public DateTime OlderIgnoredUtc = DateTime.MinValue;
+
         public AlertWatch(IEnumerable<string> alreadySent)
         {
             if (alreadySent != null) foreach (string k in alreadySent) sent.Add(k);
@@ -387,16 +451,48 @@ namespace TrackVice
             return a;
         }
 
-        // The alerts that are new since the last call.
+        // Titles such as "tried 3 times" or "no progress for 12 min" change as time passes, so an item's finding is known by its kind and item.
+        public static string KeyOf(Finding f)
+        {
+            return f.Kind + "|" + (string.IsNullOrEmpty(f.ItemKey) ? f.Title ?? "" : f.ItemKey);
+        }
+
+        // Only errors are sent: failed items, items not detected after install, a failed task sequence, the ESP time limit.
+        public static bool Worthy(Finding f)
+        {
+            return f.Severity >= 2 && f.Kind != FindingKinds.MdmErrors && f.Kind != FindingKinds.NoUploads;
+        }
+
+        DateTime When(Session s, Finding f)
+        {
+            Item i = string.IsNullOrEmpty(f.ItemKey) ? null : s.Find(f.ItemKey);
+            if (i != null)
+            {
+                DateTime t = i.EndUtc ?? i.LastUtc;
+                return t > f.TimeUtc ? t : f.TimeUtc;
+            }
+            return f.TimeUtc;
+        }
+
         public List<Alert> Check(Session s, bool idle)
+        {
+            return Check(s, idle, DateTime.UtcNow);
+        }
+
+        // The alerts that are new since the last call.
+        public List<Alert> Check(Session s, bool idle, DateTime nowUtc)
         {
             List<Alert> list = new List<Alert>();
             foreach (Finding f in s.Findings)
             {
-                if (f.Severity < 1 || f.Kind == FindingKinds.MdmErrors || f.Kind == FindingKinds.NoUploads) continue;
-                string key = f.Kind + "|" + (f.ItemKey ?? "") + "|" + f.Title;
-                if (!sent.Add(key)) continue;
-                Alert a = Make(s, key, f.Severity >= 2 ? "error" : "warning", s.Computer + ": " + f.Title, f.Message);
+                if (!Worthy(f)) continue;
+                string key = KeyOf(f);
+                if (sent.Contains(key)) continue;
+                // Not remembered, so an old item that fails again later is still reported.
+                DateTime when = When(s, f);
+                if (when.Year > 2000 && when < OlderIgnoredUtc) continue;
+                sent.Add(key);
+                Alert a = Make(s, key, "error", s.Computer + ": " + f.Title, f.Message);
                 if (!string.IsNullOrEmpty(f.Hint)) a.Facts.Add(new Pair("What to do", f.Hint));
                 list.Add(a);
             }
@@ -404,13 +500,15 @@ namespace TrackVice
             // Finished: something ran while this agent watched, and now nothing does.
             if (idle && sawActive && s.Items.Count > 0 && s.CountActive == 0)
             {
+                sawActive = false;
                 DateTime? first = s.FirstUtc;
-                string key = "finished|" + (first.HasValue ? first.Value.ToString("yyyyMMddHH", CultureInfo.InvariantCulture) : "");
+                // Account setup after pre-provisioning adds items, and is a second finish worth a message.
+                string key = "finished|" + (first.HasValue ? first.Value.ToString("yyyyMMddHH", CultureInfo.InvariantCulture) : "") + "|" + s.Items.Count;
                 if (sent.Add(key))
                 {
                     int failed = s.Count(State.Failed);
-                    FleetRun run = FleetStats.RunOf(s, DateTime.UtcNow);
-                    Alert a = Make(s, key, failed > 0 ? "error" : "good", s.Computer + (failed > 0 ? ": finished with " + failed + " failed" : ": enrollment finished"),
+                    FleetRun run = FleetStats.RunOf(s, nowUtc);
+                    Alert a = Make(s, key, failed > 0 ? "error" : "good", s.Computer + (failed > 0 ? ": finished with " + failed + " failed" : ": deployment finished"),
                         "Nothing has been running for a while." + (run.Seconds > 0 ? " It took " + Txt.DurationShort(TimeSpan.FromSeconds(run.Seconds)) + "." : "")
                         + (run.Slowest != null ? " The slowest part was " + run.Slowest + " (" + Txt.DurationShort(TimeSpan.FromSeconds(run.SlowestSeconds)) + ")." : ""));
                     list.Add(a);
@@ -423,6 +521,10 @@ namespace TrackVice
     // Posts an alert to a webhook: a Teams workflow ("When a Teams webhook request is received"), or anything that takes JSON with a text.
     public static class AlertSender
     {
+        public const int TimeoutMs = 15000;
+        // Teams refuses cards above about 28 KB, so long texts are cut.
+        const int MaxText = 2000, MaxFact = 500;
+
         public static string Json(string s)
         {
             StringBuilder b = new StringBuilder("\"");
@@ -431,39 +533,68 @@ namespace TrackVice
                 if (c == '"' || c == '\\') b.Append('\\').Append(c);
                 else if (c == '\n') b.Append("\\n");
                 else if (c == '\r') { }
-                else if (c == '\t') b.Append(' ');
-                else if (c < ' ') { }
+                else if (c == '\t') b.Append("\\t");
+                else if (c < ' ' || c == '\u2028' || c == '\u2029') b.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
                 else b.Append(c);
             }
             return b.Append('"').ToString();
+        }
+
+        static string Cut(string s, int max)
+        {
+            if (s == null || s.Length <= max) return s ?? "";
+            return s.Substring(0, max - 3) + "...";
         }
 
         // An adaptive card for Teams, with the same words as plain text for everything else.
         public static string Payload(Alert a)
         {
             string color = a.Level == "error" ? "Attention" : a.Level == "warning" ? "Warning" : "Good";
-            StringBuilder plain = new StringBuilder(a.Title).Append("\n").Append(a.Text);
+            string title = Cut(a.Title, MaxFact), text = Cut(a.Text, MaxText);
+            StringBuilder plain = new StringBuilder(title).Append("\n").Append(text);
             StringBuilder facts = new StringBuilder();
             foreach (Pair p in a.Facts)
             {
                 if (facts.Length > 0) facts.Append(',');
-                facts.Append("{\"title\":").Append(Json(p.Key)).Append(",\"value\":").Append(Json(p.Value)).Append('}');
-                plain.Append("\n").Append(p.Key).Append(": ").Append(p.Value);
+                string v = Cut(p.Value, MaxFact);
+                facts.Append("{\"title\":").Append(Json(p.Key)).Append(",\"value\":").Append(Json(v)).Append('}');
+                plain.Append("\n").Append(p.Key).Append(": ").Append(v);
             }
             return "{\"type\":\"message\",\"text\":" + Json(plain.ToString()) + ",\"attachments\":[{\"contentType\":\"application/vnd.microsoft.card.adaptive\",\"contentUrl\":null,\"content\":{"
                 + "\"$schema\":\"http://adaptivecards.io/schemas/adaptive-card.json\",\"type\":\"AdaptiveCard\",\"version\":\"1.4\",\"body\":["
-                + "{\"type\":\"TextBlock\",\"size\":\"Medium\",\"weight\":\"Bolder\",\"wrap\":true,\"color\":\"" + color + "\",\"text\":" + Json(a.Title) + "},"
-                + "{\"type\":\"TextBlock\",\"wrap\":true,\"text\":" + Json(a.Text) + "},"
+                + "{\"type\":\"TextBlock\",\"size\":\"Medium\",\"weight\":\"Bolder\",\"wrap\":true,\"color\":\"" + color + "\",\"text\":" + Json(title) + "},"
+                + "{\"type\":\"TextBlock\",\"wrap\":true,\"text\":" + Json(text) + "},"
                 + "{\"type\":\"FactSet\",\"facts\":[" + facts + "]},"
-                + "{\"type\":\"TextBlock\",\"isSubtle\":true,\"size\":\"Small\",\"text\":\"TrackVice " + Program.Version + "\"}]}}]}";
+                + "{\"type\":\"TextBlock\",\"isSubtle\":true,\"size\":\"Small\",\"wrap\":true,\"text\":" + Json("TrackVice " + Program.Version) + "}]}}]}";
+        }
+
+        static bool IsLoopback(Uri u)
+        {
+            return u.IsLoopback;
+        }
+
+        // Null when the address can be used. Alerts go over https; plain http only to this computer, for testing.
+        public static string Problem(string url)
+        {
+            Uri u;
+            if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out u)) return "The alert address is not a web address.";
+            if (u.Scheme == Uri.UriSchemeHttps) return null;
+            if (u.Scheme == Uri.UriSchemeHttp && IsLoopback(u)) return null;
+            return "The alert address must start with https://";
         }
 
         public static void Send(string url, Alert a)
         {
-            if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) throw new StoreException("The alert address must start with https://");
+            string problem = Problem(url);
+            if (problem != null) throw new StoreException(problem);
+            url = url.Trim();
             HttpWebRequest req = Http.Request(url);
+            if (IsLoopback(new Uri(url))) req.Proxy = null;
+            req.Timeout = TimeoutMs;
+            req.ReadWriteTimeout = TimeoutMs;
             req.Method = "POST";
-            req.ContentType = "application/json";
+            req.ContentType = "application/json; charset=utf-8";
+            req.KeepAlive = false;
             byte[] body = Encoding.UTF8.GetBytes(Payload(a));
             req.ContentLength = body.Length;
             try
@@ -474,6 +605,7 @@ namespace TrackVice
             catch (WebException ex)
             {
                 HttpWebResponse resp = ex.Response as HttpWebResponse;
+                if (resp != null) resp.Close();
                 throw new StoreException("The alert was not accepted" + (resp != null ? " (HTTP " + (int)resp.StatusCode + ")" : "") + ": " + ex.Message);
             }
         }
