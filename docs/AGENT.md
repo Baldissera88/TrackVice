@@ -6,8 +6,6 @@ On your own PC, **Devices > Devices with the TrackVice agent** lists every devic
 
 ![Devices with the TrackVice agent](images/trackvice-agent-list.png)
 
-> **Preview.** Tested on real Autopilot enrollments through device setup: the platform script, the scheduled task, the upload to an Azure storage account and the list. Account setup and the Win32 app route have not been tested yet.
-
 ## Contents
 
 - [How it works](#how-it-works)
@@ -20,6 +18,11 @@ On your own PC, **Devices > Devices with the TrackVice agent** lists every devic
 - [Step 6: the platform script in Intune](#step-6-the-platform-script-in-intune)
 - [Step 7: follow the devices](#step-7-follow-the-devices)
 - [Assigning it to all devices](#assigning-it-to-all-devices)
+- [Alerts in Teams](#alerts-in-teams)
+- [Masking of secrets](#masking-of-secrets)
+- [Logs from the device](#logs-from-the-device)
+- [Statistics and Compare](#statistics-and-compare)
+- [SCCM task sequences](#sccm-task-sequences)
 - [Alternative: a Win32 app](#alternative-a-win32-app)
 - [Alternative: a folder instead of a storage account](#alternative-a-folder-instead-of-a-storage-account)
 - [Maintenance](#maintenance)
@@ -36,6 +39,7 @@ Install-TrackViceAgent.ps1  --->  downloads TrackVice.exe, checks hash
                                   scheduled task "TrackVice Agent"
                                   reads logs, ESP keys, events
                                   uploads sessions/<id>.json.gz  --->  storage container
+                                  and logs/<id>.zip
                                                                        TrackVice lists and follows it
 ```
 
@@ -45,6 +49,8 @@ Install-TrackViceAgent.ps1  --->  downloads TrackVice.exe, checks hash
 | While it runs | Reads the device every 2 seconds. Uploads when something changed, at most every 10 seconds, and every 30 seconds otherwise so the list shows it is alive |
 | Restarts | The task starts the agent again. It reads everything since Windows was installed and continues as the same row in the list |
 | Idle | With nothing running and nothing new for 30 minutes it reads every 15 seconds and uploads every 5 minutes. It wakes up when something starts, such as account setup after pre-provisioning |
+| Logs | Uploads a zip of the device's logs when something fails, when it goes idle and at the end. See [Logs from the device](#logs-from-the-device) |
+| Alerts | With an alert link, posts to Teams when something fails and when the deployment is finished. See [Alerts in Teams](#alerts-in-teams) |
 | End | After 48 hours (`/keep <hours>`) it uploads one last time and removes its task and the saved link |
 
 The first minutes of a deployment happen before Intune can run anything on the device. They are still in the session, because the agent reads the logs and the ESP registry keys back to the Windows install.
@@ -91,7 +97,7 @@ Give TrackVice its own container. A link gives access to the whole container it 
 Instead of uploading the exe, the script can download it from this repository's release. Then you need no download link, only the hash of that release's `TrackVice.exe`, which is in the release notes:
 
 ```powershell
-$Download = 'https://github.com/Baldissera88/TrackVice/releases/download/v0.0.10/TrackVice.exe'
+$Download = 'https://github.com/Baldissera88/TrackVice/releases/download/v1.0.0/TrackVice.exe'
 ```
 
 Your own container keeps you independent of GitHub and lets you decide when devices get a new version.
@@ -153,7 +159,11 @@ $Download  = 'https://<account>.blob.core.windows.net/trackvice/TrackVice.exe?sp
 $Sha256    = '<the hash from step 2>'
 $Upload    = 'https://<account>.blob.core.windows.net/trackvice?sp=cw&...'
 $KeepHours = 48
+$MaxAgeHours = 0
+$Alert     = ''
 ```
+
+`$MaxAgeHours` is explained in [Assigning it to all devices](#assigning-it-to-all-devices) and `$Alert` in [Alerts in Teams](#alerts-in-teams). Leave both as they are for the first test.
 
 Run it on your own PC, in PowerShell **as administrator**:
 
@@ -213,6 +223,122 @@ To avoid that, set `$MaxAgeHours` in the script, for example to `24`. The script
 
 Editing a script in Intune makes it run again on the devices that already ran it.
 
+## Alerts in Teams
+
+The agent can post to a Teams channel when something fails and when a deployment is finished, so you do not have to keep the list open. It posts to a Teams workflow, or to any other web address that takes JSON.
+
+**Make the workflow**
+
+1. In Teams, open the channel, choose **…** > **Workflows**, and pick the template **Post to a channel when a webhook request is received**. Its trigger is **When a Teams webhook request is received**.
+2. Give it a name, such as TrackVice alerts, choose the team and the channel, and add the workflow.
+3. Copy the link it shows. That is the alert link. It starts with `https://`.
+
+Anyone with the link can post to the channel, so keep it like the upload link.
+
+**Test it** from your own PC:
+
+```powershell
+.\TrackVice.exe /agent /alert "<alert link>" /alert-test
+```
+
+It prints "The test alert was sent." and a card with a test alert appears in the channel.
+
+**Use it.** Fill in `$Alert` in the script, or add `/alert "<alert link>"` to `/agent-install`, `/agent-start` or `/agent`:
+
+```powershell
+$Alert = 'https://<the link from the workflow>'
+```
+
+| | |
+|---|---|
+| What is sent | One card per failure: failed items, items not detected after install, a failed task sequence, the ESP time limit and a failed hybrid join, with the device, the deployment, the progress and what to do. One card when the deployment is finished: nothing has run for 30 minutes, with how long it took and its slowest part |
+| What is not sent | Warnings, MDM event log errors, and failures that ended more than 2 hours before the agent started, such as those of a device enrolled long ago |
+| How often | Each failure once. At most 15 alerts per device. Account setup after pre-provisioning gives a second finished card |
+| When it fails | It tries again after 1, 2 and 4 minutes, then gives up. `agent.log` says "Alert sent" or why not |
+| Restarts | Sent alerts are remembered in `alerts.txt` in the agent's folder, so a restart does not send them again |
+| On the device | The alert link is saved with the upload link under `HKLM\SOFTWARE\TrackVice\Agent` and removed with it |
+
+Alerts go over https. The texts are masked like the session, see below.
+
+## Masking of secrets
+
+Before a session, a log zip or an alert leaves the device, the agent replaces passwords, keys and tokens with `***`. It finds them:
+
+- by name, in `name=value`, `name: value` and JSON: names with password, pwd, secret, token, api key, access key, account key, license key, product key, client secret and `sig`
+- after switches such as `-Password`, `--token` and `/password`
+- in `Bearer` and `Basic` headers, `https://user:password@host`, `ConvertTo-SecureString "..." -AsPlainText` and `net user <name> <password>`
+
+Settings about passwords, such as `PasswordExpirationDays`, and values that are only a variable, such as `-Password $pw`, are left as they are.
+
+Masking is on by default. Add `/no-mask` to `/agent-install`, `/agent-start` or `/agent` to upload everything as it is. Masking covers the session and the alerts. The log files in the log zip are uploaded as they are on the device; only the session in the zip is masked. It cannot know every secret, so treat the container like the logs themselves.
+
+## Logs from the device
+
+Besides its session, the agent uploads the device's logs as one zip, `logs/<id>.zip`, next to `sessions/<id>.json.gz`:
+
+| | |
+|---|---|
+| When | When the first item fails, when the device goes idle after something ran, and at the end. Never more often than every 10 minutes |
+| What | The session, every log file the session has a line from, every Intune Management Extension log, and the task sequence logs. A log over 20 MB goes in as its last 20 MB |
+| Size | A zip over 60 MB is not uploaded. `agent.log` says so |
+
+On your PC, watch the device from the list, then choose **LogVice > Logs from the device**. TrackVice downloads the zip, unpacks it under `%LOCALAPPDATA%\TrackVice\Logs\<device>-<id>` and opens the folder. **Open in LogVice** on an item or an event then opens the device's copy of that log. A new download replaces the older copy of that device, and copies older than 30 days are removed.
+
+The demo devices under **Demo: devices with the agent** have logs too, made up like the rest.
+
+## Statistics and Compare
+
+The uploads also feed two views on your PC. Both read the location you connected to in **Devices with the TrackVice agent**, or ask for it.
+
+- **Devices > Statistics for devices with the agent** goes over every session uploaded in the last 24 hours, 7, 30 or 90 days: how long enrollments take, and which apps, scripts and steps are slow or fail. Double-click an enrollment to watch it. See [Statistics](../README.md#statistics) in the README.
+- **Devices > Compare with another enrollment > A device with the agent** puts the session you watch beside one from the uploads. See [Compare](../README.md#compare) in the README.
+
+The same uploads make a report from the command line, for example every enrollment of the last week:
+
+```powershell
+.\TrackVice.exe /fleet-report fleet.html /upload "<viewer link>" /hours 168
+```
+
+## SCCM task sequences
+
+The agent can also follow an SCCM task sequence, from Windows PE to the end, as one session in the list. In a task sequence it is not installed: `/agent-start` starts it in the background and returns at once, and it stops by itself when the task sequence ends.
+
+**What you need**
+
+- A boot image with the **WinPE-NetFx** component, for the part in Windows PE. Without it, the agent can only start once Windows runs.
+- A network path from Windows PE and Windows to the storage account, or to the share.
+- A package with `TrackVice.exe` in it, distributed to your distribution points. No program is needed.
+- The upload link from [step 3](#step-3-the-three-links).
+
+**The steps.** Add a **Run Command Line** step at each of these places, all with the same command line and the TrackVice package:
+
+```text
+TrackVice.exe /agent-start /upload "<upload link>"
+```
+
+| Where | Why |
+|---|---|
+| After **Partition Disk** | Starts the agent in Windows PE |
+| After **Setup Windows and ConfigMgr** | The restart into Windows ends the agent from Windows PE. This starts it again in Windows |
+| After each **Restart Computer** step | A restart ends the agent. This starts it again |
+| Last step, optional | `TrackVice.exe /agent-stop` makes the last upload and stops the agent at once, instead of when it sees the end in smsts.log |
+
+On every one of these steps, tick **Continue on error** on the Options tab, so the task sequence goes on if the agent cannot start or stop. `/agent-start` returns at once when the agent already runs, so an extra step does no harm.
+
+Add `/alert "<alert link>"` to send [alerts](#alerts-in-teams), and `/no-mask` to turn off [masking](#masking-of-secrets). Give them on every `/agent-start` step.
+
+**One session from Windows PE to Windows.** The session ID comes from the device's SMBIOS UUID, or its wired MAC address when the UUID is missing, hashed, so it is the same in Windows PE and in Windows. The agent also writes it to `Windows\Temp\TrackVice` on the Windows being installed, once Apply Operating System has put that there. The list shows the device under its current name; the earlier names, such as the `MININT-` name of Windows PE, are kept in the session, and searching the list for one finds the device. Give `/id <id>` on every step only when the hardware has no usable UUID or MAC address. A new run of a task sequence on the same device uses the same ID, so it replaces the earlier session.
+
+| | |
+|---|---|
+| In Windows PE | Reads smsts.log only. ConfigMgr client WMI and the event logs come once Windows runs |
+| In Windows | Reads everything, as the installed agent does |
+| End | When smsts.log says the task sequence ended, when no step has run for 30 minutes, after `/keep <hours>` (default 48), or with `/agent-stop`. It uploads the session and the logs one last time |
+| Its log | `%WINDIR%\Temp\TrackVice\agent.log`. In Windows PE that is on `X:` and is gone after the restart |
+| On the device | Nothing is installed: no task, no registry key. The state file and log stay in `%WINDIR%\Temp\TrackVice` |
+
+To check the steps before a real deployment, run a task sequence with them on a test device, keep the list open on your PC, and look at `agent.log` with F8 in Windows PE.
+
 ## Alternative: a Win32 app
 
 Use this when you want the Enrollment Status Page to track the agent, or when scripts are not allowed. It starts when the Intune Management Extension reaches it, which can be after other apps.
@@ -242,9 +368,9 @@ The agent writes as the device's computer account, so the share has to allow tha
 | When | Do this |
 |---|---|
 | A new TrackVice version | Upload the new `TrackVice.exe` over the old one in the container, and update `$Sha256` in the script in Intune. The download link stays the same. Until the hash is updated the script fails on purpose |
-| The links expire | Make new links and update the script and the upload location in TrackVice |
+| The links expire | Make new links and update the script, the task sequence steps and the upload location in TrackVice |
 | A link got out | Rotate the storage account key the links were signed with (Security + networking > Access keys). That cancels every link signed with that key, also for other containers in the account |
-| The container grows | Add a lifecycle management rule on the storage account that deletes blobs under `trackvice/sessions/` after 30 days |
+| The container grows | Add a lifecycle management rule on the storage account that deletes blobs under `trackvice/sessions/` and `trackvice/logs/` after 30 days |
 | Stop using it | Remove the assignment in Intune. Agents already installed remove themselves when their time is up |
 
 To remove the agent from one device now:
@@ -267,17 +393,23 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 | "The link points at a file in the container" | Use the link of the container itself, not of a folder or a blob in it |
 | The device is not in the list | Look at `C:\Program Files\TrackVice Agent\agent.log` on the device. No folder means the script did not run: check the script's device status in Intune and `IntuneManagementExtension.log`. An "Upload failed" line gives the reason |
 | The device is in the list twice | The agent was installed again, which starts a new session. The older row stops updating |
+| No alerts arrive | Run the test in [Alerts in Teams](#alerts-in-teams). `agent.log` says "Alerts are off" when the link is not an https address, and "Alert not sent" with the reason when the workflow refused it |
+| "The device has not uploaded its logs yet" | The agent uploads them when something fails, when the device goes idle and at the end. Try again later |
+| In a task sequence, the device is not in the list | Look at `%WINDIR%\Temp\TrackVice\agent.log` with F8. No log in Windows PE usually means the boot image lacks WinPE-NetFx |
 | The script is blocked | `TrackVice.exe` is not code signed. WDAC, AppLocker or Smart App Control can block it. Sign it with your own certificate or allow it by hash |
 
 ## What is uploaded, and security
 
-One file per device session, `sessions/<id>.json.gz`, in the same format as a saved session. It holds the computer name, the Autopilot profile and tenant, app and policy names, install command lines, exit codes and the log lines about them, the policy settings the MDM client set, and the output and error text of platform scripts. Install command lines and script output can hold secrets when a package passes them that way. Treat the container like the logs themselves.
+One file per device session, `sessions/<id>.json.gz`, in the same format as a saved session, and the device's logs as `logs/<id>.zip`. It holds the computer name, the Autopilot profile and tenant, app and policy names, install command lines, exit codes and the log lines about them, the policy settings the MDM client set, and the output and error text of platform scripts. Install command lines and script output can hold secrets when a package passes them that way. The agent [masks](#masking-of-secrets) the ones it recognises, but the log files in the zip are as they are on the device. Treat the container like the logs themselves.
 
 | | |
 |---|---|
 | The upload link | Can add and replace files in the container. It cannot list or read, so one device cannot see another device's session. Anyone with the link can upload files, so do not publish it |
-| The viewer link | Can read every session. Treat it like a password |
+| The viewer link | Can read every session and every log zip. Treat it like a password |
+| `logs/<id>.zip` | The session and the device's log files. Readable with the viewer link only |
+| The alert link | Anyone with it can post to the Teams channel. The alerts carry the device name, the deployment and the text of each failure, masked |
 | The download link | Can only download `TrackVice.exe` |
-| On the device | The upload link is saved under `HKLM\SOFTWARE\TrackVice\Agent`, readable by administrators and SYSTEM only, and removed when the agent ends |
-| In Intune | The script, with the download and upload links, is readable by Intune administrators |
-| On the device, otherwise | The agent only reads. It adds its folder, its task and its registry key, and nothing else |
+| On the device | The upload link, and the alert link when there is one, are saved under `HKLM\SOFTWARE\TrackVice\Agent`, readable by administrators and SYSTEM only, and removed when the agent ends. In a task sequence nothing is saved there |
+| In Intune | The script, with the download, upload and alert links, is readable by Intune administrators |
+| In SCCM | The task sequence, with the upload and alert links, is readable by anyone who can read task sequences |
+| On the device, otherwise | The agent only reads. It adds its folder, its task and its registry key, and nothing else. In a task sequence it only adds `%WINDIR%\Temp\TrackVice` |

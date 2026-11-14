@@ -69,8 +69,8 @@ How a release is made, on the author's Windows PC. `release.ps1` does the build,
 
 6. **The MSI.** `TrackVice.wxs` is plain WiX 3 source, so there are two ways:
 
-   - **WiX Toolset 3 on Windows.** `release.ps1` runs `candle.exe -arch x64` and `light.exe` itself, after signing the exe. `.\build.ps1 -Msi` does the same without signing. WiX 3 should handle the parts `patch_msi.sh` adds for wixl, long file names and closing a running TrackVice before an upgrade, but this path has not been tried with this `.wxs` yet. WiX 3 has been out of community support since February 2025; WiX 4 and later use a different source format (`wix convert` converts it) and are not used here.
-   - **Linux or WSL with `package.sh`.** This is how the MSI has been built so far. Build it from the same commit, then give it to `release.ps1`:
+   - **WiX Toolset 3 on Windows.** `release.ps1` runs `candle.exe -arch x64` and `light.exe` itself, after signing the exe. `.\build.ps1 -Msi` does the same without signing. WiX 3 should handle the parts `patch_msi.sh` adds for wixl, long file names and closing a running TrackVice before an upgrade. WiX 3 has been out of community support since February 2025; WiX 4 and later use a different source format (`wix convert` converts it) and are not used here.
+   - **Linux or WSL with `package.sh`.** Build it from the same commit, then give it to `release.ps1`:
 
      ```sh
      ./package.sh
@@ -86,7 +86,7 @@ How a release is made, on the author's Windows PC. `release.ps1` does the build,
 
 7. **Hashes.** `release.ps1` writes `out\release\<version>\SHA256SUMS.txt` and `out\release\<version>\release-notes.md`: the changelog section, a table of the files with their SHA-256, the product code and the install and uninstall commands. Read the notes before publishing.
 
-8. **The GitHub release.** Run `release.ps1` again with `-Publish` (and `-Prerelease` for a preview). It builds and signs again, so the hashes in the notes are those of the uploaded files. It creates the tag `v<version>` on the pushed commit and the release "TrackVice &lt;version&gt;" with `TrackVice.exe`, `TrackVice.msi` and `agent/Install-TrackViceAgent.ps1`. Then download the files from the release and compare them with `Get-FileHash`.
+8. **The GitHub release.** Run `release.ps1` again with `-Publish` (and `-Prerelease` for a pre-release). It builds and signs again, so the hashes in the notes are those of the uploaded files. It creates the tag `v<version>` on the pushed commit and the release "TrackVice &lt;version&gt;" with `TrackVice.exe`, `TrackVice.msi` and `agent/Install-TrackViceAgent.ps1`. Then download the files from the release and compare them with `Get-FileHash`.
 
 9. **The agent.** Devices with the agent check the hash of the `TrackVice.exe` they download, so a new version needs two changes, as in [Maintenance](AGENT.md#maintenance) in docs/AGENT.md:
 

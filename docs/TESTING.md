@@ -1,6 +1,6 @@
 # Testing TrackVice on a real device
 
-TrackVice has run on few real devices so far. This checklist compares what it shows with the logs themselves during real deployments. Note anything it misses or gets wrong, together with the log lines around it, so the parsers can be fixed.
+This checklist compares what it shows with the logs themselves during real deployments. Note anything it misses or gets wrong, together with the log lines around it, so the parsers can be fixed.
 
 Everything TrackVice does is read-only.
 
@@ -40,6 +40,7 @@ Run an OSD task sequence. Start TrackVice with F8 once full Windows runs, or in 
 - [ ] Nothing is counted twice when smsts.log moves between folders.
 - [ ] A failing step makes **Task sequence failed** and points at the step.
 - [ ] Software updates installed by the task sequence show under Software updates, with restart needed where it applies.
+- [ ] A step that rolls smsts.log over (a long task sequence, or one with many restarts): no step is missing and none is counted twice.
 
 ## 4. Autopilot
 
@@ -69,8 +70,9 @@ reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking es
 
 - [ ] Save the session, open it on another PC: same items, states and findings.
 - [ ] Collect the zip, unpack it, and open the folder: the items come back from the logs alone.
-- [ ] The HTML report opens in a browser in light and dark mode.
-- [ ] `TrackVice.exe /report report.html` writes a report and returns 2 when something failed.
+- [ ] The HTML report opens in a browser in light and dark mode, with the summary, findings, time line, details per phase and events.
+- [ ] Print the report, or print it to PDF: the print layout is readable on paper, without dark backgrounds.
+- [ ] `TrackVice.exe /report report.html /title "CONTOSO-PC01 after the upgrade"` writes a report with that title and returns 2 when something failed.
 
 ## 7. Other devices: Autopilot in Intune
 
@@ -93,7 +95,7 @@ reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking es
 
 ## 9. The agent
 
-Start with a folder on one PC, then a storage container, then a real Autopilot deployment. docs/AGENT.md has the setup. The folder, the storage container and the install on Windows 11 have been checked; the Autopilot enrollment has not.
+Start with a folder on one PC, then a storage container, then a real Autopilot deployment. [docs/AGENT.md](AGENT.md) has the setup.
 
 - [ ] `TrackVice.exe /agent /upload C:\Temp\TrackVice /once` as administrator writes one session, and Devices > Devices with the TrackVice agent lists it from that folder.
 - [ ] The same with the upload link of a storage container, and the viewer link in the list. Note any error text.
@@ -128,6 +130,79 @@ powershell Compress-Archive C:\tv\* C:\tv.zip
 ```
 
 TrackVice opens the unpacked folder directly.
+
+## 11. Gantt
+
+- [ ] The Gantt tab shows one bar per item, under its phase, at the times in the progress list.
+- [ ] A running item's bar grows while you watch.
+- [ ] **Policies** adds and removes the Policies phase.
+- [ ] **Only what took time** hides items shorter than a second, but not running ones.
+- [ ] Clicking a bar selects the item in the progress list.
+- [ ] Scrolling with the mouse wheel and dragging the scroll bar keep the time axis on top.
+
+## 12. Findings that explain
+
+- [ ] A failed Win32 app with 1603 or 1618: the finding says what the code means and what to do.
+- [ ] A platform script that fails, set to run in 32-bit PowerShell, with a 64-bit only command such as `Get-WindowsCapability`: the finding has the error text and says to run it in the 64-bit host.
+- [ ] An ESP with a short time limit, such as 15 minutes, and a slow app: **near the ESP time limit** shows before the limit passes, with the minutes left.
+- [ ] An app that asks for a restart while others wait in the same phase: after 5 minutes, **Waiting for a restart** names it.
+- [ ] Three apps in one phase that fail with the same code, for example with the network cut: one finding about the common cause, before the items.
+
+## 13. Autopilot events, device preparation and pre-provisioning
+
+- [ ] Device preparation lists the items the events give: TPM attestation (self-deploying or pre-provisioning), device enrollment by Autopilot, MDM enrollment.
+- [ ] The timeline has the Autopilot milestones in plain words, such as the profile download.
+- [ ] Hybrid Entra join: offline domain join, the domain controller check and hybrid Entra join show in Device preparation. With the connector stopped, the **Hybrid join** finding names it.
+- [ ] Account setup: the user's apps and policies show under account setup after the user signs in.
+- [ ] Pre-provisioning: after the technician phase, reseal and leave the device off for more than 10 minutes. The time it was off does not count in the duration, and gives no **No progress** finding. The Session tab says when the technician phase finished and when the user phase started.
+- [ ] Autopilot device preparation (v2): the Session tab says it is probably in use, and its apps and scripts show.
+
+## 14. Remediations and Names from Intune
+
+- [ ] Assign a remediation. It shows under Remediations, with its result and exit codes, matching the Intune portal.
+- [ ] **Devices > Names from Intune** with each lookup on its own: script, app and remediation names replace the IDs, and the sign-in asks only for the permissions ticked.
+- [ ] Configuration profiles of this device: every profile and its state match the device's Device configuration page in Intune.
+- [ ] Turn off consent for one permission: that lookup fails with a clear message, and the others still apply.
+
+## 15. Customers
+
+- [ ] **Settings > Customers**: add two customers with a tenant, an upload location and an SCCM site each.
+- [ ] Each device list has the customer selector, and switching connects to that customer's tenant, location or site.
+- [ ] A Graph sign-in for one tenant is not used for another customer.
+- [ ] Export without the storage links: the file has no links. Export with them, import on another PC: the customers come back and connect.
+- [ ] `HKCU\Software\TrackVice` does not hold a storage link in plain text.
+
+## 16. Statistics and Compare
+
+- [ ] **Devices > Statistics for devices with the agent** with a few uploaded enrollments: the counts match the list, and the times match the sessions.
+- [ ] Each period (24 h, 7 d, 30 d, 90 d) changes the counts as expected.
+- [ ] A failed app shows its fail rate out of the devices where it finished.
+- [ ] **Export CSV** opens in Excel with the same rows.
+- [ ] Double-clicking an enrollment watches it.
+- [ ] **Devices > Compare with another enrollment > A device with the agent**: two enrollments of the same profile, one with a failed app. The failed app and clearly slower items are listed, and the last events of both sides show.
+- [ ] **A saved session file** works the same, and **Export** writes a CSV.
+- [ ] `TrackVice.exe /fleet-report fleet.html /upload "<viewer link>" /hours 168` writes a report and returns 2 when an enrollment had failed items.
+
+## 17. The agent: alerts, masking and logs
+
+- [ ] Make the Teams workflow as in [docs/AGENT.md](AGENT.md#alerts-in-teams). `/agent /alert "<link>" /alert-test` posts a test card.
+- [ ] A link that does not start with `https://` is refused with a clear message.
+- [ ] With `$Alert` in the script, a failed app gives one card in the channel, with the device, the deployment and what to do. A restart of the device does not send it again.
+- [ ] When the deployment is finished and nothing runs for 30 minutes, a finished card arrives.
+- [ ] Give an app an install command with `/password=Secret123` or a script that prints `token=...`: the uploaded session shows `***`. With `/no-mask` it shows the value.
+- [ ] After a failure, `logs/<id>.zip` appears in the container. **LogVice > Logs from the device** downloads and opens it, and **Open in LogVice** opens the device's copy of a log.
+
+## 18. The agent in an SCCM task sequence
+
+Set up the steps as in [docs/AGENT.md](AGENT.md#sccm-task-sequences), on a boot image with WinPE-NetFx.
+
+- [ ] The device shows in the list during Windows PE, under its `MININT-` name.
+- [ ] After Setup Windows and ConfigMgr it continues as the same row, now under its new name, and searching for the `MININT-` name finds it.
+- [ ] After a Restart Computer step it continues as the same row.
+- [ ] Steps from Windows PE and from Windows are all in the session, each once.
+- [ ] The agent stops by itself when the task sequence ends, or at once with `/agent-stop`, and the last upload has the end.
+- [ ] With a wrong upload link, the step fails, and the task sequence goes on because of Continue on error.
+- [ ] `%WINDIR%\Temp\TrackVice\agent.log` says when it started, uploaded and stopped.
 
 ## What to send back
 
