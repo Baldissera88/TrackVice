@@ -126,7 +126,9 @@ namespace TrackVice
             GraphException ge = ex as GraphException;
             if (ge != null && ge.Status == 403)
                 return what + " were not read: access denied. The sign-in needs consent for " + LookupChoice.Permission(scope) + ", and the account an Intune role that can read them.";
-            return what + " were not read: " + ex.Message;
+            if (ge != null && ge.Status >= 500)
+                return what + " were not read: Intune answered with an error (" + GraphClient.Clean(ex.Message) + "). It is usually a passing problem on the Intune side; they are read again later.";
+            return what + " were not read: " + GraphClient.Clean(ex.Message);
         }
 
         // Every id and displayName in a list, page by page.

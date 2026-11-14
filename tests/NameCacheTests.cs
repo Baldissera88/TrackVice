@@ -53,6 +53,8 @@ namespace TrackVice.Tests
             T.Check(g.CanReadScripts, "with its kept permissions");
             T.Eq("admin@contoso.com", g.Account, "and its account");
             T.Check(!new GraphClient(null, null).SignedIn, "a new client is not signed in");
+            T.Eq("An error has occurred", GraphClient.Clean("{\r\n  \"_version\": 3,\r\n  \"Message\": \"An error has occurred - Operation ID (for customer support): 00000000-0000-0000-0000-000000000000 - Activity ID: 1 - Url: x\",\r\n  \"CustomApiErrorPhrase\": \"\"\r\n}"), "Intune's JSON error is cut to its sentence");
+            T.Eq("Not found.", GraphClient.Clean("Not found."), "a plain message stays");
         }
     }
 }
