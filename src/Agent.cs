@@ -363,6 +363,7 @@ namespace TrackVice
             m["updated"] = Iso(nowUtc);
             m["idle"] = idle ? "1" : "0";
             m["version"] = s.AppVersion;
+            if (s.GetInfo("Earlier names") != null) m["names"] = s.GetInfo("Earlier names");
             return m;
         }
 
@@ -374,6 +375,8 @@ namespace TrackVice
             d.Profile = Str(e, "profile");
             d.User = Str(e, "kind");
             d.Detail = Str(e, "tenant");
+            // The agent has no serial number to show. Earlier computer names go there, so searching for one finds the device.
+            d.Serial = Str(e, "names");
             d.StartUtc = Time(e, "started");
             d.LastUtc = Time(e, "updated") ?? e.ModifiedUtc;
             int items = Int(e, "items"), done = Int(e, "done"), failed = Int(e, "failed"), active = Int(e, "active");
@@ -568,6 +571,9 @@ namespace TrackVice
         public string Alert;
         public bool AlertTest;
         public bool Mask = true;
+        // Set by /agent-start for the agent in a task sequence: the session ID from /id or the device, and the end with the task sequence.
+        public string Id;
+        public bool TaskSequence;
     }
 
     // Runs on the device while it deploys: reads it like the window does, and uploads the session as it changes.
