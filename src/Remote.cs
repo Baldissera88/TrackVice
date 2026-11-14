@@ -117,8 +117,8 @@ namespace TrackVice
         Dictionary<string, object> Get(string url);
     }
 
-    // Read-only Microsoft Graph sign-in with the device code flow, the same way PolicyVice signs in. The tokens are
-    // kept in memory only, and the access token is renewed with the refresh token while TrackVice watches.
+    // Read-only Microsoft Graph sign-in with the device code flow, the same way PolicyVice signs in. The access token is
+    // kept in memory and renewed with the refresh token, which the window keeps encrypted per customer until Sign out.
     public sealed class GraphClient : IGraph
     {
         // Microsoft Graph Command Line Tools, the app Microsoft Graph PowerShell signs in with.
@@ -148,7 +148,25 @@ namespace TrackVice
 
         public bool SignedIn
         {
-            get { return access != null; }
+            get { return access != null || refresh != null; }
+        }
+
+        // Raised with the new refresh token whenever Microsoft hands out one, so a kept sign-in stays current.
+        public Action<string> TokenChanged;
+
+        public string RefreshToken
+        {
+            get { lock (gate) return refresh; }
+        }
+
+        // A sign-in kept from an earlier start. The first call to Graph gets a fresh access token with it.
+        public static GraphClient Resume(string clientId, string tenant, string scopes, string refreshToken, string account)
+        {
+            GraphClient g = new GraphClient(clientId, tenant);
+            if (!string.IsNullOrEmpty(scopes)) g.Scopes = scopes;
+            g.refresh = refreshToken;
+            g.Account = account;
+            return g;
         }
 
         public static bool IsGuid(string s)
@@ -208,7 +226,12 @@ namespace TrackVice
             {
                 access = token;
                 string rt = Http.Str(r, "refresh_token");
-                if (!string.IsNullOrEmpty(rt)) refresh = rt;
+                if (!string.IsNullOrEmpty(rt) && rt != refresh)
+                {
+                    refresh = rt;
+                    Action<string> changed = TokenChanged;
+                    if (changed != null) { try { changed(rt); } catch (Exception) { } }
+                }
                 long? e = ImeJson.Long(ImeJson.Get(r, "expires_in"));
                 expires = DateTime.UtcNow.AddSeconds((e ?? 3600) - 120);
             }
@@ -243,8 +266,8 @@ namespace TrackVice
 
         public Dictionary<string, object> Get(string url)
         {
-            if (access == null) throw new GraphException("Not signed in.");
-            if (DateTime.UtcNow > expires) Renew();
+            if (access == null && refresh == null) throw new GraphException("Not signed in.");
+            if (access == null || DateTime.UtcNow > expires) Renew();
             int status;
             Dictionary<string, object> r = Http.Get(url, access, out status);
             if (status == 401)

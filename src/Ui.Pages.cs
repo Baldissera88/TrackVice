@@ -840,6 +840,20 @@ namespace TrackVice
             Add(new SettingRow(Glyphs2.Device, "Customers", "Saved connections for each customer you work for: the Intune tenant, where its agents upload to and its SCCM site. Choose one at the top of a device list. In use: " + (CustomerUi.CurrentName ?? "none") + ".", bCustomers));
 
             Add(new SectionTitle("Autopilot in Intune"));
+            string kept = MainForm.KeptAccount;
+            FlatButton bSignOut = SmallButton("Sign out", delegate { });
+            SettingRow signRow = new SettingRow(Glyphs.Shield, "Intune sign-in", kept != null
+                ? "Signed in as " + kept + " for " + (CustomerUi.CurrentName ?? "Default") + ". The sign-in is kept encrypted for your Windows account, so names from Intune and the Autopilot list need no new sign-in. Sign out deletes it and the kept names."
+                : "Not signed in for " + (CustomerUi.CurrentName ?? "Default") + ". Sign in from Devices > Autopilot in Intune or Names from Intune. The sign-in is then kept until you sign out here.", bSignOut);
+            bSignOut.Enabled = kept != null;
+            bSignOut.Click += Safe.Wrap(delegate
+            {
+                MainForm.SignOutIntune();
+                bSignOut.Enabled = false;
+                signRow.Desc = "Signed out. The kept sign-in and names are deleted.";
+                signRow.Invalidate();
+            });
+            Add(signRow);
             Add(new SettingRow(Glyphs2.Code, "Client ID", "The app registration TrackVice signs in with. Leave it empty to use Microsoft Graph Command Line Tools (" + GraphClient.DefaultClientId + "). Your own app needs the delegated permission DeviceManagementManagedDevices.Read.All and public client flows turned on.", client));
             Add(new SettingRow(Glyphs.Shield, "Tenant", "The tenant ID or domain, for example contoso.onmicrosoft.com. Leave it empty to sign in to the tenant of the account you use.", tenant));
 
@@ -917,7 +931,7 @@ namespace TrackVice
             hero.Version = "Version " + Program.Version;
             hero.Detail = "Built " + Program.BuildDate;
             hero.Developer = Program.Developer;
-            hero.Blurb = "Follows a deployment on a Windows device as it happens: SCCM task sequences, applications, packages and updates, Windows Autopilot with the Enrollment Status Page, and Intune apps, on one timeline with the log line behind every step. It also follows other devices: Autopilot deployments as Intune reports them, and task sequences from the status messages they send to an SCCM site. A companion to LogVice and PolicyVice.";
+            hero.Blurb = "Follows a deployment on a Windows device as it happens: SCCM task sequences, applications, packages and updates, Windows Autopilot with the Enrollment Status Page, and Intune apps, on one timeline with the log line behind every step. It also follows other devices: Autopilot deployments as Intune reports them, task sequences from the status messages they send to an SCCM site, and devices that run the TrackVice agent, with statistics and comparisons over their enrollments. A companion to LogVice and PolicyVice.";
             hero.License = "Released under the MIT license.";
             Add(hero);
             Add(new SectionTitle("Command line"));

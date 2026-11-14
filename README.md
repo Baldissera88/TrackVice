@@ -123,7 +123,7 @@ TrackVice signs in to Microsoft Graph with a device code, read-only, and reads t
 | App | Microsoft Graph Command Line Tools, or your own app registration set in Settings |
 | The list | Device, state, user, profile, when it started, how long it has run and when Intune last heard from it. Refreshed every minute |
 | One device | Device setup and account setup with their state and duration, the failure Intune recorded, and every app and policy with its status and error code, split into what the ESP waits for and the rest. Read every minute |
-| Sign-in | Kept in memory only, never saved |
+| Sign-in | Kept encrypted for your Windows account, per customer, until you sign out in Settings |
 
 Intune only knows what a device has reported, so this view lags behind the device and has no log lines. For every step as it happens, run TrackVice on the device itself.
 
@@ -196,7 +196,9 @@ A device knows platform scripts, remediations and some apps by ID only. **Device
 | Remediation names | `DeviceManagementScripts.Read.All` | Remediations show their name |
 | Configuration profiles of this device | `DeviceManagementConfiguration.Read.All` | Every configuration profile Intune has for the device, with its state: succeeded, error, conflict or not applicable, as the device last reported it to Intune |
 
-The sign-in asks only for the permissions of what you ticked, and each needs consent in your tenant. A lookup without its permission fails on its own and the others still apply. The names are kept and read again at every Intune sign-in, and used for devices you open later.
+The sign-in asks only for the permissions of what you ticked, and each needs consent in your tenant. A lookup without its permission fails on its own and the others still apply.
+
+The names and the sign-in are kept on your PC for each customer: the names in `%LOCALAPPDATA%\TrackVice\Names`, the sign-in encrypted for your Windows account. At the next start the names are there at once, also in Statistics and Compare, and are read again in the background once a day. When a device shows a script, app or remediation by its ID, TrackVice asks Intune for the new names by itself. You sign in again only when Microsoft asks for it. **Settings > Intune sign-in > Sign out** deletes the kept sign-in and names of the customer in use.
 
 ### Logs from the device
 
@@ -297,7 +299,7 @@ The exit code is 0 when done, 1 on an error and 2 when failed items were found (
 
 ## Privacy and safety
 
-TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open **Devices** or **Names from Intune**: then it talks to Microsoft Graph, to the SMS Provider you name, or to the upload location you enter, and nothing else. The upload locations of your customers are encrypted for your Windows account.
+TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open **Devices** or **Names from Intune**: then it talks to Microsoft Graph, to the SMS Provider you name, or to the upload location you enter, and nothing else. The upload locations of your customers and the Intune sign-in are encrypted for your Windows account.
 
 The agent is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes its task and key when its time is up. In a task sequence it installs nothing; it keeps its log and a small state file under `%WINDIR%\Temp\TrackVice`.
 
