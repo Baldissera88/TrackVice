@@ -172,7 +172,7 @@ namespace TrackVice
             }
             Tip(bWatch, "Follow the device live, or pause (Ctrl+W)");
             Tip(bOpen, "Watch this device, open a saved session or a folder of logs, or play a demo (Ctrl+O)");
-            Tip(bDevices, "Follow other devices: Autopilot deployments from Intune, or task sequences from your SCCM site (Ctrl+D)");
+            Tip(bDevices, "Follow other devices: Autopilot deployments from Intune, devices with the TrackVice agent, or task sequences from your SCCM site (Ctrl+D)");
             Tip(bSave, "Save the session, or collect it with its logs in a zip (Ctrl+S)");
             Tip(bExport, "Export an HTML report or every event as CSV (Ctrl+E)");
             Tip(bLogVice, "Open the deployment logs in LogVice");
@@ -654,7 +654,7 @@ namespace TrackVice
             if (!engine.CanWatch)
             {
                 SetWatching(false);
-                if (engine.Mode == Modes.Demo) Status("The demo has finished. Open > Play a demo to start it again.");
+                if (engine.Mode == Modes.Demo) Status("The demo has finished. Play it again from the Open menu.");
                 return;
             }
             RunPoll(engine, false);
@@ -1213,20 +1213,8 @@ namespace TrackVice
             Menus.Add(m, "Open a saved session…  (Ctrl+O)", delegate { OpenSession(); });
             Menus.Add(m, "Open a folder of logs…", delegate { OpenFolder(); });
             Menus.Separator(m);
-            Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
-            Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
-            Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
-            Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
-            CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
-            Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
-            Menus.Separator(m);
             Menus.Add(m, "Play the Autopilot demo", delegate { Begin(Engine.ForDemo("autopilot"), true); });
             Menus.Add(m, "Play the task sequence demo", delegate { Begin(Engine.ForDemo("osd"), true); });
-            Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
-            Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
-            Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
-            Menus.Add(m, "Demo: statistics", delegate { OpenStats(true); });
-            Menus.Add(m, "Demo: compare two enrollments", delegate { using (CompareDialog d = CompareDialog.ForDemo(theme)) d.ShowDialog(this); });
             return m;
         }
 
@@ -1236,12 +1224,12 @@ namespace TrackVice
             Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
             Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
+            Menus.Separator(m);
             Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
             CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
-            Menus.Separator(m);
             Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
             Menus.Separator(m);
-            Menus.Add(m, "This device", delegate { Begin(Settings.NewLive(), true); });
+            Menus.Add(m, "Watch this device", delegate { Begin(Settings.NewLive(), true); });
             Menus.Separator(m);
             Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
             Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
@@ -1270,8 +1258,11 @@ namespace TrackVice
         ContextMenuStrip LogViceMenu()
         {
             ContextMenuStrip m = Menus.New(theme);
-            Menus.Add(m, "Logs from the device\u2026", delegate { FetchDeviceLogs(null, 0); }).Enabled = engine != null && engine.Mode == Modes.Agent;
-            Menus.Separator(m);
+            if (engine != null && engine.Mode == Modes.Agent)
+            {
+                Menus.Add(m, "Logs from the device\u2026", delegate { FetchDeviceLogs(null, 0); });
+                Menus.Separator(m);
+            }
             Item sel = list.SelectedItem;
             if (sel != null && sel.LogFile != null) Menus.Add(m, "Log of " + Txt.Short(sel.DisplayName, 40) + "  (Ctrl+L)", delegate { OpenItemLog(sel); });
             List<string> smsts = new List<string>();
@@ -1557,6 +1548,7 @@ namespace TrackVice
             if (e.KeepSignIn) return;
             intuneCatalog = null;
             graph = null;
+            ForgetIntuneNames();
         }
 
         // Statistics over the uploads of the agents. Asks where they upload to first, if that is not known yet.
@@ -1686,6 +1678,7 @@ namespace TrackVice
             }
             // Keep the pointer out of the picture, so no row shows as hovered.
             try { Cursor.Position = new Point(Screen.PrimaryScreen.Bounds.Right - 2, Screen.PrimaryScreen.Bounds.Bottom - 2); } catch (Exception) { }
+            gantt.Chart.ClearHover();
             System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
             t.Interval = 1500;
             t.Tick += delegate
@@ -1695,6 +1688,8 @@ namespace TrackVice
                 {
                     list.ClearHover();
                     list.Refresh();
+                    gantt.Chart.ClearHover();
+                    gantt.Chart.Refresh();
                     Form target = page != null ? page : start.Compact && compact != null ? (Form)compact : this;
                     Rectangle b = target.Bounds;
                     using (Bitmap bmp = new Bitmap(b.Width, b.Height))

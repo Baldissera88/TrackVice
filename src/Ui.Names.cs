@@ -146,6 +146,15 @@ namespace TrackVice
             LoadIntuneNames(true);
         }
 
+        // Names and profiles read from one customer's tenant are not used for another.
+        void ForgetIntuneNames()
+        {
+            intuneNames = null;
+            profilesFor = null;
+            profileDiff = null;
+            diffFor = null;
+        }
+
         // Reads what was picked, for the device that is open now. Runs again at every Intune sign-in.
         void LoadIntuneNames(bool say)
         {

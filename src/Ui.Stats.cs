@@ -33,6 +33,7 @@ namespace TrackVice
         readonly Panel footer = new Panel();
         readonly Label status = new Label();
         readonly FlatButton bWatch = new FlatButton("Watch this device", Glyphs.Watch);
+        readonly Panel watchGap = new Panel();
         readonly FlatButton bClose = new FlatButton("Close", null);
         readonly FlatButton bRefresh = new FlatButton("Refresh", Glyphs2.Sync);
         readonly FlatButton bExport = new FlatButton("Export CSV", Glyphs.Export);
@@ -194,16 +195,18 @@ namespace TrackVice
             bWatch.Visible = false;
             bWatch.Enabled = false;
             bWatch.Click += Safe.Wrap(delegate { Pick(); });
+            bClose.Primary = true;
+            bClose.Width = Math.Max(bClose.Width, Dpi.S(96));
             bClose.Dock = DockStyle.Right;
             bClose.Click += delegate { Close(); };
-            Panel gap = new Panel();
-            gap.Dock = DockStyle.Right;
-            gap.Width = Dpi.S(8);
+            watchGap.Dock = DockStyle.Right;
+            watchGap.Width = Dpi.S(8);
+            watchGap.Visible = false;
             themed.Add(bWatch);
             themed.Add(bClose);
             footer.Controls.Add(status);
             footer.Controls.Add(bClose);
-            footer.Controls.Add(gap);
+            footer.Controls.Add(watchGap);
             footer.Controls.Add(bWatch);
 
             Controls.Add(card);
@@ -275,6 +278,10 @@ namespace TrackVice
             runs.Grid.Visible = enr;
             items.Grid.Visible = !enr;
             bWatch.Visible = enr;
+            watchGap.Visible = enr;
+            // Close is the main button when there is no device to watch.
+            bClose.Primary = !enr;
+            bClose.Invalidate();
             UpdateWatch();
         }
 
