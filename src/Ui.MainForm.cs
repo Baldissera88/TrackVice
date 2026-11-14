@@ -111,6 +111,8 @@ namespace TrackVice
             pollTimer.Tick += Safe.Wrap(delegate { Poll(); });
             Finder.StuckAfter = TimeSpan.FromMinutes(Settings.StuckMinutes);
             CustomerUi.Switched += CustomerSwitched;
+            try { if (start == null || start.Shot == null) RestoreIntune(); }
+            catch (Exception) { }
             clockTimer.Interval = 1000;
             clockTimer.Tick += Safe.Wrap(delegate { Tick(); });
             clockTimer.Start();
@@ -727,6 +729,7 @@ namespace TrackVice
 
         void Bind()
         {
+            if (start.Shot == null) FetchUnknownNames();
             Session s = engine.S;
             List<string> sub = new List<string>();
             if (engine.Mode == Modes.Demo) sub.Add("Demo data");
@@ -1530,7 +1533,7 @@ namespace TrackVice
                 d.ShowDialog(this);
                 if (!demo)
                 {
-                    if (kind == RemoteDialog.Intune) { intuneCatalog = d.Catalog; graph = d.Graph; if (intuneNames == null) LoadIntuneNames(false); }
+                    if (kind == RemoteDialog.Intune) { intuneCatalog = d.Catalog; graph = d.Graph; KeepSignIn(graph); if (intuneNames == null) LoadIntuneNames(false); }
                     else if (kind == RemoteDialog.Agents) agentCatalog = d.Catalog;
                     else sccmCatalog = d.Catalog;
                 }
@@ -1549,6 +1552,8 @@ namespace TrackVice
             intuneCatalog = null;
             graph = null;
             ForgetIntuneNames();
+            try { RestoreIntune(); }
+            catch (Exception) { }
         }
 
         // Statistics over the uploads of the agents. Asks where they upload to first, if that is not known yet.
@@ -1606,6 +1611,14 @@ namespace TrackVice
                     if (engine != null) { Finder.Run(engine.S, engine.Now, engine.Mode == Modes.Live || engine.Mode == Modes.Demo); Bind(); }
                 };
                 d.ShowDialog(this);
+                if (SignedOut)
+                {
+                    SignedOut = false;
+                    graph = null;
+                    intuneCatalog = null;
+                    ForgetIntuneNames();
+                    Status("Signed out of Intune. The kept names are deleted.");
+                }
                 if (d.RestartRequested)
                 {
                     if (Program.RestartElevated()) { Close(); return; }

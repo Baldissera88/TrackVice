@@ -1,5 +1,14 @@
 # Changelog
 
+## TrackVice 1.0.2
+
+14 November 2026.
+
+- Names from Intune are kept per customer, so they are there at the next start, also in Statistics and Compare, and are read again in the background once a day.
+- The Intune sign-in is kept encrypted for your Windows account per customer, so the names and the Autopilot list need no new sign-in. Settings > Intune sign-in > Sign out deletes it and the kept names.
+- A script, app or remediation that shows by its ID makes TrackVice ask Intune for the new names by itself.
+- About lists the agent, statistics and comparisons, and shows the right build date.
+
 ## TrackVice 1.0.1
 
 14 November 2026.

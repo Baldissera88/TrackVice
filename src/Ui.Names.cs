@@ -136,6 +136,7 @@ namespace TrackVice
                     intuneCatalog = d.Catalog;
                     graph = d.Graph;
                 }
+                KeepSignIn(graph);
                 if (graph == null || !graph.SignedIn)
                 {
                     Status("Not signed in, so nothing was read from Intune.");
@@ -146,11 +147,96 @@ namespace TrackVice
             LoadIntuneNames(true);
         }
 
+        // ---- kept between starts ----
+
+        readonly NameCache nameCache = new NameCache(NameCache.DefaultFolder);
+        DateTime namesReadUtc, unknownAskedUtc;
+        readonly HashSet<string> unknownAsked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        static string IntuneKey
+        {
+            get { return CustomerUi.CurrentName ?? "Default"; }
+        }
+
+        // The names and the sign-in kept for the customer in use. Names older than a day are read again in the background.
+        void RestoreIntune()
+        {
+            string key = IntuneKey;
+            DateTime read;
+            Dictionary<string, string> kept = nameCache.Load(key, out read);
+            namesReadUtc = read;
+            if (kept.Count > 0)
+            {
+                intuneNames = kept;
+                AgentCatalog.KnownNames = new Dictionary<string, string>(kept, StringComparer.OrdinalIgnoreCase);
+                if (engine != null && engine.AddNames(kept) > 0) Bind();
+            }
+            if (graph == null)
+            {
+                string rt = Secret.Load("GraphToken|" + key);
+                if (rt.Length > 0)
+                    graph = GraphClient.Resume(Prefs.Get("GraphClient|" + key, null), Prefs.Get("GraphTenantOf|" + key, null), Prefs.Get("GraphScopes|" + key, null), rt, Prefs.Get("GraphAccount|" + key, null));
+            }
+            KeepSignIn(graph);
+            if (graph != null && DateTime.UtcNow - namesReadUtc > TimeSpan.FromDays(1)) LoadIntuneNames(false);
+        }
+
+        // Keeps a sign-in for the customer in use, encrypted for this Windows user, and follows each new token.
+        void KeepSignIn(GraphClient g)
+        {
+            if (g == null || !g.SignedIn) return;
+            string key = IntuneKey;
+            g.TokenChanged = delegate (string rt) { SaveSignIn(key, g, rt); };
+            string now = g.RefreshToken;
+            if (!string.IsNullOrEmpty(now)) SaveSignIn(key, g, now);
+        }
+
+        static void SaveSignIn(string key, GraphClient g, string rt)
+        {
+            Secret.Save("GraphToken|" + key, rt);
+            Prefs.Set("GraphScopes|" + key, g.Scopes);
+            Prefs.Set("GraphAccount|" + key, g.Account);
+            Prefs.Set("GraphClient|" + key, g.ClientId);
+            Prefs.Set("GraphTenantOf|" + key, g.Tenant);
+        }
+
+        // Settings > Sign out: the kept sign-in and names of the customer in use are deleted.
+        public static void SignOutIntune()
+        {
+            string key = IntuneKey;
+            Prefs.Set("GraphToken|" + key, null);
+            Prefs.Set("GraphScopes|" + key, null);
+            Prefs.Set("GraphAccount|" + key, null);
+            new NameCache(NameCache.DefaultFolder).Delete(key);
+            SignedOut = true;
+        }
+
+        public static bool SignedOut;
+
+        public static string KeptAccount
+        {
+            get { return Secret.Load("GraphToken|" + IntuneKey).Length > 0 ? (Prefs.Get("GraphAccount|" + IntuneKey, null) ?? "an account") : null; }
+        }
+
+        // A script, app or remediation that shows as an ID asks Intune for names, at most every few minutes and once per ID.
+        void FetchUnknownNames()
+        {
+            if (engine == null || engine.Mode == Modes.Demo || graph == null || !graph.SignedIn || Prefs.Get("IntuneNames", "0") != "1") return;
+            if (DateTime.UtcNow - unknownAskedUtc < TimeSpan.FromMinutes(3)) return;
+            List<string> ids = NameCache.Unknown(engine.S, intuneNames);
+            bool fresh = false;
+            foreach (string id in ids) if (unknownAsked.Add(id)) fresh = true;
+            if (!fresh) return;
+            unknownAskedUtc = DateTime.UtcNow;
+            LoadIntuneNames(false);
+        }
+
         // Names and profiles read from one customer's tenant are not used for another.
         void ForgetIntuneNames()
         {
             intuneNames = null;
             AgentCatalog.KnownNames = null;
+            unknownAsked.Clear();
             profilesFor = null;
             profileDiff = null;
             diffFor = null;
@@ -172,6 +258,7 @@ namespace TrackVice
         // A device opened later gets the names already read; its profiles are read for it.
         void IntuneOnLoad(Engine e)
         {
+            FetchUnknownNames();
             GraphClient g = graph;
             if (e == null || e == profilesFor || e.Mode == Modes.Demo || g == null || !g.SignedIn || Prefs.Get("IntuneNames", "0") != "1") return;
             LookupChoice c = new LookupChoice();
@@ -205,6 +292,8 @@ namespace TrackVice
                 if (intuneNames == null) intuneNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 foreach (KeyValuePair<string, string> kv in r.Names) intuneNames[kv.Key] = kv.Value;
                 AgentCatalog.KnownNames = new Dictionary<string, string>(intuneNames, StringComparer.OrdinalIgnoreCase);
+                namesReadUtc = DateTime.UtcNow;
+                nameCache.Save(IntuneKey, r.Names, namesReadUtc);
             }
             int n = engine != null && r.Names.Count > 0 ? engine.AddNames(r.Names) : 0;
             if (r.Profiles.Count > 0 && e != null && e == engine)
