@@ -260,6 +260,8 @@ namespace TrackVice
 
         // Names from Intune, kept so they survive a new upload from the device.
         readonly Dictionary<string, string> extraNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Observations from Intune, such as configuration profiles, applied again after a new upload from the device.
+        public readonly List<Obs> Kept = new List<Obs>();
 
         public int AddNames(Dictionary<string, string> found)
         {
@@ -285,6 +287,7 @@ namespace TrackVice
                 S.Mode = Mode;
                 S.SourcePath = key;
                 T = new Tracker(S);
+                if (Kept.Count > 0) T.ApplyAll(new List<Obs>(Kept));
                 clockAtUpload = S.ClockUtc;
                 replacedAt = DateTime.UtcNow;
                 LastUploadUtc = S.SavedUtc;

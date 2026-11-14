@@ -11,7 +11,7 @@ namespace TrackVice
     using System.Threading;
     using System.Windows.Forms;
 
-    public sealed class MainForm : Form
+    public sealed partial class MainForm : Form
     {
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         const int TabProgress = 0, TabTimeline = 1, TabGantt = 2, TabFindings = 3, TabSession = 4;
@@ -605,6 +605,7 @@ namespace TrackVice
         {
             busyBar.Running = false;
             if (intuneNames != null && err == null) e.AddNames(intuneNames);
+            if (err == null) IntuneOnLoad(e);
             if (err != null) Status("Reading failed: " + err.Message);
             lastUpdate = DateTime.UtcNow;
             bool first = !loadedOnce;
@@ -1213,6 +1214,7 @@ namespace TrackVice
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
             Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
             CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
+            Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
             Menus.Separator(m);
             Menus.Add(m, "Play the Autopilot demo", delegate { Begin(Engine.ForDemo("autopilot"), true); });
             Menus.Add(m, "Play the task sequence demo", delegate { Begin(Engine.ForDemo("osd"), true); });
@@ -1233,7 +1235,7 @@ namespace TrackVice
             Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
             CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
             Menus.Separator(m);
-            Menus.Add(m, "Get script names from Intune", delegate { NamesFromIntune(); });
+            Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
             Menus.Separator(m);
             Menus.Add(m, "This device", delegate { Begin(Settings.NewLive(), true); });
             Menus.Separator(m);
@@ -1573,68 +1575,6 @@ namespace TrackVice
             else CompareDialog.FromFile(this, theme, engine.S, engine.Now);
         }
 
-        // A device knows its platform scripts by ID only. Their names are read from Intune, which needs a sign-in
-        // with one more read permission. Once used, later sign-ins ask for it too and the names come by themselves.
-        void NamesFromIntune()
-        {
-            if (engine == null) return;
-            Prefs.Set("IntuneNames", "1");
-            if (graph == null || !graph.SignedIn || !graph.CanReadScripts)
-            {
-                intuneCatalog = null;
-                graph = null;
-                using (RemoteDialog d = new RemoteDialog(RemoteDialog.Intune, theme, null, null, false))
-                {
-                    d.Text = "Sign in to read script names";
-                    d.NamesOnly = true;
-                    d.ShowDialog(this);
-                    intuneCatalog = d.Catalog;
-                    graph = d.Graph;
-                }
-                if (graph == null || !graph.SignedIn)
-                {
-                    Status("Not signed in, so the script names were not read.");
-                    return;
-                }
-            }
-            LoadIntuneNames(true);
-        }
-
-        Dictionary<string, string> intuneNames;
-
-        void LoadIntuneNames(bool say)
-        {
-            GraphClient g = graph;
-            if (g == null || !g.SignedIn || !g.CanReadScripts) return;
-            if (say) Status("Reading script names from Intune\u2026");
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                Dictionary<string, string> names = null;
-                Exception err = null;
-                try { names = IntuneNames.Scripts(g); }
-                catch (Exception ex) { err = ex; }
-                try
-                {
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        Safe.Run(delegate
-                        {
-                            if (err != null)
-                            {
-                                Status("The script names could not be read: " + err.Message + " The account needs an Intune role that can read scripts, and the sign-in app needs consent for DeviceManagementScripts.Read.All.");
-                                return;
-                            }
-                            intuneNames = names;
-                            int n = engine != null ? engine.AddNames(names) : 0;
-                            if (n > 0) Bind();
-                            if (say || n > 0) Status(names.Count + " platform script" + (names.Count == 1 ? "" : "s") + " in Intune, " + n + " named here.");
-                        });
-                    });
-                }
-                catch (Exception) { }
-            });
-        }
-
         void OpenSettings()
         {
             using (SettingsDialog d = new SettingsDialog(theme))
@@ -1711,6 +1651,7 @@ namespace TrackVice
             else if (start.Page == "devicelogs") { FetchDeviceLogs(null, 0); LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); }
             else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
             else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
+            else if (start.Page == "names") page = new NamesDialog(theme, engine != null ? engine.S.Computer : null);
             else if (start.Remote != null && start.Pick == null)
             {
                 bool sign = start.Select != null && start.Select.StartsWith("signin");
