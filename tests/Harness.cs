@@ -44,6 +44,7 @@ namespace TrackVice.Tests
             ReportTests.Run();
             CustomerTests.Run();
             TsAgentTests.Run();
+            IntuneLookupTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

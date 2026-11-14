@@ -127,6 +127,17 @@ namespace TrackVice
                     Changes++;
                 }
             }
+            // Intune apps and remediations a device only knew by ID, or by a label with the start of it.
+            foreach (Item i in S.Items)
+            {
+                string id = i.Get("ID");
+                string n;
+                if (id != null && names.TryGetValue(id, out n) && i.Name != n && i.Origin == Origins.Intune && IntuneLookup.WeakName(i, id))
+                {
+                    i.Name = n;
+                    Changes++;
+                }
+            }
         }
 
         public string NameFor(string id)

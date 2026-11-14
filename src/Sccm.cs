@@ -44,12 +44,13 @@ namespace TrackVice
                 case "intunemanagementextension": return new ImeLogParser("IntuneManagementExtension");
                 case "appworkload": return new ImeLogParser("AppWorkload");
                 case "agentexecutor": return new ImeLogParser("AgentExecutor");
+                case "healthscripts": return new HealthScriptsParser();
                 default: return null;
             }
         }
 
         public static readonly string[] SccmLogs = { "AppEnforce", "AppDiscovery", "AppIntentEval", "execmgr", "CAS", "UpdatesDeployment", "UpdatesHandler" };
-        public static readonly string[] ImeLogs = { "IntuneManagementExtension", "AppWorkload", "AgentExecutor" };
+        public static readonly string[] ImeLogs = { "IntuneManagementExtension", "AppWorkload", "AgentExecutor", "HealthScripts" };
     }
 
     // smsts.log: the steps of a task sequence. It moves during OSD, so one parser reads every copy and skips lines it already saw.
