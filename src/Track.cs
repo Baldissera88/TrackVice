@@ -479,6 +479,7 @@ namespace TrackVice
                 int c = b.Severity.CompareTo(a.Severity);
                 return c != 0 ? c : a.TimeUtc.CompareTo(b.TimeUtc);
             });
+            Why.Apply(s, list, nowUtc);
             s.Findings = list;
         }
 
@@ -572,6 +573,8 @@ namespace TrackVice
             uint u = unchecked((uint)code);
             string m;
             if (Sccm.TryGetValue(u, out m)) return m;
+            m = ErrorBase.Meaning(code);
+            if (m != null) return m;
             return ImeCodes.Meaning(code);
         }
 
@@ -601,6 +604,8 @@ namespace TrackVice
             if (code == 0 || code < int.MinValue || code > uint.MaxValue) return null;
             string h;
             if (Hints.TryGetValue(unchecked((uint)code), out h)) return h;
+            h = ErrorBase.Next(code);
+            if (h != null) return h;
             return ImeCodes.Hint(code);
         }
 
