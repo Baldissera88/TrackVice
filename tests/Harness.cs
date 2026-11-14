@@ -38,6 +38,7 @@ namespace TrackVice.Tests
             GanttTests.Run();
             WhyTests.Run();
             FleetTests.Run();
+            AgentAlertTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

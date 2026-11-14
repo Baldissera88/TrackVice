@@ -9,6 +9,7 @@ $Sha256    = ''   # SHA-256 of that TrackVice.exe, from Get-FileHash
 $Upload    = ''   # Where the agent uploads: the container SAS link with Create and Write
 $KeepHours = 48   # The agent removes itself after this long
 $MaxAgeHours = 0  # Only install on a device enrolled within this many hours. 0 installs on every device
+$Alert     = ''   # Optional: a Teams workflow or other webhook link. The agent posts failures and the end of the deployment there
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -39,6 +40,9 @@ if ($hash -ne $Sha256) {
 }
 
 $arguments = '/agent-install', '/upload', "`"$Upload`"", '/keep', $KeepHours
+if ($Alert) {
+    $arguments += '/alert', "`"$Alert`""
+}
 $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
 
 $message = (Get-Content -Path $out, $err -ErrorAction SilentlyContinue | Where-Object { $_.Trim() }) -join ' '
