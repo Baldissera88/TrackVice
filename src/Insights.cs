@@ -559,27 +559,69 @@ namespace TrackVice
             }
         }
 
+        // Lists which file in the bundle is which log on the device: one "name<TAB>device path" per line.
+        public const string IndexName = "trackvice-paths.txt";
+        public const long MaxUnpackedBytes = 1024L * 1024 * 1024;
+
         // Unpacks a bundle into a folder and returns how many files it held.
         public static int Unpack(byte[] zip, string folder)
         {
+            return Unpack(zip, folder, null);
+        }
+
+        // Same, and fills written with each entry's name in the zip and the file it was written to.
+        public static int Unpack(byte[] zip, string folder, Dictionary<string, string> written)
+        {
             Directory.CreateDirectory(folder);
             int n = 0;
+            long total = 0;
             string root = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             using (MemoryStream ms = new MemoryStream(zip))
             using (ZipArchive a = new ZipArchive(ms, ZipArchiveMode.Read))
             {
                 foreach (ZipArchiveEntry e in a.Entries)
                 {
-                    if (string.IsNullOrEmpty(e.Name)) continue;
-                    // Only the file name is used, so an entry cannot write outside the folder.
-                    string dest = Path.GetFullPath(Path.Combine(folder, Path.GetFileName(e.Name)));
+                    // Only the last part of the name is used, so an entry cannot write outside the folder.
+                    string name = SafeName(e.FullName);
+                    if (name == null) continue;
+                    string dest = Path.GetFullPath(Path.Combine(root, name));
                     if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
+                    // Two entries with the same name both stay, the second as "name (2)".
+                    int k = 2;
+                    while (File.Exists(dest)) dest = Path.Combine(root, Path.GetFileNameWithoutExtension(name) + " (" + k++ + ")" + Path.GetExtension(name));
                     using (Stream src = e.Open())
-                    using (FileStream dst = File.Create(dest)) src.CopyTo(dst);
+                    using (FileStream dst = new FileStream(dest, FileMode.CreateNew, FileAccess.Write))
+                    {
+                        byte[] buf = new byte[81920];
+                        int r;
+                        while ((r = src.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            total += r;
+                            if (total > MaxUnpackedBytes) throw new InvalidDataException("The log bundle is larger than 1 GB when unpacked. It was not unpacked.");
+                            dst.Write(buf, 0, r);
+                        }
+                    }
+                    if (written != null && !written.ContainsKey(e.FullName)) written[e.FullName] = dest;
                     n++;
                 }
             }
             return n;
+        }
+
+        // The file name part of a zip entry, cut at both kinds of slash, without a drive or characters Windows does not allow.
+        public static string SafeName(string entry)
+        {
+            if (string.IsNullOrEmpty(entry)) return null;
+            string name = entry;
+            int cut = Math.Max(name.LastIndexOf('/'), name.LastIndexOf('\\'));
+            if (cut >= 0) name = name.Substring(cut + 1);
+            cut = name.LastIndexOf(':');
+            if (cut >= 0) name = name.Substring(cut + 1);
+            StringBuilder b = new StringBuilder();
+            foreach (char c in name) b.Append(c < 32 || "<>\"|?*".IndexOf(c) >= 0 ? '_' : c);
+            name = b.ToString().Trim().TrimEnd('.');
+            if (name.Length == 0) return null;
+            return name;
         }
     }
 

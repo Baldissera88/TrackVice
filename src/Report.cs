@@ -173,6 +173,7 @@ namespace TrackVice
             try
             {
                 s.Save(Path.Combine(tmp, "session.json"));
+                StringBuilder index = new StringBuilder();
                 HashSet<string> logs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (TEvent e in s.Events) if (e.Evidence != null && e.Evidence.IsLogFile) logs.Add(e.Evidence.Path);
                 if (extra != null)
@@ -200,10 +201,12 @@ namespace TrackVice
                             if (src.Length > MaxLogBytes) src.Seek(-MaxLogBytes, SeekOrigin.End);
                             src.CopyTo(dst);
                         }
+                        index.Append(Path.GetFileName(dest)).Append('\t').Append(log).Append("\r\n");
                         files++;
                     }
                     catch (Exception) { }
                 }
+                if (files > 0) File.WriteAllText(Path.Combine(tmp, LogBundle.IndexName), index.ToString(), new UTF8Encoding(false));
                 if (File.Exists(zipPath)) File.Delete(zipPath);
                 Zip.FromFolder(tmp, zipPath);
             }

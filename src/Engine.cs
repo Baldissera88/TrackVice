@@ -108,6 +108,12 @@ namespace TrackVice
         }
 
         IRemoteFeed remote;
+
+        // The feed of another device, or null when this engine does not watch one.
+        public IRemoteFeed Remote
+        {
+            get { return remote; }
+        }
         DateTime replacedAt, clockAtUpload;
 
         // When the device last uploaded the session that is shown.
