@@ -47,6 +47,8 @@ namespace TrackVice
         readonly Dictionary<string, string> names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         int reads;
         string lastInfo;
+        // Where smsts.log is looked for. Tests set it to folders of their own.
+        public Func<List<string>> SmstsSource;
 
         public LiveCollector(DateTime sinceUtc)
         {
@@ -103,11 +105,36 @@ namespace TrackVice
 
         void Discover(Batch b)
         {
-            foreach (string p in SmstsPaths()) Add(p, smsts, b);
+            foreach (string p in SmstsSource != null ? SmstsSource() : SmstsPaths()) AddSmsts(p, b);
             string ccm = CcmLogFolder;
             foreach (string n in LogParser.SccmLogs) AddWithHistory(Path.Combine(ccm, n + ".log"), b);
             string ime = ImeLogFolder;
             foreach (string n in LogParser.ImeLogs) AddWithHistory(Path.Combine(ime, n + ".log"), b);
+        }
+
+        // smsts.log and its rolled-over copies (smsts-<date>-<time>.log) in the same folder. A copy is read once, through the
+        // one smsts parser, so steps from before a restart are there and lines seen in another copy are skipped.
+        void AddSmsts(string path, Batch b)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (Directory.Exists(dir))
+                {
+                    List<FileInfo> old = new List<FileInfo>();
+                    foreach (FileInfo f in new DirectoryInfo(dir).GetFiles("smsts-*.log"))
+                        if (!known.Contains(f.FullName) && f.LastWriteTimeUtc >= SinceUtc && string.Equals(CmLog.BaseName(f.FullName), "smsts", StringComparison.OrdinalIgnoreCase)) old.Add(f);
+                    old.Sort(delegate (FileInfo x, FileInfo y) { return x.LastWriteTimeUtc.CompareTo(y.LastWriteTimeUtc); });
+                    foreach (FileInfo f in old)
+                    {
+                        known.Add(f.FullName);
+                        foreach (LogLine l in LogTail.ReadAll(f.FullName, null)) Feed(smsts, l, b);
+                        b.Sources.Add(f.FullName);
+                    }
+                }
+            }
+            catch (Exception) { }
+            Add(path, smsts, b);
         }
 
         void AddWithHistory(string path, Batch b)

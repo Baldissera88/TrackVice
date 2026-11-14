@@ -894,6 +894,8 @@ namespace TrackVice
             new string[] { "/hours <n>", "Hours of history to read (default 24, 0 for everything since Windows was installed)" },
             new string[] { "/agent-install /upload <location>", "Install the agent: it uploads this device's session while it deploys. The location is a storage container SAS link or a folder" },
             new string[] { "/agent-remove", "Remove the agent" },
+            new string[] { "/agent-start /upload <location>", "In a task sequence: start the agent in the background and return at once. It ends with the task sequence. /id <id> keeps one session across restarts" },
+            new string[] { "/agent-stop", "Make the last upload and stop the agent started with /agent-start" },
             new string[] { "/agent /upload <location>", "Run the agent here without installing it. /once uploads one time and exits" },
             new string[] { "/keep <hours>", "With /agent-install: how long the agent stays before it removes itself (default 48)" },
             new string[] { "/alert <link>", "With /agent or /agent-install: send failures and the end of a deployment to a Teams workflow or other webhook" },

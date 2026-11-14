@@ -43,6 +43,7 @@ namespace TrackVice.Tests
             DeviceLogTests.Run();
             ReportTests.Run();
             CustomerTests.Run();
+            TsAgentTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

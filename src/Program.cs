@@ -218,6 +218,10 @@ namespace TrackVice
                         case "agent": agent = "run"; break;
                         case "agent-install": agent = "install"; break;
                         case "agent-remove": agent = "remove"; break;
+                        case "agent-start": agent = "start"; break;
+                        case "agent-stop": agent = "stop"; break;
+                        case "ts": ao.TaskSequence = true; break;
+                        case "id": ao.Id = Next(args, ref i); break;
                         case "upload": ao.Upload = Next(args, ref i); break;
                         case "keep": ao.KeepHours = Math.Max(1, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
                         case "once": ao.Once = true; break;
@@ -240,6 +244,9 @@ namespace TrackVice
                     Console.WriteLine("The TrackVice agent is removed. Delete " + Agent.InstallDir + " to remove its files.");
                     return 0;
                 }
+                if (agent == "start") return AgentControl.Start(ao, new WinAgentHost(System.Reflection.Assembly.GetExecutingAssembly().Location), Console.WriteLine);
+                if (agent == "stop") return AgentControl.Stop(new WinAgentHost(System.Reflection.Assembly.GetExecutingAssembly().Location), 120000, Console.WriteLine);
+                if (agent == "run" && ao.TaskSequence) return TsAgent.Run(ao);
                 if (agent == "run" && ao.AlertTest) return AgentAlerts.Test(ao.Alert, Environment.MachineName);
                 if (agent == "run") return Agent.Run(ao);
                 if (fleet != null) return Report.FleetCli(fleet, ao.Upload, hours, title);
