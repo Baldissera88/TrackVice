@@ -1,5 +1,41 @@
 # Changelog
 
+## TrackVice 1.0.0
+
+14 November 2026. The first full release.
+
+New
+
+- Gantt tab: one bar per item across time, grouped by phase. **Policies** adds the policy areas, and **Only what took time** leaves out items that took less than a second. Click a bar to go to the item.
+- Findings explain failures: what an error code means and what to do next, the error text of a failed platform script with a hint when a 64-bit script ran in 32-bit PowerShell, a phase that is near the ESP time limit, items that wait for a restart, and a common cause when three or more items in a phase fail with the same code.
+- Autopilot event log: milestones on the timeline, and Device preparation items for TPM attestation, device enrollment by Autopilot, MDM enrollment, offline domain join, the domain controller check and hybrid Entra join, with findings for a hybrid join that fails.
+- Account setup is read from the ESP keys of the user who signed in.
+- Pre-provisioning: the time the device was boxed between the technician phase and the user does not count as running time or as no progress.
+- Autopilot device preparation is recognised, and the Session tab says so.
+- Remediations on the device, from the Intune Management Extension registry and HealthScripts.log, in a phase of their own.
+- Devices > Statistics for devices with the agent: enrollments, finished, with failures, average, median and longest time over 24 hours to 90 days, a table of apps, scripts and steps with fail rate and times, and a table of enrollments. Export as CSV. Double-click an enrollment to watch it.
+- Devices > Compare with another enrollment: the session you watch side by side with an upload from a device with the agent, or a saved session file. Items that differ in result, exit code, tries or time, findings only one side has, and the last events of each. Export as CSV.
+- Customers: the Intune tenant, agent upload location and SCCM site of each customer you work for. A selector at the top of every device list switches between them. Settings > Customers adds, edits, imports and exports them. The storage links are encrypted for your Windows account and only exported when you ask for it.
+- Devices > Names from Intune replaces Get script names from Intune. It reads script names (`DeviceManagementScripts.Read.All`), app names (`DeviceManagementApps.Read.All`), remediation names (`DeviceManagementScripts.Read.All`) and the configuration profiles Intune has for the device (`DeviceManagementConfiguration.Read.All`). The sign-in asks only for the permissions of what you tick.
+- HTML report rewritten: a summary, a Gantt time line, the findings, details per phase, every event, and a print layout. `/title` sets its title.
+- `/fleet-report <file> /upload <location> [/hours n]` writes one report over every enrollment the agents uploaded: duration over time, every enrollment, the slowest items and what fails most.
+- Release tooling: `release.ps1` builds, signs and publishes a release, `bump.ps1` and `bump.sh` set the version, `winget/New-Manifests.ps1` writes the winget manifests for `DanielBaldissera.TrackVice`, a CI build runs on every push, and docs/RELEASE.md describes the steps.
+
+Agent
+
+- `/alert <https link>` sends an alert to a Teams workflow or another webhook when something fails and when a deployment is finished. `/alert-test` sends one test alert. `$Alert` in `agent/Install-TrackViceAgent.ps1` sets it from Intune.
+- Passwords, keys and tokens in command lines, script output and log lines are masked before the session leaves the device. `/no-mask` turns that off.
+- The agent uploads a zip of the device's logs when something fails, when the device goes idle and at the end.
+- LogVice > Logs from the device downloads that zip for a device you watch, and Open in LogVice opens the device's copy of a log.
+- SCCM task sequences: `/agent-start` starts the agent from a Run Command Line step and returns at once, `/agent-stop` makes the last upload and stops it, and `/id` sets the session ID. One session runs from Windows PE to Windows, across restarts and a new computer name, and the agent ends with the task sequence. See docs/AGENT.md.
+
+Fixed
+
+- A rolled-over smsts.log could lose lines or count a step twice.
+- Unpacking a log zip could write outside its folder.
+- Statistics: the fail rate and the averages were counted wrong.
+- Menus listed some entries twice.
+
 ## TrackVice 0.0.10
 
 13 November 2026.
@@ -20,7 +56,7 @@
 
 13 November 2026.
 
-- Fixed: listing task sequences from a real SCCM site failed with "Generic failure". The time in the query was written with a time zone offset, which the SMS Provider does not take. Not yet confirmed on a real site.
+- Fixed: listing task sequences from a real SCCM site failed with "Generic failure". The time in the query was written with a time zone offset, which the SMS Provider does not take.
 - Times from the SMS Provider are read as UTC, so they are no longer shifted by the time zone of your PC.
 - When the SMS Provider refuses a query, the message now gives its reason and the query.
 
@@ -32,7 +68,7 @@
 - Microsoft 365 Apps from the Office CSP, with products, channel, languages and result.
 - MSI apps the MDM client installs, with download and install state, error and product name.
 - What the ESP waits for: policies, Wi-Fi and VPN profiles, certificates, MSI and Store apps, each with the time the ESP saw it arrive.
-- Policies: every setting the MDM client set, grouped by policy area, from the MDM event log. This part has only run in tests.
+- Policies: every setting the MDM client set, grouped by policy area, from the MDM event log.
 - A folder with registry exports (.reg) is read like the registry of the device.
 - Fixed: a line about a device session made an item named after the all-zero user ID.
 - Fixed: Win32 app state changes were not read from the report lines the agent writes today, so apps stayed at their first state.
@@ -43,7 +79,7 @@
 
 ## TrackVice 0.0.6
 
-13 November 2026. The agent has uploaded to a real Azure storage account and installed on Windows 11. It has not yet been through a full Autopilot enrollment.
+13 November 2026.
 
 - The TrackVice agent: TrackVice runs on a device without a window while it deploys, and uploads its whole session as it changes, to an Azure Storage container or a folder. See docs/AGENT.md.
 - `/agent-install /upload <location>` installs it as a startup task that runs as SYSTEM, survives the restarts of a deployment and removes itself after 48 hours. `/agent-remove` removes it.
@@ -69,7 +105,7 @@
 
 ## TrackVice 0.0.3
 
-13 November 2026. The views of other devices have run with demo data and tests, not yet against a real tenant or site.
+13 November 2026.
 
 - Devices (Ctrl+D): follow deployments on other devices.
 - Autopilot in Intune: sign in to Microsoft Graph read-only with a device code, list Autopilot deployments, and follow one: device setup, account setup, the failure Intune recorded, and every app and policy with its status.
@@ -91,7 +127,7 @@
 
 ## TrackVice 0.0.1
 
-First preview, 11 November 2026. It has run with the built-in demos and the tests, not yet on a real device.
+11 November 2026. The first version.
 
 - Follows SCCM task sequences through Windows PE and full Windows, following smsts.log as it moves.
 - Follows SCCM applications, packages, content downloads and software updates from the client logs and ConfigMgr client WMI.

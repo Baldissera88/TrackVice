@@ -10,7 +10,7 @@ It is a companion to [LogVice](https://github.com/Baldissera88/LogVice) and [Pol
 
 ![TrackVice following an Autopilot deployment](docs/images/trackvice-autopilot.png)
 
-> **TrackVice is a preview.** It has followed real Autopilot enrollments through device setup, with the agent uploading to Azure storage, and it has listed Autopilot deployments from a real Intune tenant and task sequences from a real SCCM site. It has not yet been checked on account setup, on a full task sequence on the device itself, or on many different tenants. The log formats of the Intune Management Extension and the ESP registry layout are not documented by Microsoft, so expect some lines to be missed. [docs/TESTING.md](docs/TESTING.md) is the checklist for testing it.
+[docs/TESTING.md](docs/TESTING.md) is the checklist for checking TrackVice against the logs during real deployments.
 
 ## Download
 
@@ -26,7 +26,8 @@ Get `TrackVice.msi` or the portable `TrackVice.exe` from the [latest release](ht
 | Progress | Every item under its phase, with a live spinner, download progress, tries, duration and its last event |
 | Details | For the selected item: findings, the result with the error decoded, every attempt, the command line, IDs, its events and the raw log line |
 | Timeline | Every event from every source, newest first, with a filter for errors and warnings or the selected item |
-| Findings | What needs attention, with what happened, what to check and the evidence |
+| Gantt | One bar per item across time, grouped by phase. See [Gantt](#gantt) |
+| Findings | What needs attention, with what happened, what it means, what to do next and the evidence |
 | Session | The device, the deployment (task sequence, Autopilot profile, tenant, join type, ESP time limit), and every log and key that was read |
 
 ## What it follows
@@ -38,16 +39,22 @@ Get `TrackVice.msi` or the portable `TrackVice.exe` from the [latest release](ht
 | SCCM packages and programs | Packages | `execmgr.log` and `CCM_Program` |
 | SCCM content | Content downloads | `CAS.log` |
 | SCCM software updates | Software updates | `UpdatesDeployment.log`, `UpdatesHandler.log` and `CCM_SoftwareUpdate` |
-| Autopilot and the ESP | Device preparation, device setup, account setup | `HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking`, the Autopilot profile, the ESP time limit, and the Autopilot event log |
+| Autopilot and the ESP | Device preparation, device setup, account setup | `HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking`, also the keys of the user in account setup, the Autopilot profile and the ESP time limit |
+| Autopilot milestones | Device preparation, and on the timeline | The Autopilot event log (`ModernDeployment-Diagnostics-Provider/Autopilot`), the MDM, User Device Registration and Shell-Core event logs: TPM attestation, device enrollment by Autopilot, MDM enrollment, offline domain join, the domain controller check, hybrid Entra join, pre-provisioning and Autopilot device preparation |
 | Intune Win32 apps | Intune apps, or the ESP phase that waits for them | `IntuneManagementExtension.log`, `AppWorkload.log`, `AgentExecutor.log` and the `Win32Apps` key |
 | What the ESP waits for | Device setup, account setup | The policies, Wi-Fi and VPN profiles, certificates, MSI and Store apps under `EnrollmentStatusTracking\ESPTrackingInfo\Diagnostics`, with the time of each change |
 | Microsoft 365 Apps | The ESP phase that waits for it, or Intune apps | `HKLM\SOFTWARE\Microsoft\OfficeCSP`: products, channel, languages and result |
 | MSI apps from Intune | The ESP phase that waits for them, or Intune apps | `HKLM\SOFTWARE\Microsoft\EnterpriseDesktopAppManagement`: download and install state, error and product name |
 | Platform scripts | Platform scripts | `IntuneManagementExtension.log`, `AgentExecutor.log` and the `IntuneManagementExtension\Policies` key: result, exit code, output and error text |
+| Remediations | Remediations | `HealthScripts.log` and the `SideCarPolicies\Scripts` key: detection and remediation result and exit codes |
 | MDM policies | Policies, one item per policy area | Every setting the MDM client set, from the DeviceManagement Admin event log |
 | MDM and Entra | On the timeline | The DeviceManagement Admin, User Device Registration and AAD event logs, errors and warnings only |
 
-Every source is mapped to one set of states: waiting, downloading, installing, detecting, restart needed, done, failed, skipped and not applicable. The original code stays on the event. Win32 app names come from the IME logs, the same way PolicyVice finds them. Platform scripts and configuration profiles have no names on the device, only IDs, so a script shows as "Platform script" with the start of its ID, and policies show by policy area and setting. **Devices > Get script names from Intune** reads the script names from Intune with your sign-in and the permission `DeviceManagementScripts.Read.All`.
+Every source is mapped to one set of states: waiting, downloading, installing, detecting, restart needed, done, failed, skipped and not applicable. The original code stays on the event. Win32 app names come from the IME logs, the same way PolicyVice finds them. Platform scripts, remediations and configuration profiles have no names on the device, only IDs, so a script shows as "Platform script" with the start of its ID, and policies show by policy area and setting. [Names from Intune](#names-from-intune) reads the names from Intune.
+
+**Pre-provisioning.** When the technician phase of pre-provisioning finished, the time the device was resealed and boxed is not counted as running time, and does not give a **No progress** finding. The Session tab says when the technician phase finished and when the user phase started.
+
+**Autopilot device preparation** does not use the ESP. When its events are there and no ESP items are, the Session tab says it is probably in use. Its setup page keeps its progress in no documented place, so TrackVice shows its events, apps, scripts and policies, but not the page's own progress.
 
 A folder you open can also hold registry exports (`.reg`) of those keys. TrackVice reads them like the registry of the device they came from.
 
@@ -55,16 +62,37 @@ A folder you open can also hold registry exports (`.reg`) of those keys. TrackVi
 
 | Finding | Meaning |
 |---|---|
-| **Failed** | An item failed. The error is decoded: Windows Installer codes, HRESULTs, and the ConfigMgr codes that come up most, with a hint where one helps |
+| **Failed** | An item failed. The error is decoded: Windows Installer codes, HRESULTs, Intune Management Extension and ConfigMgr codes, with what they mean and what to do next |
 | **Not detected after install** | The installer finished with a success code, but the detection rule did not find the app afterwards (0x87D00324 in SCCM, 0x87D1041C in Intune) |
 | **Retry loop** | An item was tried three times or more and at least two attempts failed |
 | **Restart needed** | An item installed and is waiting for a restart (3010, 1641, pending soft or hard reboot) |
 | **ESP time limit** | Device setup or account setup has run past the time limit in the ESP profile. Lists what it is still waiting for |
+| **Near the ESP time limit** | Device setup or account setup has used three quarters of the time limit and still runs. Lists what runs and how many minutes are left |
+| **Waiting for a restart** | An item asked for a restart over 5 minutes ago, and the items after it in the phase wait for it |
+| **Same error on several items** | Three or more items in one phase failed with the same code. That usually points at one cause on the device, such as the network or disk space, and it is listed before the items |
+| **Hybrid join** | The domain join blob did not arrive or could not be applied, or no domain controller could be reached, with where to look |
 | **No progress** | While watching: an item has been downloading or installing for 15 minutes without any source saying anything about it |
 | **Task sequence failed** | The task sequence ended with an error |
 | **MDM errors** | The DeviceManagement Admin event log has errors from the deployment |
 
+Findings say why something failed where the sources tell:
+
+- A failed platform script shows its exit code, the PowerShell host it ran in and its error text. When a script that ran in 32-bit PowerShell failed with an error that usually comes from that, such as a path under System32 or a missing module, the finding says to run it in the 64-bit host.
+- Microsoft 365 Apps and MSI apps from the MDM client show the status they reported, with its meaning.
+- **Not detected after install** shows the last detection result that was seen.
+
 ![Findings for a failed task sequence](docs/images/trackvice-findings-dark.png)
+
+## Gantt
+
+The **Gantt** tab shows every item as a bar from its start to its end, grouped by phase, on one time axis. A running item grows until now. Click a bar to go to the item in the progress list.
+
+| Button | What it does |
+|---|---|
+| **Policies** | Adds the Policies phase. It is left out at first, since policies arrive in an instant |
+| **Only what took time** | Leaves out items that took less than a second, unless they still run |
+
+![The Gantt tab](docs/images/trackvice-gantt.png)
 
 ## Where to run it
 
@@ -127,9 +155,52 @@ Intune and SCCM only know what a device has reported. With the agent, the device
 | The list | Device, progress with the current item, deployment, profile, start, duration and last upload. Refreshed every 15 seconds |
 | One device | Everything the device itself shows. Read every 5 seconds |
 
-**[docs/AGENT.md](docs/AGENT.md) is the guide**: the storage container, the three links, the platform script in Intune, testing each part first, maintenance and troubleshooting.
+The agent can also run in an **SCCM task sequence**, from Windows PE to the end, as one session. It can send **alerts** to a Teams channel when something fails, and it uploads the **device's logs** beside the session.
+
+**[docs/AGENT.md](docs/AGENT.md) is the guide**: the storage container, the three links, the platform script in Intune, testing each part first, alerts, task sequences, maintenance and troubleshooting.
 
 All three have a demo with made-up devices under **Devices**, so you can see them without signing in.
+
+### Customers
+
+If you work for several customers, TrackVice keeps the connection details of each: the Intune tenant and client ID, the agent upload location and the SCCM site. Choose a customer at the top of any device list to connect to it. **Settings > Customers** adds, edits and removes them, and imports and exports them as a JSON file to move them to another PC. The storage links are encrypted for your Windows account, and an export only has them when you tick **Include the storage links**. A device list that connects with details you type in saves them as the customer Default.
+
+### Statistics
+
+**Devices > Statistics for devices with the agent** reads every session the agents uploaded in the last 24 hours, 7, 30 or 90 days.
+
+| Part | Contents |
+|---|---|
+| Chips | Enrollments, finished, with failures, and the average, median and longest time of the finished ones |
+| Apps, scripts and steps | Each item over every enrollment: kind, devices, failed, fail rate, average and longest time, and the device where it was slowest |
+| Enrollments | Each enrollment: device, deployment, profile, start, duration, items, failed and its slowest part. Double-click one to watch it |
+
+**Export CSV** saves the table you see. Times only count finished enrollments, and the fail rate only counts devices where the item finished.
+
+![Statistics for devices with the agent](docs/images/trackvice-stats.png)
+
+### Compare
+
+**Devices > Compare with another enrollment** puts the session you watch (A) beside another one (B): **A device with the agent** from the uploads, or **A saved session file**. The table shows items only one side has, different results, exit codes and tries, times that differ by at least a minute and half again as long, and findings only one side has. Items match by ID first, then by name. Select a row to see its last events on both sides. **Only differences** hides the items that are the same, and **Export** saves the table as CSV.
+
+![Two enrollments compared](docs/images/trackvice-compare.png)
+
+### Names from Intune
+
+A device knows platform scripts, remediations and some apps by ID only. **Devices > Names from Intune** reads from Intune what you tick, each with a read permission of its own:
+
+| Lookup | Permission | What you get |
+|---|---|---|
+| Script names | `DeviceManagementScripts.Read.All` | Platform scripts show their name |
+| App names | `DeviceManagementApps.Read.All` | Intune apps the device only knows by ID show their name |
+| Remediation names | `DeviceManagementScripts.Read.All` | Remediations show their name |
+| Configuration profiles of this device | `DeviceManagementConfiguration.Read.All` | Every configuration profile Intune has for the device, with its state: succeeded, error, conflict or not applicable, as the device last reported it to Intune |
+
+The sign-in asks only for the permissions of what you ticked, and each needs consent in your tenant. A lookup without its permission fails on its own and the others still apply. The names are kept and read again at every Intune sign-in, and used for devices you open later.
+
+### Logs from the device
+
+When you watch a device with the agent, **LogVice > Logs from the device** downloads the zip of logs the device uploaded, unpacks it under `%LOCALAPPDATA%\TrackVice\Logs` and opens the folder. **Open in LogVice** on an item or an event opens the device's copy of that log. Copies older than 30 days are removed.
 
 ## Watch, save and share
 
@@ -139,11 +210,13 @@ ESP and Win32 app states come from the registry, and always carry the time their
 
 ## Settings
 
-**Settings** (Ctrl+,) holds the theme, how far back to read (6 hours to 30 days, or everything since Windows was installed), whether to read ConfigMgr client WMI and the event logs, whether to start watching when TrackVice opens, how often to read while watching, how long to wait before an item gets a **No progress** finding, and where LogVice is. They are kept in `HKCU\Software\TrackVice`.
+**Settings** (Ctrl+,) holds the customers, the theme, how far back to read (6 hours to 30 days, or everything since Windows was installed), whether to read ConfigMgr client WMI and the event logs, whether to start watching when TrackVice opens, how often to read while watching, how long to wait before an item gets a **No progress** finding, and where LogVice is. They are kept in `HKCU\Software\TrackVice`.
 
 **Save > Save the session** writes everything as one JSON file that opens on any PC. **Save > Collect the session and its logs in a zip** adds every log file the session has a line from, so a supporter can send the evidence instead of the device. **Open > Open a folder of logs** reads a CCM Logs folder, an IME Logs folder or an unpacked bundle; it reads every log TrackVice knows in it and its subfolders, including rolled-over copies.
 
-**Export** writes an HTML report with the phases, findings and timeline, or every event as CSV.
+**Export** writes an HTML report, or every event as CSV. The report has a summary with the result and the slowest items, the findings, the deployment details, a time line like the Gantt tab, details per phase and every event. It follows the light or dark mode of the browser and has a print layout.
+
+`/fleet-report` writes one report over every enrollment the agents uploaded to a location: the duration over time, every enrollment, the slowest items and what fails most.
 
 ![The timeline with the raw line behind an event](docs/images/trackvice-timeline.png)
 
@@ -162,20 +235,46 @@ Both demos are written as real log lines and ESP registry values and read throug
 ```text
 TrackVice.exe                          Watch this device
 TrackVice.exe <session.json>           Open a saved session
-TrackVice.exe <folder>                 Read a folder of logs
+TrackVice.exe <folder>                 Read a folder of logs, such as a CCM Logs folder or a collected bundle
+TrackVice.exe --demo [osd]             Play the Autopilot demo, or with osd the task sequence demo
+
 TrackVice.exe /report <file.html>      Save an HTML report of this device and exit
 TrackVice.exe /csv <file.csv>          Save every event as CSV and exit
 TrackVice.exe /session <file.json>     Save the session as JSON and exit
   /folder <path>                       Read a folder of logs instead of this device
-  /hours <n>                           Hours of history to read (default 24, 0 since Windows was installed)
-TrackVice.exe /agent-install /upload <location>   Install the agent, see docs/AGENT.md
-  /keep <hours>                        How long the agent stays (default 48)
+  /hours <n>                           Hours of history to read (default 24, 0 for everything since Windows was installed)
+  /title <text>                        The title at the top of the report
+
+TrackVice.exe /fleet-report <file.html> /upload <location>
+                                       Save an HTML report over every enrollment the agents uploaded there and exit
+  /hours <n>                           The uploads of the last n hours (default 24, 0 for all)
+  /title <text>                        The title at the top of the report
+
+TrackVice.exe /agent-install /upload <location>
+                                       Install the agent. The location is a storage container SAS link or a folder
+  /keep <hours>                        How long the agent stays before it removes itself (default 48)
 TrackVice.exe /agent-remove            Remove the agent
-TrackVice.exe /agent /upload <location> [/once]   Run the agent without installing it
-TrackVice.exe --demo [osd]             Play a demo
+TrackVice.exe /agent-start /upload <location>
+                                       In a task sequence: start the agent in the background and return at once
+  /id <id>                             The session ID, kept across restarts (default: from the device's hardware)
+  /keep <hours>                        How long it runs at most (default 48)
+TrackVice.exe /agent-stop              Make the last upload and stop the agent started with /agent-start
+TrackVice.exe /agent /upload <location>
+                                       Run the agent here without installing it
+  /once                                Upload one time and exit
+  /alert <link>                        With /agent, /agent-install or /agent-start: send failures and the end
+                                       of a deployment to a Teams workflow or other webhook
+  /no-mask                             With /agent, /agent-install or /agent-start: upload passwords, keys and
+                                       tokens as they are, without hiding them
+TrackVice.exe /agent /alert <link> /alert-test
+                                       Send one test alert and exit
+
+TrackVice.exe /?                       Show this list (also /h and /help)
 ```
 
-The exit code is 0 when done, 1 on an error and 2 when failed items were found, so it works in a script or an Intune remediation. In PowerShell, use `Start-Process -Wait -PassThru` to get the exit code.
+Options start with `/` or `-`. `/ts` is added by `/agent-start` to the agent it starts; you do not give it yourself. [docs/AGENT.md](docs/AGENT.md) explains the agent options.
+
+The exit code is 0 when done, 1 on an error and 2 when failed items were found (for `/fleet-report`: when an enrollment had failed items), so it works in a script or an Intune remediation. In PowerShell, use `Start-Process -Wait -PassThru` to get the exit code.
 
 ## Keyboard
 
@@ -191,20 +290,31 @@ The exit code is 0 when done, 1 on an error and 2 when failed items were found, 
 | Ctrl+M | Compact view |
 | Ctrl+D | Other devices |
 | Arrow keys | Move through the list; Left and Right fold and unfold a phase |
+| Ctrl+C | Copy the selected row |
 | Ctrl+, | Settings |
 | F1 | About and the command line |
+| Esc | Clear the search, or close a page |
 
 ## Privacy and safety
 
-TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open **Devices**: then it talks to Microsoft Graph, to the SMS Provider you name, or to the upload location you enter, and nothing else.
+TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open **Devices** or **Names from Intune**: then it talks to Microsoft Graph, to the SMS Provider you name, or to the upload location you enter, and nothing else. The upload locations of your customers are encrypted for your Windows account.
 
-The agent is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes its task and key when its time is up.
+The agent is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes its task and key when its time is up. In a task sequence it installs nothing; it keeps its log and a small state file under `%WINDIR%\Temp\TrackVice`.
+
+What the agent sends:
+
+| | |
+|---|---|
+| Masking | Before a session or an alert leaves the device, passwords, keys and tokens in command lines, script output and log lines are replaced by `***`. It finds them by name (such as password, secret, token, key and `sig`), by switches such as `-Password`, and in `Bearer` headers, `user:password@` in links, `ConvertTo-SecureString` and `net user`. It is on by default; `/no-mask` turns it off. It cannot catch every secret, so treat the uploads like the logs themselves |
+| Alerts | With `/alert`, the device name, the deployment, the progress, the title, text and advice of each failure, and how long the deployment took when it finished go to the webhook address you gave, and from there into Teams. Nothing else is sent there |
+| Log zips | The zip of logs holds the session and the log files as they are on the device: every log the session read, the Intune Management Extension logs and the task sequence logs. Masking covers the session in it, not the log files. A log over 20 MB goes in as its last 20 MB, and a zip over 60 MB is not uploaded |
 
 ## Limitations
 
-- It has not been tested on many real devices yet. See the note at the top.
 - The Intune view uses a beta Graph API, which Microsoft can change, and the status message names the SCCM view reads differ a little between ConfigMgr versions.
-- The agent has uploaded to a real storage account and installed on Windows 11, but has not yet been through a full Autopilot enrollment.
+- Microsoft does not document the log formats of the Intune Management Extension and HealthScripts.log, the ESP registry layout, or the fields of the Autopilot events. TrackVice follows them as they are today, and they can change.
+- Autopilot device preparation keeps the progress of its own page in no documented place, so that progress is not shown.
+- Configuration profiles from Names from Intune are what the device last reported to Intune, not what it has right now.
 - LogVice opens a log file but cannot yet jump to a line, so TrackVice says in the status bar which line to look for.
 - The Intune Management Extension log format changes between IME versions. Lines TrackVice does not recognise are left out, and the ESP and Win32Apps registry keys still give the state.
 - The Windows PE part of a task sequence needs WinPE-NetFx in the boot image for TrackVice to start there.
@@ -242,11 +352,19 @@ TrackVice is plain C# 5 and Windows Forms on .NET Framework 4.5, with no NuGet p
 | `src/Engine.cs` | Ties a source (device, folder, file, demo) to the session |
 | `src/Remote.cs` | Other devices through Intune: Graph sign-in, Autopilot events and policy status |
 | `src/RemoteSccm.cs` | Other devices through SCCM: the SMS Provider and task sequence status messages |
-| `src/Report.cs` | HTML, CSV and the zip bundle |
+| `src/AutopilotEvents.cs`, `src/AutopilotFlow.cs` | Autopilot events, account setup, pre-provisioning, hybrid join and device preparation |
+| `src/Remediations.cs` | Remediations from the IME registry and HealthScripts.log |
+| `src/Why.cs`, `src/ErrorBase.cs` | Why things failed: error meanings, next steps, and findings over the whole session |
+| `src/Agent.cs`, `src/AgentAlerts.cs`, `src/AgentTs.cs` | The agent, its stores, alerts, log uploads, and the agent in task sequences |
+| `src/Insights.cs`, `src/Compare.cs` | Masking, statistics, alerts, log bundles, and the comparison of two enrollments |
+| `src/Customers.cs`, `src/IntuneLookup.cs`, `src/DeviceLogs.cs` | Customers, names from Intune, and the logs a device uploaded |
+| `src/Report.cs`, `src/ReportFleet.cs` | HTML report, fleet report, CSV and the zip bundle |
 | `src/Demo.cs` | The two demos, written as real log lines and registry values |
-| `src/Ui.*.cs` | The window, the phase rail, the progress list, the compact view and the themes |
+| `src/Ui.*.cs` | The window, the phase rail, the progress list, the Gantt tab, the device lists, statistics, compare, customers, the compact view and the themes |
 | `tests/` | Log parsing and tailing, every parser, the tracker, findings, save and load, and both demos end to end |
+| `agent/` | The platform script that installs the agent |
 | `art/` | The icon, drawn in the same style as the other Vice icons |
+| `release.ps1`, `bump.ps1`, `bump.sh`, `winget/` | Release tooling, see [docs/RELEASE.md](docs/RELEASE.md) |
 
 ## License
 
