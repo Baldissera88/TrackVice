@@ -467,6 +467,27 @@ namespace TrackVice
             return AgentData.Unpack(store.Get(key));
         }
 
+        // The zip of logs the device uploaded beside a session, or null when it has not uploaded one.
+        public StoreEntry FindLogs(string key)
+        {
+            string name = LogBundle.NameFor(key);
+            foreach (StoreEntry e in store.List(LogBundle.Prefix))
+                if (string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)) return e;
+            return null;
+        }
+
+        public bool HasLogs(string key)
+        {
+            return FindLogs(key) != null;
+        }
+
+        // The zip itself, or null when there is none.
+        public byte[] GetLogs(string key)
+        {
+            StoreEntry e = FindLogs(key);
+            return e == null ? null : store.Get(e.Name);
+        }
+
         // Every session uploaded since a time, newest first, at most max of them. A session that cannot be read is skipped.
         public List<Session> LoadAll(DateTime sinceUtc, int max, Action<int, int> progress)
         {
@@ -496,6 +517,17 @@ namespace TrackVice
         {
             store = s;
             name = blob;
+        }
+
+        public ISessionStore Store
+        {
+            get { return store; }
+        }
+
+        // The session blob this feed follows, such as "sessions/<id>.json.gz".
+        public string Blob
+        {
+            get { return name; }
         }
 
         public string Mode
@@ -839,6 +871,8 @@ namespace TrackVice
         {
             public string Id;
             public Engine Engine;
+            public string Scenario;
+            public DateTime StartUtc;
         }
 
         readonly List<Device> devices = new List<Device>();
@@ -857,6 +891,8 @@ namespace TrackVice
         {
             Device d = new Device();
             d.Id = computer.ToLowerInvariant();
+            d.Scenario = scenario;
+            d.StartUtc = DateTime.UtcNow;
             d.Engine = Engine.ForDemo(scenario);
             d.Engine.DemoSpeed = 6;
             d.Engine.Apply(d.Engine.DemoTo(seconds));
@@ -883,6 +919,7 @@ namespace TrackVice
 
         public List<StoreEntry> List(string prefix)
         {
+            if (prefix != null && prefix.StartsWith(LogBundle.Prefix, StringComparison.OrdinalIgnoreCase)) return LogEntries();
             List<StoreEntry> l = new List<StoreEntry>();
             lock (gate)
                 foreach (Device d in devices)
@@ -897,8 +934,34 @@ namespace TrackVice
             return l;
         }
 
+        // Every demo device has uploaded its logs, except the one that started a few minutes ago.
+        static bool HasLogs(Device d)
+        {
+            return d.Id != "contoso-lt0398";
+        }
+
+        List<StoreEntry> LogEntries()
+        {
+            List<StoreEntry> l = new List<StoreEntry>();
+            lock (gate)
+                foreach (Device d in devices)
+                {
+                    if (!HasLogs(d)) continue;
+                    StoreEntry e = new StoreEntry();
+                    e.Name = LogBundle.NameFor(AgentData.BlobName(d.Id));
+                    e.ModifiedUtc = DateTime.UtcNow;
+                    l.Add(e);
+                }
+            return l;
+        }
+
         public byte[] Get(string name)
         {
+            if (name != null && name.StartsWith(LogBundle.Prefix, StringComparison.OrdinalIgnoreCase))
+                lock (gate)
+                    foreach (Device d in devices)
+                        if (HasLogs(d) && LogBundle.NameFor(AgentData.BlobName(d.Id)) == name)
+                            return DeviceLogs.DemoBundle(d.Scenario, d.Engine.S, d.StartUtc);
             lock (gate)
                 foreach (Device d in devices)
                     if (AgentData.BlobName(d.Id) == name)
