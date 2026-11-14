@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.0.1
+
+14 November 2026.
+
+- Fixed: Statistics and Compare showed platform scripts and apps by their ID, also after their names were read from Intune.
+
 ## TrackVice 1.0.0
 
 14 November 2026. The first full release.

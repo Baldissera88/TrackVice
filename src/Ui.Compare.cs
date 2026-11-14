@@ -413,7 +413,7 @@ namespace TrackVice
                 if (d.ShowDialog(owner) != DialogResult.OK) return;
                 path = d.FileName;
             }
-            using (CompareDialog cd = new CompareDialog(t, a, nowA, Path.GetFileName(path), delegate { return Session.Load(path); }))
+            using (CompareDialog cd = new CompareDialog(t, a, nowA, Path.GetFileName(path), delegate { return AgentCatalog.WithNames(Session.Load(path)); }))
                 cd.ShowDialog(owner);
         }
 

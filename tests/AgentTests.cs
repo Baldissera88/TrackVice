@@ -14,6 +14,7 @@ namespace TrackVice.Tests
             UploadAndFollow();
             ListStates();
             Task();
+            Names();
         }
 
         static string TempDir()
@@ -195,6 +196,32 @@ namespace TrackVice.Tests
             T.Check(d.StateText.StartsWith("No upload for"), "and the list says so");
             T.Check(!Dep(10, 10, 0, 0, true, 300).StateText.StartsWith("No upload"), "an idle device is not called silent");
             T.Eq(new DateTime(2026, 11, 13, 11, 0, 0, DateTimeKind.Utc), d.StartUtc.Value, "start time is read as UTC");
+        }
+
+        static void Names()
+        {
+            string dir = TempDir();
+            try
+            {
+                FolderStore st = new FolderStore(dir);
+                Engine dev = Engine.ForDemo("autopilot");
+                dev.Apply(dev.DemoTo(10 * 60));
+                List<Obs> o = new List<Obs>();
+                new ImeLogParser("IntuneManagementExtension").Read(new LogLine { Text = "[PowerShell] Processing policy with id = 0a2ade58-6391-4fb4-80c2-8153740fd068 for user 00000000-0000-0000-0000-000000000000", Utc = DateTime.UtcNow, File = "x.log", Thread = "1" }, o);
+                Batch b = new Batch();
+                b.Obs.AddRange(o);
+                dev.Apply(b);
+                new Agent(st, "dev-names", DateTime.UtcNow).Cycle(dev.S, DateTime.UtcNow, new AgentOptions(), true);
+                AgentCatalog cat = new AgentCatalog(st);
+                Dictionary<string, string> names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                names["0A2ADE58-6391-4FB4-80C2-8153740FD068"] = "Set time zone";
+                AgentCatalog.KnownNames = null;
+                T.Eq("Platform script 0a2ade58", cat.LoadAll(DateTime.UtcNow.AddYears(-5), 10, null)[0].Find(MdmWatch.ScriptKey("0a2ade58-6391-4fb4-80c2-8153740fd068")).Name, "without names from Intune a script shows its ID");
+                AgentCatalog.KnownNames = names;
+                T.Eq("Set time zone", cat.LoadAll(DateTime.UtcNow.AddYears(-5), 10, null)[0].Find(MdmWatch.ScriptKey("0a2ade58-6391-4fb4-80c2-8153740fd068")).Name, "Statistics and Compare get the names read from Intune");
+                AgentCatalog.KnownNames = null;
+            }
+            finally { Directory.Delete(dir, true); }
         }
 
         static void Task()
