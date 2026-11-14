@@ -779,12 +779,8 @@ namespace TrackVice
             string dir = InstallDir;
             Directory.CreateDirectory(dir);
             string target = Path.Combine(dir, "TrackVice.exe");
-            if (!string.Equals(Path.GetFullPath(exePath), target, StringComparison.OrdinalIgnoreCase))
-            {
-                Schtasks("/End /TN \"" + TaskName + "\"");
-                Thread.Sleep(500);
-                File.Copy(exePath, target, true);
-            }
+            if (!string.Equals(Path.GetFullPath(exePath), target, StringComparison.OrdinalIgnoreCase) && !SameFile(exePath, target))
+                Replace(exePath, target);
             using (RegistryKey k = Registry.LocalMachine.CreateSubKey(Key))
             {
                 // The upload link is only for administrators and SYSTEM to read.
@@ -803,14 +799,12 @@ namespace TrackVice
                 k.SetValue("Upload", o.Upload.Trim());
                 k.SetValue("KeepHours", o.KeepHours.ToString(CultureInfo.InvariantCulture));
                 k.SetValue("Version", Program.Version);
-                k.DeleteValue("SessionId", false);
-                k.DeleteValue("StartedUtc", false);
+                // Installed again while it runs, as when the platform script is changed in Intune: the same session goes on.
                 if (!string.IsNullOrWhiteSpace(o.Alert)) k.SetValue("Alert", o.Alert.Trim());
                 else k.DeleteValue("Alert", false);
                 if (!o.Mask) k.SetValue("Mask", "0");
                 else k.DeleteValue("Mask", false);
             }
-            try { File.Delete(AgentAlerts.StatePath(dir)); } catch (Exception) { }
             string xml = Path.Combine(dir, "task.xml");
             File.WriteAllText(xml, TaskXml(target), Encoding.Unicode);
             try
@@ -826,6 +820,58 @@ namespace TrackVice
             Log("Agent " + Program.Version + " installed.");
             Console.WriteLine("The TrackVice agent is installed and running. It removes itself after " + o.KeepHours + " hours.");
             return 0;
+        }
+
+        // True when both files have the same content, so a running agent need not be stopped to install it again.
+        public static bool SameFile(string a, string b)
+        {
+            try
+            {
+                if (!File.Exists(a) || !File.Exists(b) || new FileInfo(a).Length != new FileInfo(b).Length) return false;
+                using (System.Security.Cryptography.SHA256 h = System.Security.Cryptography.SHA256.Create())
+                using (FileStream fa = File.OpenRead(a))
+                using (FileStream fb = new FileStream(b, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    return Convert.ToBase64String(h.ComputeHash(fa)) == Convert.ToBase64String(h.ComputeHash(fb));
+            }
+            catch (Exception) { return false; }
+        }
+
+        // Stops the running agent and puts the new exe in its place. A running exe cannot be overwritten on Windows.
+        static void Replace(string source, string target)
+        {
+            Schtasks("/End /TN \"" + TaskName + "\"");
+            Exception last = null;
+            for (int i = 0; i < 20; i++)
+            {
+                if (i == 4) StopRunning(target);
+                try
+                {
+                    File.Copy(source, target, true);
+                    return;
+                }
+                catch (IOException ex) { last = ex; }
+                catch (UnauthorizedAccessException ex) { last = ex; }
+                Thread.Sleep(500);
+            }
+            throw new IOException("The running agent could not be replaced: " + (last != null ? last.Message : "the file is in use."));
+        }
+
+        static void StopRunning(string target)
+        {
+            int self = Process.GetCurrentProcess().Id;
+            foreach (Process p in Process.GetProcessesByName("TrackVice"))
+            {
+                try
+                {
+                    if (p.Id != self && string.Equals(p.MainModule.FileName, target, StringComparison.OrdinalIgnoreCase))
+                    {
+                        p.Kill();
+                        p.WaitForExit(5000);
+                    }
+                }
+                catch (Exception) { }
+                finally { p.Dispose(); }
+            }
         }
 
         public static string TaskXml(string exe)

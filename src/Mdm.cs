@@ -236,6 +236,8 @@ namespace TrackVice
                         Obs o = ExpectedItem(cat, uri, v, ts.Key, path);
                         if (o == null) continue;
                         AccountSetup.MoveToAccount(o, sid);
+                        // The same policy or profile is waited for again in account setup: an item of its own there.
+                        if (o.ItemKey.StartsWith("esp:expected:", StringComparison.Ordinal)) o.ItemKey = "esp:user:" + o.ItemKey.Substring(13);
                         espPhase[o.ItemKey] = o.PhaseKey;
                         list.Add(o);
                     }

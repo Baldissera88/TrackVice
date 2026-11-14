@@ -84,6 +84,7 @@ namespace TrackVice
         public const string Agent = "Agent";
         public const string Script = "Script";
         public const string Office = "Office";
+        public const string Esp = "ESP";
     }
 
     public static class Origins

@@ -35,6 +35,7 @@ namespace TrackVice.Tests
             RemoteTests.Run();
             AgentTests.Run();
             NameCacheTests.Run();
+            EspStepTests.Run();
             MdmTests.Run();
             GanttTests.Run();
             WhyTests.Run();
