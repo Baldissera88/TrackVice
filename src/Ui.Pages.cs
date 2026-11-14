@@ -829,6 +829,10 @@ namespace TrackVice
                 string v = tenant.Text.Trim();
                 Prefs.Set("GraphTenant", v.Length == 0 ? null : v);
             });
+            FlatButton bCustomers = SmallButton("Open", delegate { using (CustomersPage p = new CustomersPage(theme, CustomerUi.Book)) p.ShowDialog(this); });
+            Add(new SectionTitle("Customers"));
+            Add(new SettingRow(Glyphs2.Device, "Customers", "Saved connections for each customer you work for: the Intune tenant, where its agents upload to and its SCCM site. Choose one at the top of a device list. In use: " + (CustomerUi.CurrentName ?? "none") + ".", bCustomers));
+
             Add(new SectionTitle("Autopilot in Intune"));
             Add(new SettingRow(Glyphs2.Code, "Client ID", "The app registration TrackVice signs in with. Leave it empty to use Microsoft Graph Command Line Tools (" + GraphClient.DefaultClientId + "). Your own app needs the delegated permission DeviceManagementManagedDevices.Read.All and public client flows turned on.", client));
             Add(new SettingRow(Glyphs.Shield, "Tenant", "The tenant ID or domain, for example contoso.onmicrosoft.com. Leave it empty to sign in to the tenant of the account you use.", tenant));
