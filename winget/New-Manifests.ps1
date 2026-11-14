@@ -3,8 +3,8 @@
     Writes the winget manifests for one TrackVice release, and can validate and submit them.
 
 .DESCRIPTION
-    Writes the version, installer and en-US default locale manifests (schema 1.12.0) for Baldissera88.TrackVice
-    to <OutputPath>\manifests\b\Baldissera88\TrackVice\<version>, the folder layout of microsoft/winget-pkgs.
+    Writes the version, installer and en-US default locale manifests (schema 1.12.0) for DanielBaldissera.TrackVice
+    to <OutputPath>\manifests\d\DanielBaldissera\TrackVice\<version>, the folder layout of microsoft/winget-pkgs.
     The product code and upgrade code are read from TrackVice.wxs, the SHA-256 from the MSI.
     The installer link points at TrackVice.msi in the GitHub release v<version>, so publish the release first,
     with the same MSI.
@@ -52,7 +52,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Path $PSScriptRoot -Parent
-$id = 'Baldissera88.TrackVice'
+$id = 'DanielBaldissera.TrackVice'
 $repo = 'Baldissera88/TrackVice'
 $schema = '1.12.0'
 
@@ -143,7 +143,7 @@ else {
 $url = "https://github.com/$repo/releases/download/v$Version/TrackVice.msi"
 $sha = (Get-FileHash -Path $MsiPath -Algorithm SHA256).Hash.ToUpperInvariant()
 $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-$dir = Join-Path -Path $OutputPath -ChildPath "manifests/b/Baldissera88/TrackVice/$Version"
+$dir = Join-Path -Path $OutputPath -ChildPath "manifests/d/DanielBaldissera/TrackVice/$Version"
 
 $versionManifest = @(
     "# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.$schema.schema.json"
