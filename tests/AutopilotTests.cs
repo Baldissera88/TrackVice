@@ -218,7 +218,7 @@ namespace TrackVice.Tests
             o = esp.Read(r, T0.AddMinutes(42));
             o.AddRange(mdm.Read(r, T0.AddMinutes(42)));
             tr.ApplyAll(o);
-            Item b = s.Find(IntuneKeys.App(AppB)), store = s.Find("esp:expected:./user/vendor/msft/enterprisemodernappmanagement/appinstallation/contoso.notes_8wekyb3d8bbwe/hostedinstall");
+            Item b = s.Find(IntuneKeys.App(AppB)), store = s.Find("esp:user:./user/vendor/msft/enterprisemodernappmanagement/appinstallation/contoso.notes_8wekyb3d8bbwe/hostedinstall");
             T.Check(b != null && b.PhaseKey == Phases.AccountSetup && b.State == State.Installing, "a user app under the user's SID is in account setup");
             T.Check(store != null && store.PhaseKey == Phases.AccountSetup && store.State == State.Installing && store.Name == "Contoso.Notes_8wekyb3d8bbwe", "a Store app account setup waits for, from the diagnostics under the SID");
             T.Eq("Account setup", store != null ? store.Get("ESP phase") : null, "its ESP phase says account setup");

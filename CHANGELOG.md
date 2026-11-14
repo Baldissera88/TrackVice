@@ -1,5 +1,14 @@
 # Changelog
 
+## TrackVice 1.0.3
+
+14 November 2026.
+
+- Account setup is shown: Security policies, Certificates, Network connections and Apps as the ESP shows them, with when each was done, and what account setup waited for. Read from the FirstSync keys of the enrollment and the user.
+- Device setup shows the same four steps, and Continue anyway when the ESP was left before device setup was done.
+- Fixed: a policy or profile that account setup waited for was counted in device setup.
+- Fixed: installing the agent again while it ran, as Intune does when the platform script is changed, failed because the exe was in use. The running agent is now left alone when the exe is the same, and stopped and replaced when it is new. The device keeps its session.
+
 ## TrackVice 1.0.2
 
 14 November 2026.

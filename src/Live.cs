@@ -41,6 +41,7 @@ namespace TrackVice
         readonly EspWatch esp = new EspWatch();
         readonly Win32AppWatch win32 = new Win32AppWatch();
         readonly MdmWatch mdm = new MdmWatch();
+        readonly EspFirstSync firstSync = new EspFirstSync();
         readonly RemediationWatch remediations = new RemediationWatch();
         readonly WmiWatch wmi = new WmiWatch();
         readonly EventWatch events = new EventWatch();
@@ -221,6 +222,7 @@ namespace TrackVice
             b.Obs.AddRange(esp.Read(reg, nowUtc));
             if (reads == 1 || reads % 3 == 0) b.Obs.AddRange(win32.Read(reg, nowUtc));
             if (reads == 1 || reads % 2 == 0) b.Obs.AddRange(mdm.Read(reg, nowUtc));
+            if (reads == 1 || reads % 2 == 0) b.Obs.AddRange(firstSync.Read(reg, nowUtc));
             if (reads == 1 || reads % 3 == 0) b.Obs.AddRange(remediations.Read(reg, nowUtc));
             if (reads == 1 || reads % 10 == 0)
             {
@@ -607,6 +609,7 @@ namespace TrackVice
             b.Obs.AddRange(esp.Read(mem, now));
             b.Obs.AddRange(win32.Read(mem, now));
             b.Obs.AddRange(new MdmWatch().Read(mem, now));
+            b.Obs.AddRange(new EspFirstSync().Read(mem, now));
             b.Obs.AddRange(new RemediationWatch().Read(mem, now));
             try { b.Info.AddRange(AutopilotInfo.Read(mem)); } catch (Exception) { }
             b.Notes.Add("Registry exports in this folder were read. They have no times of their own, so their states carry the time the export was saved, except where the registry itself holds a time.");

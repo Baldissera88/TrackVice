@@ -1,0 +1,58 @@
+namespace TrackVice.Tests
+{
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+
+    // FirstSync as a real enrollment wrote it, with made-up IDs: device setup continued anyway, then account setup.
+    public static class EspStepTests
+    {
+        const string Reg = "Windows Registry Editor Version 5.00\r\n\r\n"
+            + "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Enrollments\\1A2B3C4D-0000-4000-8000-000000000001\\FirstSync]\r\n"
+            + "\"SyncFailureTimeout\"=dword:0000003c\r\n\"IsServerProvisioningDone\"=dword:00000001\r\n"
+            + "\"Timestamp\"=hex:5b,3e,cc,46,7e,74,dd,01\r\n\"NetworkingDuration\"=dword:00000005\r\n\"CertificatesDuration\"=dword:00000005\r\n"
+            + "\"PolicyDuration\"=dword:00000005\r\n\"ApplicationsDuration\"=dword:000002b2\r\n\"WasContinuedAnyway\"=dword:00000001\r\n\r\n"
+            + "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Enrollments\\1A2B3C4D-0000-4000-8000-000000000001\\FirstSync\\S-1-12-1-1111111111-2222222222-3333333333-4444444444]\r\n"
+            + "\"Timestamp\"=hex:d4,02,c7,6f,7f,74,dd,01\r\n\"ApplicationsDuration\"=dword:000000be\r\n\"CertificatesDuration\"=dword:00000023\r\n"
+            + "\"PolicyDuration\"=dword:00000023\r\n\"NetworkingDuration\"=dword:00000023\r\n\"IsServerProvisioningDone\"=dword:00000001\r\n";
+
+        public static void Run()
+        {
+            MemoryRegistry r = new MemoryRegistry();
+            RegFile.Parse(Reg, r);
+            DateTime now = new DateTime(2026, 11, 14, 22, 0, 0, DateTimeKind.Utc);
+            EspFirstSync w = new EspFirstSync();
+            List<Obs> o = w.Read(r, now);
+            T.Eq(0, w.Read(r, now).Count, "an unchanged FirstSync adds nothing");
+            Session s = new Session();
+            new Tracker(s).ApplyAll(o);
+            Item devApps = s.Find("esp:step:device:apps");
+            T.Check(devApps != null && devApps.PhaseKey == Phases.DeviceSetup && devApps.State == State.Succeeded, "device setup apps are done");
+            T.Eq(new DateTime(2026, 11, 14, 21, 22, 39, DateTimeKind.Utc), devApps != null ? new DateTime(devApps.FirstUtc.Ticks - devApps.FirstUtc.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc) : DateTime.MinValue, "the phase starts at its timestamp");
+            T.Eq(TimeSpan.FromSeconds(690), devApps != null ? devApps.Duration(now).Value : TimeSpan.Zero, "and the step took its duration");
+            Item userApps = s.Find("esp:step:user:S-1-12-1-1111111111-2222222222-3333333333-4444444444:apps");
+            T.Check(userApps != null && userApps.PhaseKey == Phases.AccountSetup && userApps.State == State.Succeeded, "account setup apps are done");
+            T.Eq(TimeSpan.FromSeconds(190), userApps != null ? userApps.Duration(now).Value : TimeSpan.Zero, "account setup apps took 3 min 10 s");
+            Item pol = s.Find("esp:step:user:S-1-12-1-1111111111-2222222222-3333333333-4444444444:policies");
+            T.Eq("Security policies", pol != null ? pol.Name : null, "the steps have the names the ESP shows");
+            Item cont = s.Find("esp:continued");
+            T.Check(cont != null && cont.PhaseKey == Phases.DeviceSetup, "Continue anyway is shown");
+            T.Check(EspFirstSync.FileTime(new RegValue("REG_BINARY", "5B 3E CC 46 7E 74 DD 01")).HasValue, "a FILETIME read from the live registry");
+            T.Check(!EspFirstSync.FileTime(new RegValue("REG_BINARY", "00")).HasValue, "a value that is not a FILETIME");
+
+            string dir = Path.Combine(Path.GetTempPath(), "trackvice-same-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string a = Path.Combine(dir, "a.exe"), b = Path.Combine(dir, "b.exe"), c = Path.Combine(dir, "c.exe");
+                File.WriteAllBytes(a, new byte[] { 1, 2, 3 });
+                File.WriteAllBytes(b, new byte[] { 1, 2, 3 });
+                File.WriteAllBytes(c, new byte[] { 1, 2, 4 });
+                T.Check(Agent.SameFile(a, b), "the same exe needs no copy, so a running agent is left alone");
+                T.Check(!Agent.SameFile(a, c), "a new exe is copied");
+                T.Check(!Agent.SameFile(a, Path.Combine(dir, "missing.exe")), "no exe installed yet");
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+    }
+}
