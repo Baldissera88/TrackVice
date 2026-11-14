@@ -41,6 +41,7 @@ namespace TrackVice.Tests
             AgentAlertTests.Run();
             CompareTests.Run();
             DeviceLogTests.Run();
+            ReportTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }
