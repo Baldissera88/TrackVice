@@ -1212,6 +1212,7 @@ namespace TrackVice
             Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
             Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
+            CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
             Menus.Separator(m);
             Menus.Add(m, "Play the Autopilot demo", delegate { Begin(Engine.ForDemo("autopilot"), true); });
             Menus.Add(m, "Play the task sequence demo", delegate { Begin(Engine.ForDemo("osd"), true); });
@@ -1219,6 +1220,7 @@ namespace TrackVice
             Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
             Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
             Menus.Add(m, "Demo: statistics", delegate { OpenStats(true); });
+            Menus.Add(m, "Demo: compare two enrollments", delegate { using (CompareDialog d = CompareDialog.ForDemo(theme)) d.ShowDialog(this); });
             return m;
         }
 
@@ -1229,6 +1231,7 @@ namespace TrackVice
             Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
             Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
+            CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
             Menus.Separator(m);
             Menus.Add(m, "Get script names from Intune", delegate { NamesFromIntune(); });
             Menus.Separator(m);
@@ -1238,6 +1241,7 @@ namespace TrackVice
             Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
             Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
             Menus.Add(m, "Demo: statistics", delegate { OpenStats(true); });
+            Menus.Add(m, "Demo: compare two enrollments", delegate { using (CompareDialog d = CompareDialog.ForDemo(theme)) d.ShowDialog(this); });
             return m;
         }
 
@@ -1476,6 +1480,14 @@ namespace TrackVice
             }
         }
 
+        // The current session is A. B is another enrollment from the agents' uploads or a saved file.
+        void CompareWith(bool agent)
+        {
+            if (engine == null) return;
+            if (agent) agentCatalog = CompareDialog.FromAgent(this, theme, engine.S, engine.Now, agentCatalog, graph);
+            else CompareDialog.FromFile(this, theme, engine.S, engine.Now);
+        }
+
         // A device knows its platform scripts by ID only. Their names are read from Intune, which needs a sign-in
         // with one more read permission. Once used, later sign-ins ask for it too and the names come by themselves.
         void NamesFromIntune()
@@ -1612,6 +1624,7 @@ namespace TrackVice
             if (start.Page == "settings") page = new SettingsDialog(theme);
             else if (start.Page == "about") page = new AboutDialog(theme);
             else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
+            else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
             else if (start.Remote != null && start.Pick == null)
             {
                 bool sign = start.Select != null && start.Select.StartsWith("signin");

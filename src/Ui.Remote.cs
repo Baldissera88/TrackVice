@@ -634,6 +634,12 @@ namespace TrackVice
             Close();
         }
 
+        // The text of the main button, when the list is used to pick a device for something else.
+        public void PickText(string text)
+        {
+            bWatch.Text = text;
+        }
+
         // Selects the first deployment whose device matches, for screenshots.
         public void SelectDevice(string name)
         {
