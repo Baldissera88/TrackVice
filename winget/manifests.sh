@@ -1,5 +1,5 @@
 #!/bin/sh
-# Writes the winget manifests for one TrackVice release.
+# Writes the winget manifests for one TrackVice release. winget/New-Manifests.ps1 writes the same on Windows.
 # Usage: winget/manifests.sh <version> <TrackVice.msi> <release notes file> <output folder>
 set -e
 
@@ -12,15 +12,22 @@ if [ -z "$version" ] || [ ! -f "$msi" ] || [ -z "$out" ]; then
   exit 2
 fi
 
-id=DanielBaldissera.TrackVice
+id=Baldissera88.TrackVice
 repo=Baldissera88/TrackVice
 schema=1.12.0
 url="https://github.com/$repo/releases/download/v$version/TrackVice.msi"
-code=$(msiinfo export "$msi" Property | awk -F'\t' '$1=="ProductCode"{print $2}' | tr -d '\r')
-upgrade=$(msiinfo export "$msi" Property | awk -F'\t' '$1=="UpgradeCode"{print $2}' | tr -d '\r')
+wxs="$(dirname "$0")/../TrackVice.wxs"
+code="{$(sed -n 's/.*<Product Id="\([^"]*\)".*/\1/p' "$wxs" | tr 'a-f' 'A-F')}"
+upgrade="{$(sed -n 's/.*UpgradeCode="\([^"]*\)".*/\1/p' "$wxs" | tr 'a-f' 'A-F')}"
+msiversion=$(msiinfo export "$msi" Property | awk -F'\t' '$1=="ProductVersion"{print $2}' | tr -d '\r')
+msicode=$(msiinfo export "$msi" Property | awk -F'\t' '$1=="ProductCode"{print $2}' | tr -d '\r')
+if [ "$msiversion" != "$version" ] || [ "$msicode" != "$code" ]; then
+  echo "$msi has version $msiversion and product code $msicode. Expected $version and $code from TrackVice.wxs." >&2
+  exit 1
+fi
 sha=$(sha256sum "$msi" | cut -d' ' -f1 | tr 'a-f' 'A-F')
 date=$(date -u +%Y-%m-%d)
-dir="$out/manifests/d/DanielBaldissera/TrackVice/$version"
+dir="$out/manifests/b/Baldissera88/TrackVice/$version"
 mkdir -p "$dir"
 
 cat > "$dir/$id.yaml" <<EOF
@@ -110,3 +117,6 @@ EOF
 } > "$dir/$id.locale.en-US.yaml"
 
 echo "Wrote $dir"
+echo "On Windows, check them with: winget validate --manifest $dir"
+echo "Test the install with: winget install --manifest $dir (after: winget settings --enable LocalManifestFiles)"
+echo "Submit them with: wingetcreate submit --token <GitHub token> $dir"
