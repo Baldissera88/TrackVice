@@ -4,7 +4,7 @@ namespace TrackVice.Tests
     using System.Collections.Generic;
 
     // Names and configuration profiles from Intune, with a made-up tenant behind a fake Graph.
-    // The remediation formats are built from public descriptions of the IME, not from a device.
+    // Remediations as the Intune Management Extension writes them, with made-up names and IDs.
     public static class IntuneLookupTests
     {
         const string AppA = "1b6f2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", AppB = "2c7a3d4e-5f60-4b7c-9d8e-0f1a2b3c4d5e";
