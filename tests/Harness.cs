@@ -36,6 +36,7 @@ namespace TrackVice.Tests
             AgentTests.Run();
             MdmTests.Run();
             GanttTests.Run();
+            WhyTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

@@ -482,6 +482,9 @@ namespace TrackVice
         public const string EspTimeLimit = "ESP time limit";
         public const string TaskSequence = "Task sequence failed";
         public const string MdmErrors = "MDM errors";
+        public const string EspTimeLimitAhead = "ESP time limit ahead";
+        public const string WaitingRestart = "Waiting for a restart";
+        public const string CommonCause = "Common cause";
     }
 
     [DataContract]
