@@ -890,6 +890,9 @@ namespace TrackVice
             new string[] { "/agent-remove", "Remove the agent" },
             new string[] { "/agent /upload <location>", "Run the agent here without installing it. /once uploads one time and exits" },
             new string[] { "/keep <hours>", "With /agent-install: how long the agent stays before it removes itself (default 48)" },
+            new string[] { "/alert <link>", "With /agent or /agent-install: send failures and the end of a deployment to a Teams workflow or other webhook" },
+            new string[] { "/agent /alert <link> /alert-test", "Send one test alert and exit" },
+            new string[] { "/no-mask", "With /agent or /agent-install: upload passwords, keys and tokens as they are, without hiding them" },
             new string[] { "--demo", "Play a sample Autopilot deployment" },
             new string[] { "--demo osd", "Play a sample SCCM task sequence" },
         };
