@@ -40,6 +40,7 @@ namespace TrackVice.Tests
             FleetTests.Run();
             AgentAlertTests.Run();
             CompareTests.Run();
+            CustomerTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

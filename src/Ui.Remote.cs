@@ -8,7 +8,7 @@ namespace TrackVice
     using System.Windows.Forms;
 
     // Signs in to Intune or connects to SCCM, lists the deployments on other devices, and lets you pick one to watch.
-    public sealed class RemoteDialog : Form
+    public sealed partial class RemoteDialog : Form
     {
         public const string Intune = "intune", Sccm = "sccm", Agents = "agents";
         public IRemoteCatalog Catalog;
@@ -84,6 +84,7 @@ namespace TrackVice
                 : "Task sequences from the status messages each step sends to the site, read-only through the SMS Provider with your Windows account.";
             head.Controls.Add(title);
             head.Controls.Add(desc);
+            BuildCustomers(kind);
 
             connect.Dock = DockStyle.Top;
             connect.Height = Dpi.S(48);
@@ -395,6 +396,7 @@ namespace TrackVice
                     {
                         if (attempt != mine) return;
                         Catalog = new IntuneCatalog(g);
+                        CustomerUi.Remember(delegate (Customer cu) { cu.Tenant = Prefs.Get("GraphTenant", ""); cu.GraphClientId = Prefs.Get("GraphClientId", ""); });
                         codeText.Text = string.IsNullOrEmpty(g.Account) ? "Signed in to Intune, read-only." : "Signed in as " + g.Account + ", read-only.";
                         ShowSignIn(false);
                         Connected();
@@ -478,6 +480,7 @@ namespace TrackVice
             }
             bConnect.Enabled = false;
             Status("Connecting\u2026");
+            int my = gen;
             Thread th = new Thread(delegate ()
             {
                 try
@@ -486,7 +489,9 @@ namespace TrackVice
                     st.List(AgentData.Prefix);
                     Ui(delegate
                     {
+                        if (my != gen) return;
                         Secret.Save("AgentStore", where);
+                        if (!isDemo) CustomerUi.Remember(delegate (Customer cu) { cu.AgentLocation = where; });
                         bConnect.Enabled = true;
                         Catalog = new AgentCatalog(st);
                         Connected();
@@ -496,6 +501,7 @@ namespace TrackVice
                 {
                     Ui(delegate
                     {
+                        if (my != gen) return;
                         bConnect.Enabled = true;
                         Status("Could not connect: " + ex.Message);
                     });
@@ -517,6 +523,7 @@ namespace TrackVice
             }
             bConnect.Enabled = false;
             Status("Connecting to " + srv + "…");
+            int my = gen;
             Thread th = new Thread(delegate ()
             {
                 try
@@ -527,7 +534,9 @@ namespace TrackVice
                         throw err ?? new TimeoutException(srv + " did not answer within 45 seconds.");
                     Ui(delegate
                     {
+                        if (my != gen) return;
                         Prefs.Set("SccmServer", srv);
+                        CustomerUi.Remember(delegate (Customer cu) { cu.SccmServer = srv; cu.SccmSite = w.SiteCode ?? ""; });
                         Prefs.Set("SccmSite", w.SiteCode);
                         site.Text = w.SiteCode;
                         bConnect.Enabled = true;
@@ -539,6 +548,7 @@ namespace TrackVice
                 {
                     Ui(delegate
                     {
+                        if (my != gen) return;
                         bConnect.Enabled = true;
                         Status("Could not connect: " + Explain(ex));
                     });
@@ -589,6 +599,8 @@ namespace TrackVice
                 {
                     loading = false;
                     bRefresh.Enabled = true;
+                    // The customer was changed while this was read: read the new one instead.
+                    if (c != Catalog) { if (Catalog != null) LoadList(); return; }
                     if (err != null)
                     {
                         Status("Reading failed: " + (c is SccmCatalog ? Explain(err) : err.Message));
