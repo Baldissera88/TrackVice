@@ -142,6 +142,8 @@ namespace TrackVice
             bExport.Dock = DockStyle.Right;
             bExport.Enabled = false;
             bExport.Click += Safe.Wrap(delegate { Export(); });
+            bClose.Primary = true;
+            bClose.Width = Math.Max(bClose.Width, Dpi.S(96));
             bClose.Dock = DockStyle.Right;
             bClose.Click += delegate { Close(); };
             Panel gap = new Panel();

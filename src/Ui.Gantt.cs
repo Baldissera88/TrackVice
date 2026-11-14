@@ -300,6 +300,15 @@ namespace TrackVice
             base.OnMouseMove(e);
         }
 
+        // Drops the hovered row and its tip, for screenshots.
+        public void ClearHover()
+        {
+            hot = -1;
+            tipText = null;
+            tip.Hide(this);
+            Invalidate();
+        }
+
         protected override void OnMouseLeave(EventArgs e)
         {
             hot = -1;

@@ -829,7 +829,13 @@ namespace TrackVice
                 string v = tenant.Text.Trim();
                 Prefs.Set("GraphTenant", v.Length == 0 ? null : v);
             });
-            FlatButton bCustomers = SmallButton("Open", delegate { using (CustomersPage p = new CustomersPage(theme, CustomerUi.Book)) p.ShowDialog(this); });
+            FlatButton bCustomers = SmallButton("Open", delegate
+            {
+                using (CustomersPage p = new CustomersPage(theme, CustomerUi.Book)) p.ShowDialog(this);
+                // The customer in use may have changed, and with it the tenant and client ID.
+                client.Text = Prefs.Get("GraphClientId", "");
+                tenant.Text = Prefs.Get("GraphTenant", "");
+            });
             Add(new SectionTitle("Customers"));
             Add(new SettingRow(Glyphs2.Device, "Customers", "Saved connections for each customer you work for: the Intune tenant, where its agents upload to and its SCCM site. Choose one at the top of a device list. In use: " + (CustomerUi.CurrentName ?? "none") + ".", bCustomers));
 
@@ -889,7 +895,7 @@ namespace TrackVice
             new string[] { "/csv <file.csv>", "Save every event as CSV and exit" },
             new string[] { "/session <file.json>", "Save the session as JSON and exit" },
             new string[] { "/title <text>", "With /report or /fleet-report: the title at the top of the report" },
-            new string[] { "/fleet-report <file.html> /upload <location>", "Save an HTML report over every enrollment the agents uploaded there and exit. /hours limits it to recent uploads (0 for all)" },
+            new string[] { "/fleet-report <file.html> /upload <location>", "Save an HTML report over every enrollment the agents uploaded there and exit. It covers the uploads of the last /hours (default 24, 0 for all)" },
             new string[] { "/folder <path>", "With /report, /csv or /session: read a folder of logs instead of this device" },
             new string[] { "/hours <n>", "Hours of history to read (default 24, 0 for everything since Windows was installed)" },
             new string[] { "/agent-install /upload <location>", "Install the agent: it uploads this device's session while it deploys. The location is a storage container SAS link or a folder" },
@@ -897,10 +903,10 @@ namespace TrackVice
             new string[] { "/agent-start /upload <location>", "In a task sequence: start the agent in the background and return at once. It ends with the task sequence. /id <id> keeps one session across restarts" },
             new string[] { "/agent-stop", "Make the last upload and stop the agent started with /agent-start" },
             new string[] { "/agent /upload <location>", "Run the agent here without installing it. /once uploads one time and exits" },
-            new string[] { "/keep <hours>", "With /agent-install: how long the agent stays before it removes itself (default 48)" },
-            new string[] { "/alert <link>", "With /agent or /agent-install: send failures and the end of a deployment to a Teams workflow or other webhook" },
+            new string[] { "/keep <hours>", "With /agent-install: how long the agent stays before it removes itself. With /agent-start: how long it runs at most (default 48)" },
+            new string[] { "/alert <link>", "With /agent, /agent-install or /agent-start: send failures and the end of a deployment to a Teams workflow or other webhook" },
             new string[] { "/agent /alert <link> /alert-test", "Send one test alert and exit" },
-            new string[] { "/no-mask", "With /agent or /agent-install: upload passwords, keys and tokens as they are, without hiding them" },
+            new string[] { "/no-mask", "With /agent, /agent-install or /agent-start: upload passwords, keys and tokens as they are, without hiding them" },
             new string[] { "--demo", "Play a sample Autopilot deployment" },
             new string[] { "--demo osd", "Play a sample SCCM task sequence" },
         };
@@ -917,7 +923,7 @@ namespace TrackVice
             Add(new SectionTitle("Command line"));
             KeyTable cli = new KeyTable(true, CommandLine);
             Add(cli);
-            Add(new SettingRow(Glyphs.Info, "Exit codes", "0 when done, 1 on an error, and 2 when /report, /csv or /session found failed items. Use Start-Process with -Wait in PowerShell.", null));
+            Add(new SettingRow(Glyphs.Info, "Exit codes", "0 when done, 1 on an error, and 2 when /report, /csv, /session or /fleet-report found failed items. Use Start-Process with -Wait in PowerShell.", null));
             Add(new SectionTitle("Keyboard shortcuts"));
             Add(new KeyTable(false,
                 new string[] { "F5", "Read everything again" },
@@ -928,7 +934,7 @@ namespace TrackVice
                 new string[] { "Ctrl+E", "Export an HTML report" },
                 new string[] { "Ctrl+L", "Open the selected item's log in LogVice" },
                 new string[] { "Ctrl+M", "Compact view" },
-                new string[] { "Ctrl+D", "Other devices: Autopilot in Intune, task sequences in SCCM" },
+                new string[] { "Ctrl+D", "Other devices: Autopilot in Intune, devices with the agent, task sequences in SCCM" },
                 new string[] { "Ctrl+,", "Settings" },
                 new string[] { "Ctrl+C", "Copy the selected row" },
                 new string[] { "F1", "This page" },

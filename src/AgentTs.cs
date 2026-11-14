@@ -228,6 +228,7 @@ namespace TrackVice
         public static int Start(AgentOptions o, IAgentHost h, Action<string> say)
         {
             if (string.IsNullOrWhiteSpace(o.Upload)) throw new ArgumentException("Give the upload location: /agent-start /upload <SAS link or folder>");
+            if (o.Alert != null && AlertSender.Problem(o.Alert) != null) throw new ArgumentException(AlertSender.Problem(o.Alert));
             Stores.Open(o.Upload);
             if (h.Running())
             {
@@ -262,6 +263,7 @@ namespace TrackVice
             if (!string.IsNullOrWhiteSpace(o.Id)) b.Append(" /id ").Append(Quote(o.Id));
             if (o.KeepHours != new AgentOptions().KeepHours) b.Append(" /keep ").Append(o.KeepHours.ToString(CultureInfo.InvariantCulture));
             if (!o.Mask) b.Append(" /no-mask");
+            if (!string.IsNullOrWhiteSpace(o.Alert)) b.Append(" /alert ").Append(Quote(o.Alert));
             return b.ToString();
         }
 
@@ -431,6 +433,14 @@ namespace TrackVice
             Agent a = new Agent(store, sid, started);
             bool mask = o.Mask;
             LogUploads logs = new LogUploads(store, AgentData.BlobName(sid), delegate (Session x) { return LogBundle.Make(mask ? Secrets.MaskedCopy(x) : x); }, Log);
+            AgentAlerts alerts = null;
+            if (!string.IsNullOrWhiteSpace(o.Alert))
+            {
+                string url = o.Alert.Trim();
+                // Sent alerts are remembered in the agent's folder, so a restart in Windows does not send them again.
+                alerts = new AgentAlerts(AgentAlerts.StatePath(LocalFolder), sid, started.AddHours(-2), delegate (Alert x) { AlertSender.Send(url, x); }, Log);
+                alerts.Mask = o.Mask;
+            }
             string shownError = null;
             int cycles = 0;
             using (Engine e = Engine.ForLive(0, !pe, !pe, 2000))
@@ -461,7 +471,9 @@ namespace TrackVice
                         shownError = a.LastError;
                         Log(shownError != null ? "Upload failed: " + shownError : "Upload works again.");
                     }
-                    logs.Cycle(e.S, a.Idle(e.S, now, o.IdleMinutes), last, now);
+                    bool idle = a.Idle(e.S, now, o.IdleMinutes);
+                    if (alerts != null) alerts.Cycle(e.S, idle, now);
+                    logs.Cycle(e.S, idle, last, now);
                     if (last)
                     {
                         if (why != null) Log(why + " Last upload " + (a.LastError == null ? "done." : "failed: " + a.LastError));
