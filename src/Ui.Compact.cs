@@ -121,7 +121,7 @@ namespace TrackVice
             overallState = failed > 0 ? State.Failed : s.CountActive > 0 ? State.Installing : total > 0 && s.CountComplete == total ? State.Succeeded : State.Pending;
             counts = s.CountComplete + " done  ·  " + s.CountActive + " running  ·  " + failed + " failed  ·  " + (s.Count(State.Pending) + s.Count(State.Unknown)) + " waiting";
             DateTime? f = s.FirstUtc;
-            elapsed = f.HasValue ? Txt.DurationShort(now - f.Value) : "";
+            elapsed = f.HasValue ? Txt.DurationShort(now - f.Value - AutopilotFlow.BoxedTime(s, now)) : "";
             Invalidate();
         }
 

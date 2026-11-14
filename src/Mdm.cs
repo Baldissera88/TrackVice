@@ -192,6 +192,7 @@ namespace TrackVice
             foreach (string cat in reg.SubKeys(Expected))
             {
                 if (cat.Equals("Sidecar", StringComparison.OrdinalIgnoreCase)) continue;
+                if (AccountSetup.IsSid(cat)) { ReadUserExpected(reg, cat, list); continue; }
                 List<KeyValuePair<DateTime, string>> times = new List<KeyValuePair<DateTime, string>>();
                 foreach (string sub in reg.SubKeys(Expected + "\\" + cat))
                 {
@@ -210,6 +211,31 @@ namespace TrackVice
                         if (!seen.Add("x|" + cat + "|" + uri + "|" + v)) continue;
                         Obs o = ExpectedItem(cat, uri, v, ts.Key, path);
                         if (o == null) continue;
+                        espPhase[o.ItemKey] = o.PhaseKey;
+                        list.Add(o);
+                    }
+                }
+            }
+        }
+
+        // ESPTrackingInfo\Diagnostics\<user SID>\<category>\<time>: what account setup waits for, such as Store apps in user context.
+        // https://learn.microsoft.com/troubleshoot/mem/intune/device-enrollment/understand-troubleshoot-esp
+        void ReadUserExpected(IRegSource reg, string sid, List<Obs> list)
+        {
+            string root = Expected + "\\" + sid;
+            foreach (string cat in reg.SubKeys(root))
+            {
+                foreach (KeyValuePair<DateTime, string> ts in AccountSetup.Times(reg.SubKeys(root + "\\" + cat)))
+                {
+                    string path = root + "\\" + cat + "\\" + ts.Value;
+                    foreach (string uri in reg.ValueNames(path))
+                    {
+                        if (!uri.StartsWith("./")) continue;
+                        long v = Num(reg, path, uri, -1);
+                        if (!seen.Add("u|" + sid + "|" + cat + "|" + uri + "|" + v)) continue;
+                        Obs o = ExpectedItem(cat, uri, v, ts.Key, path);
+                        if (o == null) continue;
+                        AccountSetup.MoveToAccount(o, sid);
                         espPhase[o.ItemKey] = o.PhaseKey;
                         list.Add(o);
                     }
