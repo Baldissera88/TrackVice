@@ -14,7 +14,7 @@ namespace TrackVice
     public sealed class MainForm : Form
     {
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
-        const int TabProgress = 0, TabTimeline = 1, TabFindings = 2, TabSession = 3;
+        const int TabProgress = 0, TabTimeline = 1, TabGantt = 2, TabFindings = 3, TabSession = 4;
 
         Theme theme;
         Engine engine;
@@ -42,7 +42,8 @@ namespace TrackVice
         readonly Panel statusBar = new Panel();
         readonly Label statusLeft = new Label();
         readonly Label statusRight = new Label();
-        readonly Control[] views = new Control[4];
+        readonly Control[] views = new Control[5];
+        readonly GanttPage gantt = new GanttPage();
         readonly List<Control> plain = new List<Control>();
 
         FlatButton bWatch, bOpen, bDevices, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout, bAdmin;
@@ -226,7 +227,7 @@ namespace TrackVice
             themed.Add(rail);
 
             tabs.Dock = DockStyle.Top;
-            tabs.SetTabs("Progress", "Timeline", "Findings", "Session");
+            tabs.SetTabs("Progress", "Timeline", "Gantt", "Findings", "Session");
             themed.Add(tabs);
 
             content.Dock = DockStyle.Fill;
@@ -332,6 +333,11 @@ namespace TrackVice
             };
             themed.Add(timeline);
             views[TabTimeline] = Split(timeline.Grid, eventDetail, tbar);
+
+            // Gantt
+            gantt.ItemClicked += delegate (Item it) { Safe.Run(delegate { GoTo(it.Key); }); };
+            themed.Add(gantt);
+            views[TabGantt] = gantt;
 
             // Findings
             findings.Col("Severity", 80, delegate (Finding f) { return f.SeverityName; });
@@ -766,6 +772,7 @@ namespace TrackVice
             findings.SetRows(new List<Finding>(s.Findings));
             if (tabs.Selected == TabTimeline || timelineCount < 0) BindTimeline(false);
             if (tabs.Selected == TabSession) ShowSession();
+            if (tabs.Selected == TabGantt) BindGantt();
             ShowSelection(false);
             if (compact != null && !compact.IsDisposed) compact.UpdateFrom(engine, watching);
             UpdateStatusRight();
@@ -834,6 +841,12 @@ namespace TrackVice
             for (int i = 0; i < views.Length; i++) views[i].Visible = i == tabs.Selected;
             if (tabs.Selected == TabTimeline) BindTimeline(false);
             if (tabs.Selected == TabSession) ShowSession();
+            if (tabs.Selected == TabGantt) BindGantt();
+        }
+
+        void BindGantt()
+        {
+            if (engine != null) gantt.Chart.SetData(engine.S, engine.Now, watching || engine.S.CountActive > 0);
         }
 
         void GoTo(string key)
