@@ -719,7 +719,7 @@ namespace TrackVice
         string Elapsed()
         {
             DateTime? f = engine.S.FirstUtc;
-            return f.HasValue ? Txt.DurationShort(engine.Now - f.Value) : "";
+            return f.HasValue ? Txt.DurationShort(engine.Now - f.Value - AutopilotFlow.BoxedTime(engine.S, engine.Now)) : "";
         }
 
         // ---------- binding ----------

@@ -474,6 +474,7 @@ namespace TrackVice
                 list.Add(f);
             }
 
+            AutopilotFlow.Apply(s, list, nowUtc);
             list.Sort(delegate (Finding a, Finding b)
             {
                 int c = b.Severity.CompareTo(a.Severity);
