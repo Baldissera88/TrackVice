@@ -1198,12 +1198,14 @@ namespace TrackVice
             Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
             Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
+            Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
             Menus.Separator(m);
             Menus.Add(m, "Play the Autopilot demo", delegate { Begin(Engine.ForDemo("autopilot"), true); });
             Menus.Add(m, "Play the task sequence demo", delegate { Begin(Engine.ForDemo("osd"), true); });
             Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
             Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
             Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
+            Menus.Add(m, "Demo: statistics", delegate { OpenStats(true); });
             return m;
         }
 
@@ -1213,6 +1215,7 @@ namespace TrackVice
             Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
             Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
+            Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
             Menus.Separator(m);
             Menus.Add(m, "Get script names from Intune", delegate { NamesFromIntune(); });
             Menus.Separator(m);
@@ -1221,6 +1224,7 @@ namespace TrackVice
             Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
             Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
             Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
+            Menus.Add(m, "Demo: statistics", delegate { OpenStats(true); });
             return m;
         }
 
@@ -1436,6 +1440,29 @@ namespace TrackVice
             }
         }
 
+        // Statistics over the uploads of the agents. Asks where they upload to first, if that is not known yet.
+        void OpenStats(bool demo)
+        {
+            AgentCatalog c = demo ? new AgentCatalog(new DemoAgentStore()) : agentCatalog as AgentCatalog;
+            if (c == null)
+            {
+                using (RemoteDialog r = new RemoteDialog(RemoteDialog.Agents, theme, null, null, false))
+                {
+                    r.NamesOnly = true;
+                    r.ShowDialog(this);
+                    if (r.Catalog != null) agentCatalog = r.Catalog;
+                }
+                c = agentCatalog as AgentCatalog;
+                if (c == null) return;
+            }
+            using (StatsDialog d = new StatsDialog(theme, c, demo))
+            {
+                d.ShowDialog(this);
+                if (d.Picked == null) return;
+                Begin(Engine.ForRemote(d.Catalog.Open(d.Picked), d.Picked), true);
+            }
+        }
+
         // A device knows its platform scripts by ID only. Their names are read from Intune, which needs a sign-in
         // with one more read permission. Once used, later sign-ins ask for it too and the names come by themselves.
         void NamesFromIntune()
@@ -1571,6 +1598,7 @@ namespace TrackVice
             Form page = null;
             if (start.Page == "settings") page = new SettingsDialog(theme);
             else if (start.Page == "about") page = new AboutDialog(theme);
+            else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
             else if (start.Remote != null && start.Pick == null)
             {
                 bool sign = start.Select != null && start.Select.StartsWith("signin");

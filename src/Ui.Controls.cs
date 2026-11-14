@@ -408,6 +408,8 @@ namespace TrackVice
         public Func<T, string> Text;
         public int Width;
         public bool Mono;
+        // Sorts by this text instead of the shown one, for example seconds for a duration.
+        public Func<T, string> SortKey;
         internal DataGridViewColumn GridColumn;
         bool fill;
 
@@ -668,7 +670,7 @@ namespace TrackVice
         void Sort()
         {
             if (sortCol < 0 || sortCol >= columns.Count) return;
-            Func<T, string> f = columns[sortCol].Text;
+            Func<T, string> f = columns[sortCol].SortKey ?? columns[sortCol].Text;
             bool desc = sortDesc;
             List<KeyValuePair<string, T>> keyed = new List<KeyValuePair<string, T>>(rows.Count);
             foreach (T r in rows)
