@@ -438,6 +438,8 @@ namespace TrackVice
             new string[] { "Microsoft-Windows-DeviceManagement-Enterprise-Diagnostics-Provider/Admin", "MDM", "errors+policy" },
             new string[] { "Microsoft-Windows-User Device Registration/Admin", "Device registration", "errors" },
             new string[] { "Microsoft-Windows-AAD/Operational", "Entra ID", "errors" },
+            new string[] { AutopilotEvents.MdmOperational, "Hybrid join", "ids" },
+            new string[] { AutopilotEvents.ShellCore, "Windows setup", "ids" },
         };
 
         readonly Dictionary<string, long> lastRecord = new Dictionary<string, long>();
@@ -480,7 +482,7 @@ namespace TrackVice
             long after;
             lastRecord.TryGetValue(channel, out after);
             StringBuilder q = new StringBuilder("*[System[");
-            q.Append(policy ? "(Level=1 or Level=2 or Level=3 or EventID=813 or EventID=814)" : errorsOnly ? "(Level=1 or Level=2 or Level=3)" : "(Level>=0)");
+            q.Append(AutopilotEvents.Filter(channel, errorsOnly ? what : "all"));
             if (after > 0) q.Append(" and (EventRecordID>").Append(after.ToString(CultureInfo.InvariantCulture)).Append(")");
             else if (sinceUtc.HasValue) q.Append(" and TimeCreated[@SystemTime>='").Append(sinceUtc.Value.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture)).Append("']");
             q.Append("]]");
@@ -510,6 +512,17 @@ namespace TrackVice
                             catch (Exception) { }
                             continue;
                         }
+                        // Autopilot milestones in plain words. Channels read only for them ("ids") add nothing else.
+                        List<Obs> ap = null;
+                        try
+                        {
+                            List<object> props = new List<object>();
+                            foreach (EventProperty p in e.Properties) props.Add(p.Value);
+                            ap = AutopilotEvents.Map(channel, e.Id, props, msg, e.TimeCreated.HasValue ? e.TimeCreated.Value.ToUniversalTime() : DateTime.UtcNow, rec);
+                        }
+                        catch (Exception) { }
+                        if (ap != null && ap.Count > 0) { list.AddRange(ap); continue; }
+                        if (what == "ids") continue;
                         if (string.IsNullOrEmpty(msg)) msg = "Event " + e.Id;
                         Obs o = new Obs();
                         o.TimeUtc = e.TimeCreated.HasValue ? e.TimeCreated.Value.ToUniversalTime() : DateTime.UtcNow;
