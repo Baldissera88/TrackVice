@@ -100,11 +100,11 @@ How a release is made, on the author's Windows PC. `release.ps1` does the build,
     ```powershell
     .\winget\New-Manifests.ps1 -Validate
     winget settings --enable LocalManifestFiles
-    winget install --manifest .\out\winget\manifests\b\Baldissera88\TrackVice\<version>
+    winget install --manifest .\out\winget\manifests\d\DanielBaldissera\TrackVice\<version>
     .\winget\New-Manifests.ps1 -Submit
     ```
 
-    It writes the version, installer and en-US locale manifests (schema 1.12.0) for `Baldissera88.TrackVice`, with the MSI's SHA-256 and the product code from `TrackVice.wxs`, and validates them with `winget validate`. Install from the manifest on a test device before submitting. `-Submit` opens a pull request to microsoft/winget-pkgs with `wingetcreate submit`; give `-Token` or store a token once with `wingetcreate token --store`. On Linux, `winget/manifests.sh <version> TrackVice.msi <notes file> out/winget` writes the same files. Do not submit pre-releases.
+    It writes the version, installer and en-US locale manifests (schema 1.12.0) for `DanielBaldissera.TrackVice`, with the MSI's SHA-256 and the product code from `TrackVice.wxs`, and validates them with `winget validate`. Install from the manifest on a test device before submitting. `-Submit` opens a pull request to microsoft/winget-pkgs with `wingetcreate submit`; give `-Token` or store a token once with `wingetcreate token --store`. On Linux, `winget/manifests.sh <version> TrackVice.msi <notes file> out/winget` writes the same files. Do not submit pre-releases.
 
 ## Before a release: device checklist
 
