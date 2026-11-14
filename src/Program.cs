@@ -202,6 +202,7 @@ namespace TrackVice
             string report = null, csv = null, session = null, folder = null, agent = null;
             AgentOptions ao = new AgentOptions();
             int hours = 24;
+            string title = null, fleet = null;
             try
             {
                 for (int i = 0; i < args.Length; i++)
@@ -223,6 +224,8 @@ namespace TrackVice
                         case "alert": ao.Alert = Next(args, ref i); break;
                         case "alert-test": ao.AlertTest = true; break;
                         case "no-mask": ao.Mask = false; break;
+                        case "title": title = Next(args, ref i); break;
+                        case "fleet-report": fleet = Next(args, ref i); break;
                         case "?":
                         case "h":
                         case "help": Usage(); return 0;
@@ -239,6 +242,7 @@ namespace TrackVice
                 }
                 if (agent == "run" && ao.AlertTest) return AgentAlerts.Test(ao.Alert, Environment.MachineName);
                 if (agent == "run") return Agent.Run(ao);
+                if (fleet != null) return Report.FleetCli(fleet, ao.Upload, hours, title);
                 if (report == null && csv == null && session == null)
                 {
                     Usage();
@@ -249,7 +253,7 @@ namespace TrackVice
                     e.Apply(e.Poll());
                     Session s = e.S;
                     if (session != null) s.Save(session);
-                    if (report != null) File.WriteAllText(report, Report.Html(s, e.Now));
+                    if (report != null) File.WriteAllText(report, Report.Html(s, e.Now, new ReportOptions { Title = title }));
                     if (csv != null) Report.Csv(s, csv);
                     int failed = s.Count(State.Failed);
                     Console.WriteLine(s.Computer + ": " + s.Kind + ", " + s.Items.Count + " items, " + s.CountComplete + " done, " + s.CountActive + " in progress, " + failed + " failed, " + s.Findings.Count + " findings");

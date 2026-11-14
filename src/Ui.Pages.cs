@@ -884,6 +884,8 @@ namespace TrackVice
             new string[] { "/report <file.html>", "Save an HTML report of this device and exit" },
             new string[] { "/csv <file.csv>", "Save every event as CSV and exit" },
             new string[] { "/session <file.json>", "Save the session as JSON and exit" },
+            new string[] { "/title <text>", "With /report or /fleet-report: the title at the top of the report" },
+            new string[] { "/fleet-report <file.html> /upload <location>", "Save an HTML report over every enrollment the agents uploaded there and exit. /hours limits it to recent uploads (0 for all)" },
             new string[] { "/folder <path>", "With /report, /csv or /session: read a folder of logs instead of this device" },
             new string[] { "/hours <n>", "Hours of history to read (default 24, 0 for everything since Windows was installed)" },
             new string[] { "/agent-install /upload <location>", "Install the agent: it uploads this device's session while it deploys. The location is a storage container SAS link or a folder" },
