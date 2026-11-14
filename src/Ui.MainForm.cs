@@ -327,7 +327,7 @@ namespace TrackVice
             timeline.MenuExtras = delegate (ContextMenuStrip m, TEvent e)
             {
                 if (e.Evidence != null && e.Evidence.Text != null) Menus.Add(m, "Copy the raw line", delegate { Menus.Copy(e.Evidence.Text); });
-                if (e.Evidence != null && e.Evidence.IsLogFile) Menus.Add(m, "Open " + Txt.FileName(e.Evidence.Path) + " in LogVice", delegate { OpenInLogVice(e.Evidence.Path); });
+                if (e.Evidence != null && e.Evidence.IsLogFile) Menus.Add(m, "Open " + Txt.FileName(e.Evidence.Path) + " in LogVice", delegate { OpenEvidence(e.Evidence); });
                 Item it = engine.S.Find(e.ItemKey);
                 if (it != null) Menus.Add(m, "Go to " + Txt.Short(it.DisplayName, 40), delegate { GoTo(it.Key); });
             };
@@ -350,7 +350,7 @@ namespace TrackVice
             findings.MenuExtras = delegate (ContextMenuStrip m, Finding f)
             {
                 if (f.ItemKey != null) Menus.Add(m, "Go to the item", delegate { GoTo(f.ItemKey); });
-                if (f.Evidence != null && f.Evidence.IsLogFile) Menus.Add(m, "Open " + Txt.FileName(f.Evidence.Path) + " in LogVice", delegate { OpenInLogVice(f.Evidence.Path); });
+                if (f.Evidence != null && f.Evidence.IsLogFile) Menus.Add(m, "Open " + Txt.FileName(f.Evidence.Path) + " in LogVice", delegate { OpenEvidence(f.Evidence); });
             };
             findings.Grid.CellDoubleClick += delegate { Safe.Run(delegate { Finding f = findings.Current; if (f != null && f.ItemKey != null) GoTo(f.ItemKey); }); };
             themed.Add(findings);
@@ -1260,6 +1260,8 @@ namespace TrackVice
         ContextMenuStrip LogViceMenu()
         {
             ContextMenuStrip m = Menus.New(theme);
+            Menus.Add(m, "Logs from the device\u2026", delegate { FetchDeviceLogs(null, 0); }).Enabled = engine != null && engine.Mode == Modes.Agent;
+            Menus.Separator(m);
             Item sel = list.SelectedItem;
             if (sel != null && sel.LogFile != null) Menus.Add(m, "Log of " + Txt.Short(sel.DisplayName, 40) + "  (Ctrl+L)", delegate { OpenItemLog(sel); });
             List<string> smsts = new List<string>();
@@ -1291,6 +1293,7 @@ namespace TrackVice
             if (i == null || i.LogFile == null) { Status("This item has no log line behind it."); return; }
             Evidence ev = null;
             for (int k = i.Events.Count - 1; k >= 0 && ev == null; k--) if (i.Events[k].Evidence != null && i.Events[k].Evidence.IsLogFile) ev = i.Events[k].Evidence;
+            if (engine != null && engine.Mode == Modes.Agent) { OpenFromDevice(new string[] { ev != null ? ev.Path : i.LogFile }, ev != null ? ev.Line : 0); return; }
             OpenInLogVice(i.LogFile);
             if (ev != null && ev.Line > 0) Status("Opened " + Txt.FileName(ev.Path) + " in LogVice. The newest line about " + i.DisplayName + " is line " + ev.Line + ".");
         }
@@ -1303,9 +1306,9 @@ namespace TrackVice
                 Status("The demo has no real log files. Open a log on a real device, or a saved session from one.");
                 return;
             }
-            if (engine != null && engine.Mode == Modes.Agent)
+            if (engine != null && engine.Mode == Modes.Agent && !openingDeviceCopy)
             {
-                Status("That log is on " + engine.S.Computer + ", not on this computer. The lines TrackVice read from it are in the evidence of each event.");
+                OpenFromDevice(targets, 0);
                 return;
             }
             string exe = LogViceLink.Find();
@@ -1330,6 +1333,88 @@ namespace TrackVice
                 Status("Opened in LogVice: " + string.Join(", ", names.ToArray()));
             }
             catch (Exception ex) { Fail(ex); }
+        }
+
+        // ---------- logs a device with the agent uploaded ----------
+
+        readonly Dictionary<string, DeviceLogCopy> deviceLogs = new Dictionary<string, DeviceLogCopy>(StringComparer.OrdinalIgnoreCase);
+        bool fetchingLogs, openingDeviceCopy;
+
+        void OpenEvidence(Evidence ev)
+        {
+            if (engine != null && engine.Mode == Modes.Agent) OpenFromDevice(new string[] { ev.Path }, ev.Line);
+            else OpenInLogVice(ev.Path);
+        }
+
+        // Downloads the logs the device uploaded, in the background. Then opens the targets in LogVice, or the folder when there are none.
+        void FetchDeviceLogs(string[] targets, int line)
+        {
+            Engine e = engine;
+            AgentFeed feed = e == null ? null : e.Remote as AgentFeed;
+            if (feed == null) { Status("Logs from the device are there for devices with the TrackVice agent. Open one from Devices > Devices with the TrackVice agent."); return; }
+            string computer = e.S.Computer;
+            if (fetchingLogs) { Status("The logs of " + computer + " are still downloading."); return; }
+            fetchingLogs = true;
+            Status("Downloading the logs of " + computer + "\u2026");
+            bool shot = start.Shot != null;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                DeviceLogCopy c = null;
+                Exception err = null;
+                try { c = DeviceLogs.Download(new AgentCatalog(feed.Store), feed.Blob, computer, DeviceLogs.Root, DateTime.UtcNow); }
+                catch (Exception ex) { err = ex; }
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        Safe.Run(delegate
+                        {
+                            fetchingLogs = false;
+                            if (err != null) { Status("The logs of " + computer + " could not be downloaded: " + err.Message); return; }
+                            if (c == null) { Status(DeviceLogs.NotYet); return; }
+                            deviceLogs[feed.Blob] = c;
+                            if (e != engine) return;
+                            if (targets != null) { OpenFromDevice(targets, line); return; }
+                            if (!shot) System.Diagnostics.Process.Start("explorer.exe", "\"" + c.Folder + "\"");
+                            Status(c.Logs + " log file" + (c.Logs == 1 ? "" : "s") + " from " + computer + ", uploaded " + Txt.LocalTime(c.UploadedUtc) + ", are in " + c.Folder + ".");
+                        });
+                    });
+                }
+                catch (Exception) { }
+            });
+        }
+
+        // Opens the device's own copy of a log in LogVice, downloading the device's logs first when this PC has none yet.
+        void OpenFromDevice(string[] targets, int line)
+        {
+            AgentFeed feed = engine.Remote as AgentFeed;
+            string computer = engine.S.Computer;
+            DeviceLogCopy c;
+            if (feed != null && !deviceLogs.TryGetValue(feed.Blob, out c)) { FetchDeviceLogs(targets, line); return; }
+            if (feed == null || !deviceLogs.TryGetValue(feed.Blob, out c)) c = null;
+            List<string> files = new List<string>();
+            List<string> missing = new List<string>();
+            foreach (string t in targets)
+            {
+                if (string.IsNullOrEmpty(t)) continue;
+                string f = t.StartsWith("evt:") ? null : DeviceLogs.Map(c, t);
+                if (f != null) files.Add(f);
+                else missing.Add(t.StartsWith("evt:") ? t.Substring(4) : Txt.FileName(t));
+            }
+            if (files.Count == 0)
+            {
+                Status("The logs " + computer + " uploaded do not have " + string.Join(", ", missing.ToArray()) + ". The lines TrackVice read from it are in the evidence of each event.");
+                return;
+            }
+            openingDeviceCopy = true;
+            try { OpenInLogVice(files.ToArray()); }
+            finally { openingDeviceCopy = false; }
+            if (LogViceLink.Find() == null) return;
+            string what = files.Count == 1 ? Txt.FileName(targets[0]) : files.Count + " logs";
+            string text = "Opened " + what + " from " + computer + " in LogVice, as uploaded " + Txt.LocalTime(c.UploadedUtc) + ".";
+            if (line > 0 && files.Count == 1) text += " The line is line " + line + ".";
+            if (missing.Count > 0) text += " Not in the upload: " + string.Join(", ", missing.ToArray()) + ".";
+            Status(text);
         }
 
         void OpenSession()
@@ -1611,6 +1696,7 @@ namespace TrackVice
             Form page = null;
             if (start.Page == "settings") page = new SettingsDialog(theme);
             else if (start.Page == "about") page = new AboutDialog(theme);
+            else if (start.Page == "devicelogs") { FetchDeviceLogs(null, 0); LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); }
             else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
             else if (start.Remote != null && start.Pick == null)
             {
