@@ -6,7 +6,7 @@ namespace TrackVice
 
     // The four steps the Enrollment Status Page shows for device setup and account setup, from
     // HKLM\SOFTWARE\Microsoft\Enrollments\<enrollment>\FirstSync (device) and FirstSync\<user SID> (account).
-    // Timestamp is when the phase started; each ...Duration is the seconds until that step was complete.
+    // Timestamp is when the phase started; each ...Duration counts the seconds of that step while it runs and stops when it is done.
     public sealed class EspFirstSync
     {
         public const string EnrollmentsKey = @"HKLM\SOFTWARE\Microsoft\Enrollments";
@@ -96,35 +96,54 @@ namespace TrackVice
             return o;
         }
 
+        readonly Dictionary<string, string> said = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // Windows counts each ...Duration up while the step runs and stops counting when it is done, so a step is still
+        // running while its count reaches the last time the key was written, and that write was a moment ago.
+        public static bool Running(DateTime start, long seconds, DateTime? written, DateTime nowUtc)
+        {
+            if (!written.HasValue) return false;
+            DateTime end = start.AddSeconds(seconds);
+            return end >= written.Value.AddSeconds(-15) && nowUtc - written.Value < TimeSpan.FromSeconds(90);
+        }
+
         void Phase(IRegSource reg, string path, string phase, string who, DateTime nowUtc, List<Obs> list)
         {
             DateTime? start = FileTime(reg.Get(path, "Timestamp"));
             if (!start.HasValue) return;
-            long? done = Num(reg, path, "IsServerProvisioningDone");
+            DateTime? written = reg.WriteTime(path);
             foreach (string[] s in Steps)
             {
                 long? sec = Num(reg, path, s[0]);
                 string key = "esp:step:" + who + ":" + s[1];
-                if (seen.Add(key + "|start"))
+                string prev;
+                said.TryGetValue(key, out prev);
+                if (prev == null)
                 {
                     Obs o = Make(path, key, s[2], s[3], phase, State.Installing, start.Value, "ESP: " + s[2].ToLowerInvariant() + " started", "Timestamp");
                     o.NewAttempt = true;
                     list.Add(o);
+                    said[key] = "running";
+                    prev = "running";
                 }
-                if (sec.HasValue && sec.Value >= 0 && seen.Add(key + "|done|" + sec.Value))
+                if (!sec.HasValue || sec.Value < 0) continue;
+                bool running = Running(start.Value, sec.Value, written, nowUtc);
+                if (running && prev != "running")
+                {
+                    list.Add(Make(path, key, s[2], s[3], phase, State.Installing, nowUtc, "ESP: " + s[2].ToLowerInvariant() + " running again", s[0] + " = " + sec.Value));
+                    said[key] = "running";
+                }
+                else if (!running && prev != "done:" + sec.Value)
                 {
                     DateTime end = start.Value.AddSeconds(sec.Value);
-                    Obs o = Make(path, key, s[2], s[3], phase, State.Succeeded, end > nowUtc ? nowUtc : end,
-                        "ESP: " + s[2].ToLowerInvariant() + " done after " + Txt.DurationShort(TimeSpan.FromSeconds(sec.Value)), s[0] + " = " + sec.Value);
-                    list.Add(o);
+                    list.Add(Make(path, key, s[2], s[3], phase, State.Succeeded, end > nowUtc ? nowUtc : end,
+                        "ESP: " + s[2].ToLowerInvariant() + " done after " + Txt.DurationShort(TimeSpan.FromSeconds(sec.Value)), s[0] + " = " + sec.Value));
+                    said[key] = "done:" + sec.Value;
                 }
             }
-            if (done.HasValue && done.Value == 1 && seen.Add(phase + "|" + who + "|done"))
-            {
-                // Recorded with the step it belongs to, so the phase shows when the server side was ready.
-                Obs o = Make(path, "esp:step:" + who + ":policies", Steps[0][2], Kinds.Policy, phase, null, When(reg, path, nowUtc), "ESP: everything Intune sends for this phase has arrived", "IsServerProvisioningDone = 1");
-                list.Add(o);
-            }
+            long? server = Num(reg, path, "IsServerProvisioningDone");
+            if (server.HasValue && server.Value == 1 && seen.Add(phase + "|" + who + "|server"))
+                list.Add(Make(path, "esp:step:" + who + ":policies", Steps[0][2], Kinds.Policy, phase, null, When(reg, path, nowUtc), "ESP: everything Intune sends for this phase has arrived", "IsServerProvisioningDone = 1"));
         }
     }
 }
