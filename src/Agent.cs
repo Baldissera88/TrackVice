@@ -467,7 +467,17 @@ namespace TrackVice
         // One uploaded session, whole.
         public Session Load(string key)
         {
-            return AgentData.Unpack(store.Get(key));
+            return WithNames(AgentData.Unpack(store.Get(key)));
+        }
+
+        // Names read from Intune in this window, for sessions read outside a watched device: Statistics, Compare and reports.
+        public static Dictionary<string, string> KnownNames;
+
+        public static Session WithNames(Session s)
+        {
+            Dictionary<string, string> names = KnownNames;
+            if (s != null && names != null && names.Count > 0) new Tracker(s).AddNames(names);
+            return s;
         }
 
         // The zip of logs the device uploaded beside a session, or null when it has not uploaded one.

@@ -150,6 +150,7 @@ namespace TrackVice
         void ForgetIntuneNames()
         {
             intuneNames = null;
+            AgentCatalog.KnownNames = null;
             profilesFor = null;
             profileDiff = null;
             diffFor = null;
@@ -203,6 +204,7 @@ namespace TrackVice
             {
                 if (intuneNames == null) intuneNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 foreach (KeyValuePair<string, string> kv in r.Names) intuneNames[kv.Key] = kv.Value;
+                AgentCatalog.KnownNames = new Dictionary<string, string>(intuneNames, StringComparer.OrdinalIgnoreCase);
             }
             int n = engine != null && r.Names.Count > 0 ? engine.AddNames(r.Names) : 0;
             if (r.Profiles.Count > 0 && e != null && e == engine)
