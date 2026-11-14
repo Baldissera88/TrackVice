@@ -220,6 +220,9 @@ namespace TrackVice
                         case "upload": ao.Upload = Next(args, ref i); break;
                         case "keep": ao.KeepHours = Math.Max(1, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
                         case "once": ao.Once = true; break;
+                        case "alert": ao.Alert = Next(args, ref i); break;
+                        case "alert-test": ao.AlertTest = true; break;
+                        case "no-mask": ao.Mask = false; break;
                         case "?":
                         case "h":
                         case "help": Usage(); return 0;
@@ -234,6 +237,7 @@ namespace TrackVice
                     Console.WriteLine("The TrackVice agent is removed. Delete " + Agent.InstallDir + " to remove its files.");
                     return 0;
                 }
+                if (agent == "run" && ao.AlertTest) return AgentAlerts.Test(ao.Alert, Environment.MachineName);
                 if (agent == "run") return Agent.Run(ao);
                 if (report == null && csv == null && session == null)
                 {
