@@ -287,7 +287,28 @@ namespace TrackVice
             string code = Http.Str(e, "code"), msg = Http.Str(e, "message");
             if (status == 403 || code == "Forbidden" || code == "Authorization_RequestDenied")
                 return "Access denied. The account needs an Intune role that can read devices, and the app needs consent for DeviceManagementManagedDevices.Read.All." + (msg != null ? " (" + Txt.Short(msg, 200) + ")" : "");
+            msg = Clean(msg);
             return msg ?? code ?? "Microsoft Graph answered HTTP " + status + ".";
+        }
+
+        // Intune puts its own JSON in the message, ending with an operation ID and a time: only the sentence is kept.
+        public static string Clean(string msg)
+        {
+            if (string.IsNullOrEmpty(msg)) return msg;
+            string m = msg.Trim();
+            if (m.StartsWith("{"))
+            {
+                try
+                {
+                    Dictionary<string, object> inner = ImeJson.Parse(m) as Dictionary<string, object>;
+                    string s = Http.Str(inner, "Message") ?? Http.Str(inner, "message");
+                    if (!string.IsNullOrEmpty(s)) m = s;
+                }
+                catch (Exception) { }
+            }
+            int op = m.IndexOf(" - Operation ID", StringComparison.OrdinalIgnoreCase);
+            if (op > 0) m = m.Substring(0, op);
+            return Txt.Short(m.Trim(), 200);
         }
     }
 

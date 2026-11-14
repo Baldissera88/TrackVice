@@ -1,5 +1,12 @@
 # Changelog
 
+## TrackVice 1.0.5
+
+14 November 2026.
+
+- An app whose MSI product code is not on the device yet says so in plain words: Detection: not installed yet.
+- An error from Intune shows its sentence only, not the JSON around it, and a server error says it is usually passing.
+
 ## TrackVice 1.0.4
 
 14 November 2026.

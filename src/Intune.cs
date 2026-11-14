@@ -221,6 +221,12 @@ namespace TrackVice
                 }
             }
             if (!useful && l.Severity < 1) return;
+            // The MSI product code of the detection rule is not on the device: the app is not installed yet.
+            if (say == null && t.IndexOf("CheckProductCodeExists fails", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                say = "Detection: not installed yet, its MSI product code is not on the device";
+                useful = true;
+            }
             // Bookkeeping about reporting says nothing about the app itself.
             if (say == null && o.State == null && !o.ExitCode.HasValue && RxNoise.IsMatch(t)) return;
             // The same thing said again for the same app adds nothing.
