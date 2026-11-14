@@ -12,7 +12,7 @@ if [ -z "$version" ] || [ ! -f "$msi" ] || [ -z "$out" ]; then
   exit 2
 fi
 
-id=Baldissera88.TrackVice
+id=DanielBaldissera.TrackVice
 repo=Baldissera88/TrackVice
 schema=1.12.0
 url="https://github.com/$repo/releases/download/v$version/TrackVice.msi"
@@ -27,7 +27,7 @@ if [ "$msiversion" != "$version" ] || [ "$msicode" != "$code" ]; then
 fi
 sha=$(sha256sum "$msi" | cut -d' ' -f1 | tr 'a-f' 'A-F')
 date=$(date -u +%Y-%m-%d)
-dir="$out/manifests/b/Baldissera88/TrackVice/$version"
+dir="$out/manifests/d/DanielBaldissera/TrackVice/$version"
 mkdir -p "$dir"
 
 cat > "$dir/$id.yaml" <<EOF
