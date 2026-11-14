@@ -27,6 +27,8 @@ namespace TrackVice
         CompactView compact;
         IRemoteCatalog intuneCatalog, sccmCatalog, agentCatalog;
         GraphClient graph;
+        // The customer of the device being watched, for the status bar.
+        string watchedCustomer;
 
         readonly List<IThemed> themed = new List<IThemed>();
         readonly Panel header = new Panel();
@@ -108,6 +110,7 @@ namespace TrackVice
             ShowView();
             pollTimer.Tick += Safe.Wrap(delegate { Poll(); });
             Finder.StuckAfter = TimeSpan.FromMinutes(Settings.StuckMinutes);
+            CustomerUi.Switched += CustomerSwitched;
             clockTimer.Interval = 1000;
             clockTimer.Tick += Safe.Wrap(delegate { Tick(); });
             clockTimer.Start();
@@ -117,7 +120,7 @@ namespace TrackVice
                 {
                     IRemoteCatalog c = RemoteDialog.DemoCatalog(start.Remote);
                     foreach (RemoteDeployment d in c.List(DateTime.UtcNow.AddDays(-30)))
-                        if (d.Device.IndexOf(start.Pick, StringComparison.OrdinalIgnoreCase) >= 0) { Begin(Engine.ForRemote(c.Open(d), d), true); return; }
+                        if (d.Device.IndexOf(start.Pick, StringComparison.OrdinalIgnoreCase) >= 0) { watchedCustomer = CustomerBook.Demo().Current.Name; Begin(Engine.ForRemote(c.Open(d), d), true); return; }
                 }
                 if (start.Remote != null && start.Shot == null) { Begin(Engine.ForDemo("autopilot"), true); OpenRemote(start.Remote, true); return; }
                 if (start.Demo != null) Begin(Engine.ForDemo(start.Demo), true);
@@ -707,6 +710,7 @@ namespace TrackVice
             else if (engine.Mode == Modes.Folder) parts.Add("Log folder");
             if (watching) parts.Add("Watching · updated " + Txt.Ago(lastUpdate, DateTime.UtcNow));
             else if (engine.Mode == Modes.Live || engine.IsRemote) parts.Add("Paused");
+            if (engine.IsRemote && watchedCustomer != null) parts.Insert(0, "Customer: " + watchedCustomer);
             if (engine.SourceCount > 0) parts.Add(engine.SourceCount + " source" + (engine.SourceCount == 1 ? "" : "s"));
             parts.Add("TrackVice " + Program.Version);
             statusRight.Text = string.Join("  ·  ", parts.ToArray());
@@ -1453,8 +1457,19 @@ namespace TrackVice
                     else sccmCatalog = d.Catalog;
                 }
                 if (d.Picked == null || d.Catalog == null) return;
+                watchedCustomer = demo ? null : CustomerUi.CurrentName;
                 Begin(Engine.ForRemote(d.Catalog.Open(d.Picked), d.Picked), true);
             }
+        }
+
+        // Lists and sign-ins of one customer are never used for another.
+        void CustomerSwitched(object sender, CustomerSwitch e)
+        {
+            sccmCatalog = null;
+            agentCatalog = null;
+            if (e.KeepSignIn) return;
+            intuneCatalog = null;
+            graph = null;
         }
 
         // Statistics over the uploads of the agents. Asks where they upload to first, if that is not known yet.
@@ -1476,6 +1491,7 @@ namespace TrackVice
             {
                 d.ShowDialog(this);
                 if (d.Picked == null) return;
+                watchedCustomer = demo ? null : CustomerUi.CurrentName;
                 Begin(Engine.ForRemote(d.Catalog.Open(d.Picked), d.Picked), true);
             }
         }
@@ -1623,6 +1639,8 @@ namespace TrackVice
             Form page = null;
             if (start.Page == "settings") page = new SettingsDialog(theme);
             else if (start.Page == "about") page = new AboutDialog(theme);
+            else if (start.Page == "customers") page = new CustomersPage(theme, CustomerBook.Demo());
+            else if (start.Page == "customer") { CustomerBook cb = CustomerBook.Demo(); page = new CustomerEditor(theme, cb, cb.Find("Contoso")); }
             else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
             else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
             else if (start.Remote != null && start.Pick == null)
