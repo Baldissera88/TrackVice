@@ -16,6 +16,22 @@ It is a companion to [LogVice](https://github.com/Baldissera88/LogVice) and [Pol
 
 Get `TrackVice.msi` or the portable `TrackVice.exe` from the [latest release](https://github.com/Baldissera88/TrackVice/releases/latest). It needs .NET Framework 4.5 or later, which Windows 10 and 11 have. The files are not code signed, so SmartScreen warns on the first start.
 
+## Requirements
+
+| For | What is needed |
+|---|---|
+| Running TrackVice | Windows 10 or 11, or Windows Server, with .NET Framework 4.5 or later. No install needed: the exe runs from a USB stick or a share |
+| Seeing everything on the device | Run as administrator. Without it, logs and registry keys that need administrator rights are left out |
+| Autopilot OOBE and the ESP | Shift+F10 must be allowed on the device |
+| Task sequence | Command support (F8) on the boot image. The Windows PE part also needs WinPE-NetFx, and shows smsts.log only |
+| Autopilot in Intune | A sign-in to the customer's tenant with `DeviceManagementManagedDevices.Read.All`, delegated. [Names from Intune](#names-from-intune) and [Check devices before enrollment](#check-devices-before-enrollment) need more read permissions, listed there |
+| Task sequences in SCCM | Network access and remote WMI to the SMS Provider, and a role that can read deployment status, such as Read-only Analyst |
+| The agent | A storage account in Azure, the right to add a platform script in Intune, and outbound HTTPS (port 443) from the devices to `<account>.blob.core.windows.net`. See [docs/AGENT.md](docs/AGENT.md#what-you-need) |
+| New customer | Contributor on the subscription for a new storage account, or Storage Account Contributor on an existing one. Adding the platform script to Intune also needs a role that can add scripts, and consent to `DeviceManagementScripts.ReadWrite.All` and `Group.ReadBasic.All`. `New-TrackViceCustomer.ps1` needs PowerShell 5.1 with Az.Accounts and Az.Storage |
+| LogVice, PackVice, NotifyVice | Optional. When one is not found, its button asks you to locate the exe and keeps your choice. Nothing else needs them |
+
+TrackVice reads only. The exceptions are the agent's own folder, task and registry key on the devices, and what New customer creates in Azure and Intune when you confirm it.
+
 ## What it shows
 
 | Part | Contents |
