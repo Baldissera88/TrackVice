@@ -124,6 +124,7 @@ namespace TrackVice
                     foreach (RemoteDeployment d in c.List(DateTime.UtcNow.AddDays(-30)))
                         if (d.Device.IndexOf(start.Pick, StringComparison.OrdinalIgnoreCase) >= 0) { watchedCustomer = CustomerBook.Demo().Current.Name; Begin(Engine.ForRemote(c.Open(d), d), true); return; }
                 }
+                if (start.Wall && start.Shot == null) { Begin(Settings.NewLive(), true); OpenWall(start.Upload, false); return; }
                 if (start.Remote != null && start.Shot == null) { Begin(Engine.ForDemo("autopilot"), true); OpenRemote(start.Remote, true); return; }
                 if (start.Demo != null) Begin(Engine.ForDemo(start.Demo), true);
                 else if (start.File != null) Begin(Engine.ForFile(start.File), false);
@@ -1229,6 +1230,7 @@ namespace TrackVice
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
             Menus.Separator(m);
             Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
+            Menus.Add(m, "Wall view\u2026", delegate { OpenWall(null, false); });
             CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
             Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
             Menus.Separator(m);
@@ -1238,6 +1240,7 @@ namespace TrackVice
             Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
             Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
             Menus.Add(m, "Demo: statistics", delegate { OpenStats(true); });
+            Menus.Add(m, "Demo: wall view", delegate { OpenWall(null, true); });
             Menus.Add(m, "Demo: compare two enrollments", delegate { using (CompareDialog d = CompareDialog.ForDemo(theme)) d.ShowDialog(this); });
             return m;
         }
@@ -1674,6 +1677,7 @@ namespace TrackVice
             else if (start.Page == "customer") { CustomerBook cb = CustomerBook.Demo(); page = new CustomerEditor(theme, cb, cb.Find("Contoso")); }
             else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
             else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
+            else if (start.Page == "wall") { WallView wv = new WallView(theme, new AgentCatalog(new WallDemoStore()), true); wv.FiltersAtStart = start.Select == "filters"; if (start.Tab >= 0) wv.FilterIndex = start.Tab; page = wv; }
             else if (start.Page == "names") page = new NamesDialog(theme, engine != null ? engine.S.Computer : null);
             else if (start.Remote != null && start.Pick == null)
             {

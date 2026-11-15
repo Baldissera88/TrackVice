@@ -921,6 +921,7 @@ namespace TrackVice
             new string[] { "/alert <link>", "With /agent, /agent-install or /agent-start: send failures and the end of a deployment to a Teams workflow or other webhook" },
             new string[] { "/agent /alert <link> /alert-test", "Send one test alert and exit" },
             new string[] { "/no-mask", "With /agent, /agent-install or /agent-start: upload passwords, keys and tokens as they are, without hiding them" },
+            new string[] { "--wall [/upload <location>]", "Start in the wall view: every device with the agent on one screen. Without /upload it uses the upload location of the current customer" },
             new string[] { "--demo", "Play a sample Autopilot deployment" },
             new string[] { "--demo osd", "Play a sample SCCM task sequence" },
         };

@@ -165,6 +165,8 @@ namespace TrackVice
                     int w, h;
                     if (wh.Length == 2 && int.TryParse(wh[0], out w) && int.TryParse(wh[1], out h)) o.Size = new Size(w, h);
                 }
+                else if (low == "--wall") o.Wall = true;
+                else if ((low == "/upload" || low == "--upload") && i + 1 < args.Length) o.Upload = args[++i];
                 else if (Directory.Exists(a)) o.Folder = a;
                 else if (a.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && File.Exists(a)) o.File = a;
             }
@@ -182,6 +184,8 @@ namespace TrackVice
         public double At = -1;
         public int Tab = -1;
         public bool Compact;
+        public bool Wall;
+        public string Upload;
         public Size Size;
     }
 
