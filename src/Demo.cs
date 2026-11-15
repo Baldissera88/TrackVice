@@ -16,6 +16,7 @@ namespace TrackVice
         public string Text;
         public string RegPath;
         public int RegValue;
+        public SysEvent Event;
     }
 
     public sealed class DemoScenario
@@ -71,6 +72,20 @@ namespace TrackVice
             return this;
         }
 
+        // A record in the System event log, such as a restart.
+        public DemoScenario SystemEvent(string provider, int id, params object[] props)
+        {
+            DemoStep s = new DemoStep();
+            s.At = at;
+            s.Event = new SysEvent();
+            s.Event.Provider = provider;
+            s.Event.Id = id;
+            s.Event.Props.AddRange(props);
+            Steps.Add(s);
+            at += 0.2;
+            return this;
+        }
+
         public void Sort()
         {
             List<DemoStep> l = new List<DemoStep>(Steps);
@@ -91,6 +106,7 @@ namespace TrackVice
         public readonly DateTime StartUtc;
         readonly MemoryRegistry reg = new MemoryRegistry();
         readonly EspWatch esp = new EspWatch();
+        readonly RestartWatch restarts = new RestartWatch();
         readonly Dictionary<string, LogParser> parsers = new Dictionary<string, LogParser>(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string, int> lineNos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int next;
@@ -132,6 +148,13 @@ namespace TrackVice
                     b.Obs.AddRange(esp.Read(reg, t));
                     continue;
                 }
+                if (s.Event != null)
+                {
+                    s.Event.TimeUtc = t;
+                    s.Event.Record = next;
+                    b.Obs.AddRange(restarts.Add(new SysEvent[] { s.Event }));
+                    continue;
+                }
                 Feed(s, t, b);
             }
             Position = Math.Max(Position, seconds);
@@ -164,7 +187,7 @@ namespace TrackVice
             System.Collections.Generic.Dictionary<string, StringBuilder> files = new System.Collections.Generic.Dictionary<string, StringBuilder>(StringComparer.OrdinalIgnoreCase);
             foreach (DemoStep s in sc.Steps)
             {
-                if (s.RegPath != null) continue;
+                if (s.RegPath != null || s.Event != null) continue;
                 string path;
                 if (!sc.Paths.TryGetValue(s.Log, out path)) path = s.Log + ".log";
                 string name = path.Substring(path.LastIndexOf('\\') + 1);
@@ -259,12 +282,12 @@ namespace TrackVice
             d.At(4.8).Reg(@"Device\Setup\Certificates\Contoso Device Certificate", 3);
 
             // Microsoft 365 Apps: a big download through Delivery Optimization
-            ImeApp(d, 3.6, m365, dev + "Win32App_" + m365 + "_1", 1, new int[] { 6, 19, 34, 51, 67, 82, 94, 100 }, 1.1, 6.5, "0");
+            ImeApp(d, 3.6, m365, dev + "Win32App_" + m365 + "_1", 1, new int[] { 6, 19, 34, 51, 67, 82, 94, 100 }, 1.1, 6.5, "0", 304087040);
             // 7-Zip
-            ImeApp(d, 11.5, zip, dev + "Win32App_" + zip + "_1", 2, new int[] { 100 }, 0.2, 0.6, "0");
+            ImeApp(d, 11.5, zip, dev + "Win32App_" + zip + "_1", 2, new int[] { 100 }, 0.2, 0.6, "0", 1612288);
             // Contoso VPN Client: another install is running twice (1618), then it works
             d.At(12.6).Reg(dev + "Win32App_" + vpn + "_1", 2);
-            Download(d, 12.6, vpn, new int[] { 48, 100 }, 0.3);
+            Download(d, 12.6, vpn, new int[] { 48, 100 }, 0.3, 50331648);
             for (int k = 0; k < 3; k++)
             {
                 double s = 13.4 + k * 1.6;
@@ -288,13 +311,19 @@ namespace TrackVice
             d.At(17.2).Reg(@"Device\Setup\Apps\Tracking\ModernApp\ModernApp_" + cp, 2);
             d.At(18.9).Reg(@"Device\Setup\Apps\Tracking\ModernApp\ModernApp_" + cp, 3);
 
+            // The Intune Management Extension restarts the device before account setup
+            d.At(19.4).SystemEvent(Restarts.User32, 1074, @"C:\Program Files (x86)\Microsoft Intune Management Extension\Microsoft.Management.Services.IntuneWindowsAgent.exe (CONTOSO-LT0417)",
+                "CONTOSO-LT0417", "Application: Installation (Planned)", "0x80040002", "restart", "", @"NT AUTHORITY\SYSTEM");
+            d.At(19.5).SystemEvent(Restarts.KernelGeneral, 13).SystemEvent(Restarts.EventLog, 6006);
+            d.At(20.9).SystemEvent(Restarts.KernelGeneral, 12).SystemEvent(Restarts.EventLog, 6005);
+
             // Account setup after sign-in
             d.At(21.5).Reg(Sid + @"\Setup\Policies\UserPolicies", 2).Reg(user + "Win32App_" + teams + "_1", 1).Reg(user + "Win32App_" + sheet + "_1", 1).Reg(user + "Win32App_" + acrobat + "_1", 1);
             d.At(22.4).Reg(Sid + @"\Setup\Policies\UserPolicies", 3);
-            ImeApp(d, 22.6, teams, user + "Win32App_" + teams + "_1", 3, new int[] { 22, 58, 100 }, 0.6, 1.4, "0");
+            ImeApp(d, 22.6, teams, user + "Win32App_" + teams + "_1", 3, new int[] { 22, 58, 100 }, 0.6, 1.4, "0", 188743680);
             // Contoso Timesheet: a fatal error in the MSI
             d.At(27.0).Reg(user + "Win32App_" + sheet + "_1", 2);
-            Download(d, 27.0, sheet, new int[] { 100 }, 0.2);
+            Download(d, 27.0, sheet, new int[] { 100 }, 0.2, 12582912);
             d.At(27.5).Line("AppWorkload", "AppWorkload", "[Win32App][ExecutionActionHandler] Handler invoked for policy with id: " + sheet + ", starting to execute install command.")
              .Line("AppWorkload", "AppWorkload", "[Win32App][Win32AppExecutionExecutor] Launch Win32AppInstaller in user session for app with id: " + sheet + ". Command line: msiexec /i \"Timesheet.msi\" /qn ALLUSERS=\"\"");
             d.At(28.6).Line("AppWorkload", "AppWorkload", 3, "[Win32App][Win32AppExecutionExecutor] Admin did NOT set mapping for lpExitCode: 1603 of app: " + sheet + ".")
@@ -302,7 +331,7 @@ namespace TrackVice
             d.Reg(user + "Win32App_" + sheet + "_1", 4);
             // Adobe Acrobat Reader: downloads, starts, and never finishes
             d.At(29.0).Reg(user + "Win32App_" + acrobat + "_1", 2);
-            Download(d, 29.0, acrobat, new int[] { 9, 27, 46, 63, 81, 100 }, 0.45);
+            Download(d, 29.0, acrobat, new int[] { 9, 27, 46, 63, 81, 100 }, 0.45, 723517440);
             d.At(32.2).Line("AppWorkload", "AppWorkload", "[Win32App][ExecutionActionHandler] Handler invoked for policy with id: " + acrobat + ", starting to execute install command.")
              .Line("AppWorkload", "AppWorkload", "[Win32App][Win32AppExecutionExecutor] Launch Win32AppInstaller in machine session for app with id: " + acrobat + ". Command line: AcroRdrDCx642500120432_MUI.exe /sAll /rs /msi EULA_ACCEPT=YES");
             for (int k = 1; k <= 11; k++)
@@ -313,7 +342,7 @@ namespace TrackVice
             return d;
         }
 
-        static void Download(DemoScenario d, double startMin, string id, int[] pcts, double stepMin)
+        static void Download(DemoScenario d, double startMin, string id, int[] pcts, double stepMin, long bytes)
         {
             d.At(startMin).Line("AppWorkload", "AppWorkload", "[Win32App][DownloadActionHandler] Starting content download for app with id: " + id + ".");
             double t = startMin;
@@ -322,13 +351,16 @@ namespace TrackVice
                 t += stepMin;
                 d.At(t).Line("AppWorkload", "AppWorkload", "[Win32App DO] DO job progress for app id: " + id + ", downloaded " + p + " %");
             }
+            // The size in bytes and the time in milliseconds, as the agent writes them when the download is done.
+            d.At(t + 0.05).Line("AppWorkload", "AppWorkload", "[Win32App] Downloaded file size " + bytes.ToString("#,0.00", CultureInfo.InvariantCulture))
+             .Line("AppWorkload", "AppWorkload", "[Win32App] Downloaded file time " + ((t - startMin) * 60000).ToString("#,0.00", CultureInfo.InvariantCulture));
             d.At(t + 0.1).Line("AppWorkload", "AppWorkload", "[Win32App][DownloadActionHandler] Content is downloaded and hash validation passed for app with id: " + id + ".");
         }
 
-        static void ImeApp(DemoScenario d, double startMin, string id, string espPath, int thread, int[] pcts, double stepMin, double installMin, string exit)
+        static void ImeApp(DemoScenario d, double startMin, string id, string espPath, int thread, int[] pcts, double stepMin, double installMin, string exit, long bytes)
         {
             d.At(startMin).Reg(espPath, 2);
-            Download(d, startMin, id, pcts, stepMin);
+            Download(d, startMin, id, pcts, stepMin, bytes);
             double s = startMin + pcts.Length * stepMin + 0.3;
             d.At(s).Line("AppWorkload", "AppWorkload", "[Win32App][ExecutionActionHandler] Handler invoked for policy with id: " + id + ", starting to execute install command.")
              .Line("AppWorkload", "AppWorkload", "[Win32App][Win32AppExecutionExecutor] Launch Win32AppInstaller in machine session for app with id: " + id + ".");

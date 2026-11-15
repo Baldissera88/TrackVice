@@ -85,6 +85,7 @@ namespace TrackVice
         public const string Script = "Script";
         public const string Office = "Office";
         public const string Esp = "ESP";
+        public const string Restart = "Restart";
     }
 
     public static class Origins
@@ -110,6 +111,7 @@ namespace TrackVice
         public const string IntuneApps = "intune:apps";
         public const string Scripts = "intune:scripts";
         public const string Policies = "mdm:policies";
+        public const string Restarts = "win:restarts";
 
         public static string Name(string key)
         {
@@ -128,6 +130,7 @@ namespace TrackVice
                 case IntuneApps: return "Intune apps";
                 case Scripts: return "Platform scripts";
                 case Policies: return "Policies";
+                case Restarts: return "Restarts";
                 default: return key;
             }
         }
@@ -149,6 +152,7 @@ namespace TrackVice
                 case IntuneApps: return 90;
                 case Scripts: return 92;
                 case Policies: return 95;
+                case Restarts: return 94;
                 default: return 200;
             }
         }
@@ -486,6 +490,7 @@ namespace TrackVice
         public const string EspTimeLimitAhead = "ESP time limit ahead";
         public const string WaitingRestart = "Waiting for a restart";
         public const string CommonCause = "Common cause";
+        public const string SlowDownload = "Slow download";
     }
 
     [DataContract]
