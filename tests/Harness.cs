@@ -55,6 +55,7 @@ namespace TrackVice.Tests
             ReferenceTests.Run();
             RestartDownloadTests.Run();
             ViceToolTests.Run();
+            CustomerSetupTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

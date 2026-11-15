@@ -1242,6 +1242,7 @@ namespace TrackVice
             Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
             Menus.Add(m, "Check devices before enrollment\u2026", delegate { OpenReadiness(false); });
             AddNotifyViceMenu(m);
+            Menus.Add(m, "New customer\u2026", delegate { OpenNewCustomer(false); });
             Menus.Separator(m);
             Menus.Add(m, "Watch this device", delegate { Begin(Settings.NewLive(), true); });
             Menus.Separator(m);
@@ -1252,6 +1253,7 @@ namespace TrackVice
             Menus.Add(m, "Demo: wall view", delegate { OpenWall(null, true); });
             Menus.Add(m, "Demo: compare two enrollments", delegate { using (CompareDialog d = CompareDialog.ForDemo(theme)) d.ShowDialog(this); });
             Menus.Add(m, "Demo: check before enrollment", delegate { OpenReadiness(true); });
+            Menus.Add(m, "Demo: new customer", delegate { OpenNewCustomer(true); });
             return m;
         }
 
@@ -1694,6 +1696,7 @@ namespace TrackVice
             else if (start.Page == "wall") { WallView wv = new WallView(theme, new AgentCatalog(new WallDemoStore()), true); wv.FiltersAtStart = start.Select == "filters"; if (start.Tab >= 0) wv.FilterIndex = start.Tab; page = wv; }
             else if (start.Page == "publish") page = PublishDialog.ForDemo(theme);
             else if (start.Page == "names") page = new NamesDialog(theme, engine != null ? engine.S.Computer : null);
+            else if (start.Page == "newcustomer") page = NewCustomerDialog.ForDemo(theme, start.Tab);
             else if (start.Page == "readiness") { ReadinessDialog rd = new ReadinessDialog(theme, new DemoReadinessGraph(DateTime.UtcNow), null, true); rd.RunAtStart = true; page = rd; }
             else if (start.Remote != null && start.Pick == null)
             {
