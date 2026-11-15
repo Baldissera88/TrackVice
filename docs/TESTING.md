@@ -204,6 +204,86 @@ Set up the steps as in [docs/AGENT.md](AGENT.md#sccm-task-sequences), on a boot 
 - [ ] With a wrong upload link, the step fails, and the task sequence goes on because of Continue on error.
 - [ ] `%WINDIR%\Temp\TrackVice\agent.log` says when it started, uploaded and stopped.
 
+## 19. Wall view
+
+- [ ] **Devices > Wall view** opens full screen with a tile for every device that uploaded today. F11 switches full screen, Esc closes it.
+- [ ] A device that deploys shows its progress and what runs now, and moves on as it uploads.
+- [ ] Turn off the network of a running device: after 5 minutes its tile says it has not uploaded.
+- [ ] The top line counts running, finished today and failed today, and the average matches the devices.
+- [ ] Moving the mouse shows the filters. Running, Failed and Finished today show the right devices, and the search finds a device by name and by profile.
+- [ ] A finished device leaves the wall after the time chosen under Finished devices stay. A failed one stays until midnight.
+- [ ] Clicking a tile closes the wall and watches that device.
+- [ ] `TrackVice.exe --wall` starts in the wall view with the customer in use, and `--wall /upload "<viewer link>"` with that location.
+
+## 20. Agent updates
+
+Set up as in [docs/AGENT.md](AGENT.md#agent-updates), with a test device or a virtual machine.
+
+- [ ] **Settings > Agent updates > Publish agent update > Create key** shows a fingerprint, and **Copy** copies the public key.
+- [ ] Install the agent with `$UpdateKey` and `$UpdateLink`. `agent.log` says "Self-update is on".
+- [ ] Publish a newer TrackVice.exe. The container has `agent/TrackVice-<version>.exe` and `agent/latest.json`.
+- [ ] Restart the device, or wait up to 6 hours: `agent.log` says the version is downloaded and the helper is started, and the agent comes back with the new version as the same row in the list.
+- [ ] `C:\Program Files\TrackVice Agent` has `TrackVice.exe.old`, and no `TrackVice-apply.exe` or `update` folder after the next start.
+- [ ] Publish the same version again, and an older one: the agent says so and installs nothing.
+- [ ] Publish from another Windows user with a new key: `agent.log` says the file is not signed with the update key of this device, and the agent keeps running.
+- [ ] Change one byte of the published exe in the container: the agent says the SHA-256 does not match and installs nothing.
+- [ ] `TrackVice.exe /publish-agent /to "<link>"` publishes from the command line and prints the public key.
+- [ ] `/agent-install` with a key that is cut short fails with a clear message.
+
+## 21. Check devices before enrollment
+
+- [ ] **Devices > Check devices before enrollment**: sign in, paste three serial numbers, one of them not registered. The unregistered one is a problem, the others show their group tag, profile and ESP as the Intune admin center has them.
+- [ ] **From Autopilot** lists the registered devices, and the filter finds one by serial number, model or group tag.
+- [ ] Paste a hardware hash CSV: the serial numbers are taken from its serial column.
+- [ ] A device whose profile has a name template: the name it gives matches what the device gets.
+- [ ] With the groups switch on, an ESP assigned to a device group is chosen over the default. Without it, the check says targeted ESPs could not be resolved, when there are any.
+- [ ] Connect to the agent list first: the prediction lists the blocking apps with their typical time, and warns when they come near the ESP time limit.
+- [ ] **Export CSV** and **Export HTML** save the same results.
+
+## 22. Restarts and downloads
+
+- [ ] A deployment with a restart: the Restarts phase has one item per restart, with who asked for it, when Windows stopped and when it started again.
+- [ ] The Gantt tab has a line at the time of each restart.
+- [ ] Turn off a virtual machine without shutting it down: the next start shows an unexpected shutdown.
+- [ ] A Win32 app shows its download size, time and speed in the details, matching AppWorkload.log.
+- [ ] Throttle the network of a virtual machine and install a large app: **Slow download** names it when it took over 5 minutes at under 5 Mbit/s.
+- [ ] Statistics shows the download time and speed of Win32 apps.
+
+## 23. Reference and ready to ship
+
+- [ ] Watch a good enrollment and choose **Devices > Use this enrollment as the reference**. The badge says it matches.
+- [ ] Watch another enrollment of the same customer with one app less and one failed: the badge counts the differences, and **Differs from the reference** lists them.
+- [ ] While an enrollment still runs, items it has not reached are not missing.
+- [ ] **Compare with another enrollment > The reference** shows both side by side.
+- [ ] Statistics has a Reference column for each enrollment.
+- [ ] **Export > Ready to ship report** prints on one page with the verdict, what was installed, the reference check and the lines to sign.
+- [ ] `TrackVice.exe /ship-report ship.html /from session.json` returns 0 for a ready device and 2 for one that is not.
+- [ ] **Clear the reference** removes the badge and the finding.
+
+## 24. PackVice, NotifyVice and Power BI
+
+- [ ] On a device with a Win32 app installed from an .msi, the details show the Installer section, and **Installer in PackVice** opens the .msi from the IME cache in PackVice.
+- [ ] The same for an SCCM application from ccmcache. When the cache was cleaned, the details say why the .msi is not there.
+- [ ] Without PackVice installed, TrackVice asks for the exe and keeps the choice in Settings.
+- [ ] Watch a device with the agent that finished without failures: **Devices > Tell the user with NotifyVice** starts NotifyVice, and the clipboard has the message.
+- [ ] Statistics > **Export for Power BI** writes `Enrollments.csv`, `Items.csv`, `Findings.csv` and `README.txt`. Load the folder in Power BI as the README says, and relate the tables on SessionId.
+- [ ] `TrackVice.exe /export-data C:\Temp\export /upload "<viewer link>" /hours 168` writes the same files.
+
+## 25. New customer
+
+Use a test subscription and a test tenant.
+
+- [ ] **Devices > Demo: new customer** goes through every step with made-up data.
+- [ ] **Devices > New customer** with a new storage account: the resource group, the account, both containers and the lifecycle rule are in the Azure portal as the guide said.
+- [ ] Again with the same customer and the existing account: the account keeps its settings and other lifecycle rules are kept.
+- [ ] The five links have the permissions in [docs/AGENT.md](AGENT.md#the-quick-way-new-customer), and the account key is not saved anywhere on the PC.
+- [ ] Upload says the download link reads TrackVice.exe. The test alert arrives in Teams.
+- [ ] The saved script has the links, the SHA-256 and `$MaxAgeHours`, and installs the agent on a test device.
+- [ ] The Intune part adds the platform script **TrackVice agent**, 64-bit, system context, assigned to the chosen group.
+- [ ] After Finish, the customer is in Settings > Customers and **Devices with the TrackVice agent** connects without a new link.
+- [ ] `agent/New-TrackViceCustomer.ps1` with the same values makes the same storage, links and script.
+- [ ] An account without a role on the subscription gets a message that says what it may not do.
+
 ## What to send back
 
 For anything wrong: a screenshot, the session (Save > Collect the session and its logs in a zip), and which log line TrackVice should have read differently.

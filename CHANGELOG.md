@@ -4,6 +4,17 @@
 
 15 November 2026.
 
+- Devices > Wall view: every device with the agent on one screen, full screen, as a tile with its progress, what runs now and its last upload. A summary of running, finished and failed today, filters for running, failed and finished today, a search, and finished devices that stay 1 to 8 hours. Click a tile to watch it. `--wall [/upload <location>]` starts in it.
+- The agent updates itself. Settings > Agent updates > Publish agent update uploads a TrackVice.exe with a signed `agent/latest.json`, or `/publish-agent /to <location>` from the command line. Agents installed with `$UpdateKey` and `$UpdateLink` (`/update-key` and `/update`) check at start and every 6 hours, and install a newer version only when its signature, size and SHA-256 match. See docs/AGENT.md.
+- Devices > Check devices before enrollment: for serial numbers you type, paste or pick from Autopilot, whether each is registered in Windows Autopilot, which deployment profile and Enrollment Status Page it gets, and whether the ESP is likely to run past its time limit, going by earlier enrollments. Export as CSV or HTML. Reads `DeviceManagementServiceConfig.Read.All`, with `DeviceManagementApps.Read.All` and `Device.Read.All` when their switches are on.
+- Restarts from the System event log in a phase of their own and on the timeline: who asked for each, when the device went down and came back, and unexpected shutdowns. The Gantt tab draws a line at each restart.
+- Win32 apps show their download size, time and speed, and a **Slow download** finding when a download took over 5 minutes at under 5 Mbit/s. Statistics has a Download column.
+- Devices > Use this enrollment as the reference: one reference enrollment per customer. Every enrollment you watch for that customer gets a badge and a **Differs from the reference** finding, Statistics a Reference column, and Compare with another enrollment a third choice, The reference.
+- Export > Ready to ship report, and `/ship-report <file.html> [/from <session.json>]`: one page that says whether a device can go to its user, checked against the reference, with room for the technician to sign. Exit code 2 when it is not ready.
+- PackVice: Open the installer in PackVice opens the .msi a Win32 app or SCCM application was installed from, when it is still in the IME cache or ccmcache on this PC. NotifyVice: Devices > Tell the user with NotifyVice, for a device with the agent that finished without failures.
+- Statistics > Export for Power BI, and `/export-data <folder> /upload <location>`: Enrollments.csv, Items.csv and Findings.csv with a README that says how to load them.
+- Devices > New customer: a guide that makes the storage account, the containers, the lifecycle rule and the links in Azure, uploads TrackVice.exe, fills in the platform script and can add it to Intune. `agent/New-TrackViceCustomer.ps1` does the same with the Az modules, without Intune. See docs/AGENT.md.
+
 ## TrackVice 1.0.5
 
 14 November 2026.
