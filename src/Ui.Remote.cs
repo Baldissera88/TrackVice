@@ -16,6 +16,8 @@ namespace TrackVice
         public GraphClient Graph;
         // Opened only to sign in: the dialog closes as soon as that is done.
         public bool NamesOnly;
+        // Permissions this sign-in asks for besides the usual ones, such as those of the check before enrollment.
+        public List<string> MoreScopes;
 
         Theme theme;
         readonly ManualResetEvent cancel = new ManualResetEvent(false);
@@ -374,6 +376,7 @@ namespace TrackVice
         {
             Graph = new GraphClient(Prefs.Get("GraphClientId", null), Prefs.Get("GraphTenant", null));
             Graph.Scopes += NamesDialog.ExtraScopes();
+            if (MoreScopes != null) foreach (string s in MoreScopes) if (!NamesDialog.Has(Graph, s)) Graph.Scopes += " " + s;
             GraphClient g = Graph;
             ManualResetEvent mine = new ManualResetEvent(false);
             attempt = mine;
