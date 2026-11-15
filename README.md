@@ -49,8 +49,9 @@ Get `TrackVice.msi` or the portable `TrackVice.exe` from the [latest release](ht
 | Remediations | Remediations | `HealthScripts.log` and the `SideCarPolicies\Scripts` key: detection and remediation result and exit codes |
 | MDM policies | Policies, one item per policy area | Every setting the MDM client set, from the DeviceManagement Admin event log |
 | MDM and Entra | On the timeline | The DeviceManagement Admin, User Device Registration and AAD event logs, errors and warnings only |
+| Restarts | Restarts, and on the timeline and Gantt | The System event log: who asked for the restart (User32 1074), when Windows stopped and started again, and unexpected shutdowns (6008, Kernel-Power 41) with the stop error |
 
-Every source is mapped to one set of states: waiting, downloading, installing, detecting, restart needed, done, failed, skipped and not applicable. The original code stays on the event. Win32 app names come from the IME logs, the same way PolicyVice finds them. Platform scripts, remediations and configuration profiles have no names on the device, only IDs, so a script shows as "Platform script" with the start of its ID, and policies show by policy area and setting. [Names from Intune](#names-from-intune) reads the names from Intune.
+Every source is mapped to one set of states: waiting, downloading, installing, detecting, restart needed, done, failed, skipped and not applicable. The original code stays on the event. Win32 app names come from the IME logs, the same way PolicyVice finds them. A Win32 app also shows its download size, time and speed from `AppWorkload.log`. Platform scripts, remediations and configuration profiles have no names on the device, only IDs, so a script shows as "Platform script" with the start of its ID, and policies show by policy area and setting. [Names from Intune](#names-from-intune) reads the names from Intune.
 
 **Pre-provisioning.** When the technician phase of pre-provisioning finished, the time the device was resealed and boxed is not counted as running time, and does not give a **No progress** finding. The Session tab says when the technician phase finished and when the user phase started.
 
@@ -74,6 +75,8 @@ A folder you open can also hold registry exports (`.reg`) of those keys. TrackVi
 | **No progress** | While watching: an item has been downloading or installing for 15 minutes without any source saying anything about it |
 | **Task sequence failed** | The task sequence ended with an error |
 | **MDM errors** | The DeviceManagement Admin event log has errors from the deployment |
+| **Slow download** | A Win32 app took over 5 minutes to download, at under 5 Mbit/s on average |
+| **Differs from the reference** | The enrollment is missing items the [reference](#reference-enrollment) has, has items it does not, or failed or ran clearly slower where the reference did not |
 
 Findings say why something failed where the sources tell:
 
@@ -85,7 +88,7 @@ Findings say why something failed where the sources tell:
 
 ## Gantt
 
-The **Gantt** tab shows every item as a bar from its start to its end, grouped by phase, on one time axis. A running item grows until now. Click a bar to go to the item in the progress list.
+The **Gantt** tab shows every item as a bar from its start to its end, grouped by phase, on one time axis. A running item grows until now. A thin line marks each restart of the device. Click a bar to go to the item in the progress list.
 
 | Button | What it does |
 |---|---|
@@ -155,15 +158,36 @@ Intune and SCCM only know what a device has reported. With the agent, the device
 | The list | Device, progress with the current item, deployment, profile, start, duration and last upload. Refreshed every 15 seconds |
 | One device | Everything the device itself shows. Read every 5 seconds |
 
-The agent can also run in an **SCCM task sequence**, from Windows PE to the end, as one session. It can send **alerts** to a Teams channel when something fails, and it uploads the **device's logs** beside the session.
+The agent can also run in an **SCCM task sequence**, from Windows PE to the end, as one session. It can send **alerts** to a Teams channel when something fails, and it uploads the **device's logs** beside the session. An installed agent can **update itself** to a version you publish, signed with a key only your PC has.
 
-**[docs/AGENT.md](docs/AGENT.md) is the guide**: the storage container, the three links, the platform script in Intune, testing each part first, alerts, task sequences, maintenance and troubleshooting.
+**[docs/AGENT.md](docs/AGENT.md) is the guide**: the quick setup with New customer, the storage container, the three links, the platform script in Intune, testing each part first, alerts, task sequences, agent updates, maintenance and troubleshooting.
 
 All three have a demo with made-up devices under **Devices**, so you can see them without signing in.
+
+### Wall view
+
+**Devices > Wall view** shows every device with the agent on one screen, made for a screen in the room where devices are set up. It opens full screen; F11 switches, Esc leaves. Each device is a tile with its progress, what runs now or how it ended, how long it has run and its last upload. A device that has not uploaded for 5 minutes says so. The top line counts what runs, and what finished and failed today, with the average time.
+
+Move the mouse to show the filters: All, Running, Failed or Finished today, a search for devices and profiles, and how long finished devices stay (1 to 8 hours). Failed devices stay until midnight. It reads the uploads every 15 seconds, and F5 reads them at once. Click a tile to watch the device. `TrackVice.exe --wall` starts in it.
+
+### Check devices before enrollment
+
+**Devices > Check devices before enrollment** finds problems before a device is turned on. Type or paste serial numbers, one per line or a CSV such as a hardware hash export, or pick them with **From Autopilot**. For each device it reads from Intune:
+
+| Check | What it says |
+|---|---|
+| Windows Autopilot | Registered or not, or more than once, the group tag, the assigned user, the profile assignment state and the Entra device object |
+| Deployment profile | The profile, join type and mode, and the device name its template gives, with a warning over 15 characters |
+| Enrollment Status Page | Which ESP applies and why, its time limit and the apps it blocks on |
+| Prediction | How long those apps took in the agents' uploads of the last 30 days, a warning near the time limit, and apps that failed often |
+
+It needs `DeviceManagementServiceConfig.Read.All`. Two switches add more: the names of the blocking apps with `DeviceManagementApps.Read.All` (on at first), and the device's groups with `Device.Read.All`, to tell which group-targeted ESP applies. The prediction uses the uploads of the agent list you connected to. **Export CSV** and **Export HTML** save the result.
 
 ### Customers
 
 If you work for several customers, TrackVice keeps the connection details of each: the Intune tenant and client ID, the agent upload location and the SCCM site. Choose a customer at the top of any device list to connect to it. **Settings > Customers** adds, edits and removes them, and imports and exports them as a JSON file to move them to another PC. The storage links are encrypted for your Windows account, and an export only has them when you tick **Include the storage links**. A device list that connects with details you type in saves them as the customer Default.
+
+**Devices > New customer** is a guide for the agent of a new customer: it signs in to Azure, makes the storage account, containers, lifecycle rule and links, uploads TrackVice.exe, fills in the platform script and can add it to Intune. Nothing is made until you press the button of a step. `agent/New-TrackViceCustomer.ps1` does the same without Intune. See [The quick way: New customer](docs/AGENT.md#the-quick-way-new-customer).
 
 ### Statistics
 
@@ -172,10 +196,10 @@ If you work for several customers, TrackVice keeps the connection details of eac
 | Part | Contents |
 |---|---|
 | Chips | Enrollments, finished, with failures, and the average, median and longest time of the finished ones |
-| Apps, scripts and steps | Each item over every enrollment: kind, devices, failed, fail rate, average and longest time, and the device where it was slowest |
-| Enrollments | Each enrollment: device, deployment, profile, start, duration, items, failed and its slowest part. Double-click one to watch it |
+| Apps, scripts and steps | Each item over every enrollment: kind, devices, failed, fail rate, average and longest time, the average download time and speed of Win32 apps, and the device where it was slowest |
+| Enrollments | Each enrollment: device, deployment, profile, start, duration, items, failed and its slowest part, and whether it matches the reference. Double-click one to watch it |
 
-**Export CSV** saves the table you see. Times only count finished enrollments, and the fail rate only counts devices where the item finished.
+**Export CSV** saves the table you see. **Export for Power BI** saves every enrollment of the period in a folder as `Enrollments.csv`, `Items.csv` and `Findings.csv`, linked by SessionId, with a `README.txt` that describes the columns and how to load them. Times only count finished enrollments, and the fail rate only counts devices where the item finished.
 
 ![Statistics for devices with the agent](docs/images/trackvice-stats.png)
 
@@ -184,6 +208,12 @@ If you work for several customers, TrackVice keeps the connection details of eac
 **Devices > Compare with another enrollment** puts the session you watch (A) beside another one (B): **A device with the agent** from the uploads, or **A saved session file**. The table shows items only one side has, different results, exit codes and tries, times that differ by at least a minute and half again as long, and findings only one side has. Items match by ID first, then by name. Select a row to see its last events on both sides. **Only differences** hides the items that are the same, and **Export** saves the table as CSV.
 
 ![Two enrollments compared](docs/images/trackvice-compare.png)
+
+### Reference enrollment
+
+**Devices > Use this enrollment as the reference** keeps the enrollment you watch as the reference of the customer in use: its items, results and times, in `%LOCALAPPDATA%\TrackVice\References`. Every enrollment you watch for that customer is then compared with it. A badge in the header says whether it matches, and a **Differs from the reference** finding lists what is missing, extra, failed only here or clearly slower. While items still run, items it has not reached yet are not counted as missing. **Compare with another enrollment > The reference** shows every item side by side. **Clear the reference** removes it.
+
+**Export > Ready to ship report** writes one page that says whether the device can go to its user: not ready when an item failed, still runs or has not started, or an item of the reference is missing. Extra and slower items are listed but do not stop it. After pre-provisioning, account setup waiting for the user does not count. It lists what was installed, the reference check, and lines for the technician's name, signature and date.
 
 ### Names from Intune
 
@@ -204,6 +234,14 @@ The names and the sign-in are kept on your PC for each customer: the names in `%
 
 When you watch a device with the agent, **LogVice > Logs from the device** downloads the zip of logs the device uploaded, unpacks it under `%LOCALAPPDATA%\TrackVice\Logs` and opens the folder. **Open in LogVice** on an item or an event opens the device's copy of that log. Copies older than 30 days are removed.
 
+### PackVice and NotifyVice
+
+On the device itself, a Win32 app or SCCM application installed from an .msi has an **Installer** section in its details. When the .msi is still in the IME cache or the ccmcache folder, **Installer in PackVice**, or **Open the installer in PackVice** on the item's menu, opens it in PackVice.
+
+When you watch a device with the agent that finished without failures, **Devices > Tell the user with NotifyVice** starts NotifyVice and puts a title and text for the user on the clipboard. Choose the device there and paste them.
+
+TrackVice finds both tools like LogVice: the path chosen in Settings, the MSI install, App Paths, next to TrackVice.exe, Program Files and PATH.
+
 ## Watch, save and share
 
 **Watch** reads the device every 2 seconds: new log lines, ESP tracking changes and new event log records every time, and the Win32 app registry state and ConfigMgr client WMI every third time. It reads logs from the last 24 hours when it starts. On a device that was deployed some time ago, set **History to read** to **Since install**.
@@ -212,13 +250,13 @@ ESP and Win32 app states come from the registry, and always carry the time their
 
 ## Settings
 
-**Settings** (Ctrl+,) holds the customers, the theme, how far back to read (6 hours to 30 days, or everything since Windows was installed), whether to read ConfigMgr client WMI and the event logs, whether to start watching when TrackVice opens, how often to read while watching, how long to wait before an item gets a **No progress** finding, and where LogVice is. They are kept in `HKCU\Software\TrackVice`.
+**Settings** (Ctrl+,) holds the customers, the theme, how far back to read (6 hours to 30 days, or everything since Windows was installed), whether to read ConfigMgr client WMI and the event logs, whether to start watching when TrackVice opens, how often to read while watching, how long to wait before an item gets a **No progress** finding, and where LogVice, PackVice and NotifyVice are. They are kept in `HKCU\Software\TrackVice`. **Agent updates > Publish agent update** publishes a new agent version, see [docs/AGENT.md](docs/AGENT.md#agent-updates).
 
 **Save > Save the session** writes everything as one JSON file that opens on any PC. **Save > Collect the session and its logs in a zip** adds every log file the session has a line from, so a supporter can send the evidence instead of the device. **Open > Open a folder of logs** reads a CCM Logs folder, an IME Logs folder or an unpacked bundle; it reads every log TrackVice knows in it and its subfolders, including rolled-over copies.
 
-**Export** writes an HTML report, or every event as CSV. The report has a summary with the result and the slowest items, the findings, the deployment details, a time line like the Gantt tab, details per phase and every event. It follows the light or dark mode of the browser and has a print layout.
+**Export** writes an HTML report, every event as CSV, or a [ready to ship report](#reference-enrollment). The report has a summary with the result and the slowest items, the findings, the deployment details, a time line like the Gantt tab, details per phase and every event. It follows the light or dark mode of the browser and has a print layout.
 
-`/fleet-report` writes one report over every enrollment the agents uploaded to a location: the duration over time, every enrollment, the slowest items and what fails most.
+`/fleet-report` writes one report over every enrollment the agents uploaded to a location: the duration over time, every enrollment, the slowest items and what fails most. `/export-data` writes the same enrollments as CSV tables for Power BI.
 
 ![The timeline with the raw line behind an event](docs/images/trackvice-timeline.png)
 
@@ -239,6 +277,8 @@ TrackVice.exe                          Watch this device
 TrackVice.exe <session.json>           Open a saved session
 TrackVice.exe <folder>                 Read a folder of logs, such as a CCM Logs folder or a collected bundle
 TrackVice.exe --demo [osd]             Play the Autopilot demo, or with osd the task sequence demo
+TrackVice.exe --wall [/upload <location>]
+                                       Start in the wall view. Without /upload it uses the location of the customer in use
 
 TrackVice.exe /report <file.html>      Save an HTML report of this device and exit
 TrackVice.exe /csv <file.csv>          Save every event as CSV and exit
@@ -247,14 +287,24 @@ TrackVice.exe /session <file.json>     Save the session as JSON and exit
   /hours <n>                           Hours of history to read (default 24, 0 for everything since Windows was installed)
   /title <text>                        The title at the top of the report
 
+TrackVice.exe /ship-report <file.html> [/from <session.json>]
+                                       Save a ready to ship report of this device, or of a saved session, checked
+                                       against the reference of the customer in use, and exit
+  /folder <path>                       Read a folder of logs instead of this device
+
 TrackVice.exe /fleet-report <file.html> /upload <location>
                                        Save an HTML report over every enrollment the agents uploaded there and exit
   /hours <n>                           The uploads of the last n hours (default 24, 0 for all)
   /title <text>                        The title at the top of the report
+TrackVice.exe /export-data <folder> /upload <location>
+                                       Save every enrollment the agents uploaded there as CSV tables for Power BI
+  /hours <n>                           The uploads of the last n hours (default 24, 0 for all)
 
 TrackVice.exe /agent-install /upload <location>
                                        Install the agent. The location is a storage container SAS link or a folder
   /keep <hours>                        How long the agent stays before it removes itself (default 48)
+  /update-key <key> /update <location> Install newer versions published there, signed with this key. The location
+                                       is a SAS link with Read, or a folder
 TrackVice.exe /agent-remove            Remove the agent
 TrackVice.exe /agent-start /upload <location>
                                        In a task sequence: start the agent in the background and return at once
@@ -270,13 +320,16 @@ TrackVice.exe /agent /upload <location>
                                        tokens as they are, without hiding them
 TrackVice.exe /agent /alert <link> /alert-test
                                        Send one test alert and exit
+TrackVice.exe /publish-agent /to <location> [/exe <path>]
+                                       Upload this TrackVice.exe, or the given one, with a signed agent/latest.json
+                                       for the agents to update to. The location needs Create and Write
 
 TrackVice.exe /?                       Show this list (also /h and /help)
 ```
 
 Options start with `/` or `-`. `/ts` is added by `/agent-start` to the agent it starts; you do not give it yourself. [docs/AGENT.md](docs/AGENT.md) explains the agent options.
 
-The exit code is 0 when done, 1 on an error and 2 when failed items were found (for `/fleet-report`: when an enrollment had failed items), so it works in a script or an Intune remediation. In PowerShell, use `Start-Process -Wait -PassThru` to get the exit code.
+The exit code is 0 when done, 1 on an error and 2 when failed items were found (for `/fleet-report`: when an enrollment had failed items; for `/ship-report`: when the device is not ready), so it works in a script or an Intune remediation. In PowerShell, use `Start-Process -Wait -PassThru` to get the exit code.
 
 ## Keyboard
 
@@ -299,9 +352,11 @@ The exit code is 0 when done, 1 on an error and 2 when failed items were found (
 
 ## Privacy and safety
 
-TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open **Devices** or **Names from Intune**: then it talks to Microsoft Graph, to the SMS Provider you name, or to the upload location you enter, and nothing else. The upload locations of your customers and the Intune sign-in are encrypted for your Windows account.
+TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open something under **Devices**, or **Publish agent update**: then it talks to Microsoft Graph, to the SMS Provider you name, to the upload location you enter, and in **New customer** to Azure, and nothing else. The upload locations of your customers and the Intune sign-in are encrypted for your Windows account.
 
-The agent is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes its task and key when its time is up. In a task sequence it installs nothing; it keeps its log and a small state file under `%WINDIR%\Temp\TrackVice`.
+Two things change something outside your PC, and only when you press their button: **New customer** creates the storage in Azure, and, if you choose, adds and assigns the platform script in Intune. **Publish agent update** writes a new version to the location you give. Check devices before enrollment only reads. The signing key for agent updates is kept in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted for your Windows account. When TrackVice runs as administrator, it uses a PackVice or NotifyVice path you chose, or one on PATH, only when it is under Program Files.
+
+The agent is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes its task and key when its time is up. With an update key it replaces its own TrackVice.exe in its folder with a version signed with that key, and keeps the one before as `TrackVice.exe.old`. In a task sequence it installs nothing; it keeps its log and a small state file under `%WINDIR%\Temp\TrackVice`.
 
 What the agent sends:
 
@@ -322,6 +377,13 @@ What the agent sends:
 - The Windows PE part of a task sequence needs WinPE-NetFx in the boot image for TrackVice to start there.
 - User-targeted SCCM applications are only fully visible from the user's own session.
 - The exe and MSI are unsigned. SmartScreen warns on downloaded copies, and AppLocker or WDAC need them signed with your own certificate.
+- Restarts come from the System event log of the device. A folder of logs, Intune and SCCM have none, and the agent in Windows PE reads no event logs.
+- Download size and time are what `AppWorkload.log` says. Delivery Optimization keeps its own data in no documented place, so bytes from peers show only when a log line names them.
+- The wall view reads only what each upload says about itself. An agent older than 1.1.0 does not say when it finished, so the wall counts from when it first saw it finished.
+- Check devices before enrollment reads beta Graph APIs, and shows what Intune has at that time. Without `Device.Read.All` it cannot tell which group-targeted ESP applies, and an ESP for users is only known for a device with an assigned user. The prediction matches apps by name, over at most 300 enrollments.
+- References are kept per Windows user on one PC. `/ship-report` on another PC, such as the device itself, has no reference and judges only the device.
+- PackVice opens only .msi installers, and only while the IME cache or ccmcache still has them. NotifyVice takes no device or message on its command line, so the text goes on the clipboard.
+- Only an installed agent updates itself, not one in a task sequence or started with `/agent`. The signing key cannot be moved to another PC or Windows user; a new key means a new `$UpdateKey` in the script.
 
 ## Build from source
 
@@ -361,10 +423,11 @@ TrackVice is plain C# 5 and Windows Forms on .NET Framework 4.5, with no NuGet p
 | `src/Insights.cs`, `src/Compare.cs` | Masking, statistics, alerts, log bundles, and the comparison of two enrollments |
 | `src/Customers.cs`, `src/IntuneLookup.cs`, `src/DeviceLogs.cs` | Customers, names from Intune, and the logs a device uploaded |
 | `src/Report.cs`, `src/ReportFleet.cs` | HTML report, fleet report, CSV and the zip bundle |
+| `src/WallModel.cs`, `src/AgentUpdate.cs`, `src/Readiness.cs`, `src/Restarts.cs`, `src/Downloads.cs`, `src/Reference.cs`, `src/ViceTools.cs`, `src/DataExport.cs`, `src/CustomerSetup*.cs` | Wall view, agent updates, check before enrollment, restarts, downloads, the reference and ready to ship report, PackVice and NotifyVice, the Power BI export and New customer |
 | `src/Demo.cs` | The two demos, written as real log lines and registry values |
 | `src/Ui.*.cs` | The window, the phase rail, the progress list, the Gantt tab, the device lists, statistics, compare, customers, the compact view and the themes |
 | `tests/` | Log parsing and tailing, every parser, the tracker, findings, save and load, and both demos end to end |
-| `agent/` | The platform script that installs the agent |
+| `agent/` | The platform script that installs the agent, and `New-TrackViceCustomer.ps1` |
 | `art/` | The icon, drawn in the same style as the other Vice icons |
 | `release.ps1`, `bump.ps1`, `bump.sh`, `winget/` | Release tooling, see [docs/RELEASE.md](docs/RELEASE.md) |
 

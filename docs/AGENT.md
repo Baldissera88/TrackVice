@@ -2,7 +2,9 @@
 
 Intune and SCCM only know what a device has reported. The agent is TrackVice itself, running on the device without a window while it deploys. It reads the device the way the window does and uploads the whole session as it changes: every app, policy and task sequence step, with the log lines, registry values and events behind them.
 
-On your own PC, **Devices > Devices with the TrackVice agent** lists every device that has uploaded and follows one live.
+On your own PC, **Devices > Devices with the TrackVice agent** lists every device that has uploaded and follows one live, and **Devices > Wall view** shows them all on one screen.
+
+For a new customer, [New customer](#the-quick-way-new-customer) sets up everything in a few minutes. The steps after it explain each part by hand.
 
 ![Devices with the TrackVice agent](images/trackvice-agent-list.png)
 
@@ -10,6 +12,7 @@ On your own PC, **Devices > Devices with the TrackVice agent** lists every devic
 
 - [How it works](#how-it-works)
 - [What you need](#what-you-need)
+- [The quick way: New customer](#the-quick-way-new-customer)
 - [Step 1: the storage container](#step-1-the-storage-container)
 - [Step 2: upload TrackVice.exe](#step-2-upload-trackviceexe)
 - [Step 3: the three links](#step-3-the-three-links)
@@ -23,6 +26,7 @@ On your own PC, **Devices > Devices with the TrackVice agent** lists every devic
 - [Logs from the device](#logs-from-the-device)
 - [Statistics and Compare](#statistics-and-compare)
 - [SCCM task sequences](#sccm-task-sequences)
+- [Agent updates](#agent-updates)
 - [Alternative: a Win32 app](#alternative-a-win32-app)
 - [Alternative: a folder instead of a storage account](#alternative-a-folder-instead-of-a-storage-account)
 - [Maintenance](#maintenance)
@@ -64,6 +68,57 @@ The Intune Management Extension runs platform scripts before it installs Win32 a
 - `TrackVice.exe` and `agent/Install-TrackViceAgent.ps1` from this repository.
 
 The storage account does not have to be in the same tenant as the devices. The devices only use the upload link.
+
+## The quick way: New customer
+
+**Devices > New customer** in TrackVice does the work of steps 1 to 6 for you. It goes through Customer, Storage, Links, Upload, Alerts and Script, and ends with what was made and what is left. Each step says what it does, and nothing is created or changed until you press its button. Signing in and listing change nothing. **Demo: new customer** in the same menu shows it with made-up data.
+
+`agent/New-TrackViceCustomer.ps1` does the same from PowerShell 5.1 with the Az.Accounts and Az.Storage modules, without the Intune part:
+
+```powershell
+.\New-TrackViceCustomer.ps1 -CustomerName Contoso -SubscriptionId <subscription id> -ResourceGroupName rg-trackvice
+```
+
+Its other parameters are `-StorageAccountName`, `-Location` (default westeurope), `-RetentionDays` (30), `-LinkDays` (365), `-ExePath`, `-Alert`, `-MaxAgeHours` (24), `-UpdateKey` and `-OutputPath`. `Get-Help .\New-TrackViceCustomer.ps1 -Detailed` describes them.
+
+**What it creates in Azure**
+
+| | |
+|---|---|
+| Resource group | Only when you enter a name that does not exist yet |
+| Storage account | StorageV2, Standard_LRS, HTTPS only, TLS 1.2, no anonymous blob access, account key access on. The suggested name is made from the customer, such as `contosotrackvice`. You can pick an existing account instead: its settings stay as they are, and it gets the containers and the rule |
+| Containers | `trackvice` for the sessions and logs the agents upload, and `trackvice-agent` for TrackVice.exe and [agent updates](#agent-updates). Both private. A container that is there already is left as it is |
+| Lifecycle rule | `trackvice-cleanup` deletes the blobs under `trackvice/sessions/` and `trackvice/logs/` after 30 days, or the days you choose. Other rules on the account are kept |
+| TrackVice.exe | Uploaded to `trackvice-agent`. The guide then checks that the download link can read it, as a device will |
+
+It reads the account key once to sign the links on your PC. The key is not shown and not kept. The links are valid for 6 months, 1 year or 2 years (`-LinkDays` in the script):
+
+| Link | Permissions | Goes into |
+|---|---|---|
+| Upload | Create, Write on `trackvice` | `$Upload` |
+| Viewer | Read, List on `trackvice` | The customer in TrackVice |
+| Download | Read on `TrackVice.exe` in `trackvice-agent` | `$Download` |
+| Agent updates | Read on `trackvice-agent` | `$UpdateLink`, only when there is an update key |
+| Publish | Create, Write on `trackvice-agent` | Uploading TrackVice.exe, and **Publish agent update**. Not made by the script |
+
+**Who signs in, and what they need**
+
+| Sign-in | What the account needs |
+|---|---|
+| Azure, with a code in the browser | For a new account: Contributor (or Owner) on the subscription, since the name is checked and the resource group is made there. For an existing account: Storage Account Contributor on that account is enough. The guide signs in with the public client of Azure PowerShell; if your organization blocks it, enter your own app registration under Client ID. The subscription does not have to be in the customer's tenant |
+| Intune, only for the optional last part of Script | An Intune role that can add and assign platform scripts, such as Intune Administrator, in the customer's tenant, and consent there for the delegated permissions `DeviceManagementScripts.ReadWrite.All` and `Group.ReadBasic.All` |
+
+**What it writes**
+
+| Where | What |
+|---|---|
+| The script | `Install-TrackViceAgent-<customer>.ps1`, a copy of `Install-TrackViceAgent.ps1` with `$Download`, `$Sha256`, `$Upload`, `$Alert`, `$MaxAgeHours` and, when this PC has an update key, `$UpdateKey` and `$UpdateLink` filled in. It holds the links, so keep it like a password |
+| Intune, if you choose | The platform script **TrackVice agent**, set as in [step 6](#step-6-the-platform-script-in-intune), assigned to the device group you pick. It is the only part that changes Intune |
+| TrackVice on this PC | The customer with its tenant and the viewer link, and the publish link for Publish agent update, both links encrypted for your Windows account |
+
+The PowerShell script writes the filled script and returns the links as an object. It does not add the customer to TrackVice: paste the viewer link into **Devices with the TrackVice agent** yourself.
+
+**After it.** `$MaxAgeHours` is 24 in the filled script, so it installs nothing on a PC that was enrolled long ago. To test on your own PC as in [step 4](#step-4-test-from-your-own-pc) and [step 5](#step-5-fill-in-and-test-the-script), use the links from the Links step, and set `$MaxAgeHours = 0` in a copy of the script. Then go on with [step 7](#step-7-follow-the-devices).
 
 ## Step 1: the storage container
 
@@ -339,6 +394,44 @@ Add `/alert "<alert link>"` to send [alerts](#alerts-in-teams), and `/no-mask` t
 
 To check the steps before a real deployment, run a task sequence with them on a test device, keep the list open on your PC, and look at `agent.log` with F8 in Windows PE.
 
+## Agent updates
+
+An installed agent can update itself, so a new TrackVice version reaches the devices without a new hash in the platform script. You publish a version with a signed file next to it, and the agents install it only when the signature is made with your key.
+
+**Make the key.** In TrackVice, open **Settings > Agent updates > Publish agent update** and press **Create key**. The key is also made the first time you publish. The private key stays on your PC in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted for your Windows account, and is used for every customer. The dialog shows its fingerprint, and **Copy** copies the public key.
+
+**Put the key in the script.** Fill in the two lines of `agent/Install-TrackViceAgent.ps1`:
+
+```powershell
+$UpdateKey  = '<the public key>'
+$UpdateLink = 'https://<account>.blob.core.windows.net/trackvice-agent?sp=r&...'
+```
+
+`$UpdateLink` is a container link with **Read** only, or a folder. Use a container only you write to, such as `trackvice-agent` from [New customer](#the-quick-way-new-customer), not the one the devices upload to. The script passes them to `/agent-install` as `/update-key` and `/update`. An install with a key that is not an RSA public key of at least 3072 bits, or with a link that cannot be used, fails with the reason.
+
+**Publish a version.** In **Publish agent update**, choose the TrackVice.exe, enter the link of the same container with **Create** and **Write** (it is saved for the customer in use), and press **Publish**. Or from the command line:
+
+```powershell
+.\TrackVice.exe /publish-agent /to "<link with Create and Write>" /exe "<path to the new TrackVice.exe>"
+```
+
+Without `/exe` it publishes itself. It uploads `agent/TrackVice-<version>.exe` first and `agent/latest.json` last. That file names the version, the SHA-256, the size, the file name and the time, signed with the key.
+
+**What the devices do**
+
+| | |
+|---|---|
+| When | At start and every 6 hours, while the installed agent runs |
+| Check | Reads `agent/latest.json`, checks the signature with its key, and installs only a newer version. The same version does nothing, and an older one is not installed |
+| Download | Downloads `agent/TrackVice-<version>.exe` into the `update` folder of the agent, and checks its size and SHA-256 against the signed ones |
+| Replace | Starts a copy of itself, `TrackVice-apply.exe`, makes its last upload and exits. The copy waits up to a minute for it, replaces `TrackVice.exe`, keeps the one before as `TrackVice.exe.old`, checks the hash again and starts the task |
+| After | The agent continues as the same row in the list, with the same session and the same end time. The next start removes `TrackVice-apply.exe` and the `update` folder |
+| On failure | When the exe cannot be replaced or has another hash, the earlier version is started again |
+
+**When the signature does not match**, `agent.log` says "agent/latest.json is not signed with the update key of this device. It is ignored." The agent goes on with the version it has. The same happens with a manifest signed with another key, such as one from another PC: devices only trust the key in their script. A wrong size or SHA-256 says "It is not installed."
+
+Only an agent installed with `/agent-install` updates itself. The agent in a task sequence and `/agent` do not. Devices still download the TrackVice.exe of `$Download` first, and update right after they start. To save that restart, also upload the new exe over `TrackVice.exe` and update `$Sha256`.
+
 ## Alternative: a Win32 app
 
 Use this when you want the Enrollment Status Page to track the agent, or when scripts are not allowed. It starts when the Intune Management Extension reaches it, which can be after other apps.
@@ -367,8 +460,9 @@ The agent writes as the device's computer account, so the share has to allow tha
 
 | When | Do this |
 |---|---|
-| A new TrackVice version | Upload the new `TrackVice.exe` over the old one in the container, and update `$Sha256` in the script in Intune. The download link stays the same. Until the hash is updated the script fails on purpose |
-| The links expire | Make new links and update the script, the task sequence steps and the upload location in TrackVice |
+| A new TrackVice version | With [agent updates](#agent-updates), publish it: installed agents take it within 6 hours. Otherwise upload the new `TrackVice.exe` over the old one in the container, and update `$Sha256` in the script in Intune. The download link stays the same. Until the hash is updated the script fails on purpose |
+| The links expire | Run **New customer** again with the same customer name and the existing account, or make new links by hand. Then update the script, the task sequence steps and the upload location in TrackVice |
+| A new PC or Windows user publishes | The signing key cannot move. Create a new key there, put it in `$UpdateKey` and update the script in Intune, which makes it run again on the devices |
 | A link got out | Rotate the storage account key the links were signed with (Security + networking > Access keys). That cancels every link signed with that key, also for other containers in the account |
 | The container grows | Add a lifecycle management rule on the storage account that deletes blobs under `trackvice/sessions/` and `trackvice/logs/` after 30 days |
 | Stop using it | Remove the assignment in Intune. Agents already installed remove themselves when their time is up |
@@ -396,6 +490,14 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 | No alerts arrive | Run the test in [Alerts in Teams](#alerts-in-teams). `agent.log` says "Alerts are off" when the link is not an https address, and "Alert not sent" with the reason when the workflow refused it |
 | "The device has not uploaded its logs yet" | The agent uploads them when something fails, when the device goes idle and at the end. Try again later |
 | In a task sequence, the device is not in the list | Look at `%WINDIR%\Temp\TrackVice\agent.log` with F8. No log in Windows PE usually means the boot image lacks WinPE-NetFx |
+| The script installs nothing and says "Not a new enrollment" | `$MaxAgeHours` is set, and the device was enrolled earlier. The filled script from New customer has 24. Set it to 0 to test on your own PC |
+| New customer: "Your account may not ..." in Azure | The account lacks a role on the subscription or the storage account, see [The quick way](#the-quick-way-new-customer). A blocked sign-in usually means the Azure PowerShell client is not allowed: enter your own app under Client ID |
+| New customer: "has no account key" | The storage account has Allow storage account key access turned off. The links need it |
+| New customer: "Access denied" in Intune | The account needs an Intune role that can add scripts, and consent for `DeviceManagementScripts.ReadWrite.All` and `Group.ReadBasic.All`. Or skip the Intune part and add the saved script by hand |
+| `agent.log` says "Self-update is off" | The reason follows: an update key but no update link, a key that is not usable, or a link that cannot be opened |
+| `agent.log` says "is not signed with the update key of this device" | The version was published with another key than the one in `$UpdateKey`. Publish from the PC that has the key, or update `$UpdateKey` |
+| `agent.log` says "No update information in" | Nothing is published there yet, or `$UpdateLink` lacks Read or points at another container |
+| The agent stays on its version | It checks every 6 hours. A version that is not newer than the one it runs is not installed. `agent.log` says "Update check:" with the reason |
 | The script is blocked | `TrackVice.exe` is not code signed. WDAC, AppLocker or Smart App Control can block it. Sign it with your own certificate or allow it by hash |
 
 ## What is uploaded, and security
@@ -409,7 +511,9 @@ One file per device session, `sessions/<id>.json.gz`, in the same format as a sa
 | `logs/<id>.zip` | The session and the device's log files. Readable with the viewer link only |
 | The alert link | Anyone with it can post to the Teams channel. The alerts carry the device name, the deployment and the text of each failure, masked |
 | The download link | Can only download `TrackVice.exe` |
-| On the device | The upload link, and the alert link when there is one, are saved under `HKLM\SOFTWARE\TrackVice\Agent`, readable by administrators and SYSTEM only, and removed when the agent ends. In a task sequence nothing is saved there |
+| The agent updates link | Can read every file in its container, such as `trackvice-agent`. Keep only TrackVice files there |
+| The publish link and the signing key | Together they put a version on every device that trusts the key. The key is on your PC only, encrypted for your Windows account. A device that can write to the container cannot make the others run anything else, since it cannot sign |
+| On the device | The upload link, the alert link, the update key and the update link, when there are any, are saved under `HKLM\SOFTWARE\TrackVice\Agent`, readable by administrators and SYSTEM only, and removed when the agent ends. In a task sequence nothing is saved there |
 | In Intune | The script, with the download, upload and alert links, is readable by Intune administrators |
 | In SCCM | The task sequence, with the upload and alert links, is readable by anyone who can read task sequences |
-| On the device, otherwise | The agent only reads. It adds its folder, its task and its registry key, and nothing else. In a task sequence it only adds `%WINDIR%\Temp\TrackVice` |
+| On the device, otherwise | The agent only reads. It adds its folder, its task and its registry key, and nothing else. An update only replaces `TrackVice.exe` in its own folder. In a task sequence it only adds `%WINDIR%\Temp\TrackVice` |
