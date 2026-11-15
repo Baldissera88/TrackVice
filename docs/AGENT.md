@@ -65,6 +65,7 @@ The Intune Management Extension runs platform scripts before it installs Win32 a
 
 - An Azure subscription where you can create a storage account, or an existing storage account. The cost is negligible: a session is a few hundred kilobytes per device.
 - Intune, with the right to add a platform script.
+- Outbound HTTPS (port 443) from the devices to `<account>.blob.core.windows.net`.
 - `TrackVice.exe` and `agent/Install-TrackViceAgent.ps1` from this repository.
 
 The storage account does not have to be in the same tenant as the devices. The devices only use the upload link.
