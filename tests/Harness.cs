@@ -49,6 +49,7 @@ namespace TrackVice.Tests
             IntuneLookupTests.Run();
             AutopilotTests.Run();
             MergeTests.Run();
+            AgentUpdateTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }
