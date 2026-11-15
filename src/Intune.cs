@@ -62,6 +62,7 @@ namespace TrackVice
 
         const string ZeroGuid = "00000000-0000-0000-0000-000000000000";
         readonly ScriptLog scripts = new ScriptLog();
+        readonly DownloadLog downloads = new DownloadLog();
 
         public ImeLogParser(string src)
         {
@@ -100,6 +101,7 @@ namespace TrackVice
             if (id == null) return;
             // The agent first walks through every app without doing anything, to work out what the ESP has to wait for.
             if (t.IndexOf("[Simulated", StringComparison.OrdinalIgnoreCase) >= 0) return;
+            if (downloads.Read(l, id, delegate { return ForApp(l, id); }, output)) return;
             // The install command is on a line of its own, right after the step that announces it.
             if (t.IndexOf("===Step=== InstallBehavior", StringComparison.OrdinalIgnoreCase) >= 0) { commandNext[thread] = id; return; }
             string pending;

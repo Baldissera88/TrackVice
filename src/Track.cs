@@ -486,6 +486,7 @@ namespace TrackVice
             }
 
             AutopilotFlow.Apply(s, list, nowUtc);
+            Downloads.Apply(s, list);
             list.Sort(delegate (Finding a, Finding b)
             {
                 int c = b.Severity.CompareTo(a.Severity);

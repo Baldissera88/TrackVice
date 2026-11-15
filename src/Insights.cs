@@ -128,6 +128,19 @@ namespace TrackVice
         public double TotalSeconds, MaxSeconds;
         public int Timed;
         public string SlowestOn, FailedOn;
+        // Win32 app downloads: their time, and the speed where it is known.
+        public int Downloads, Speeds;
+        public double DownloadSeconds, DownloadMbit;
+
+        public double AvgDownloadSeconds
+        {
+            get { return Downloads == 0 ? 0 : DownloadSeconds / Downloads; }
+        }
+
+        public double AvgDownloadMbit
+        {
+            get { return Speeds == 0 ? 0 : DownloadMbit / Speeds; }
+        }
 
         public double AvgSeconds
         {
@@ -166,6 +179,7 @@ namespace TrackVice
         // Policies and profiles arrive in an instant and say nothing about time, so they are left out.
         static bool Timed(Item i)
         {
+            if (i.PhaseKey == Phases.Restarts) return false;
             return i.PhaseKey != Phases.Policies && i.Kind != Kinds.Policy && i.Kind != Kinds.Profile && i.Key != SccmFeed.RunKey;
         }
 
@@ -257,6 +271,7 @@ namespace TrackVice
                     }
                     else if (States.IsComplete(i.State)) f.Done++;
                     else if (States.IsActive(i.State)) f.Running++;
+                    TrackVice.Downloads.Count(f, i);
                     if (!Ran(i)) continue;
                     TimeSpan? d = i.Duration(nowUtc);
                     if (!d.HasValue) continue;

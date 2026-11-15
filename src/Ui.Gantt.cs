@@ -160,6 +160,7 @@ namespace TrackVice
                 if (rows[k].IsHeader) PaintHeader(g, rows[k], r);
                 else PaintItem(g, rows[k], r, k == hot);
             }
+            PaintRestarts(g);
             if (live)
             {
                 float nx = X(nowUtc);
@@ -168,6 +169,26 @@ namespace TrackVice
             g.ResetClip();
             PaintAxis(g, ticks);
             PaintScroll(g);
+        }
+
+        // A thin line where the device restarted, with a small label at the top of the chart.
+        void PaintRestarts(Graphics g)
+        {
+            if (session == null) return;
+            foreach (GanttTick k in GanttLayout.RestartMarks(session, TimeZoneInfo.Local))
+            {
+                if (k.Utc < fromUtc || k.Utc > toUtc) continue;
+                float x = X(k.Utc);
+                using (Pen pen = new Pen(T.WarnFg, Math.Max(1f, Dpi.S(1f)))) g.DrawLine(pen, x, AxisH, x, Height);
+                Size ts = TextRenderer.MeasureText(k.Label, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding);
+                int pad = Dpi.S(5), w = ts.Width + pad * 2, h = ts.Height + Dpi.S(4);
+                int lx = (int)x + Dpi.S(4);
+                if (lx + w > ChartR + Dpi.S(14)) lx = (int)x - Dpi.S(4) - w;
+                int ly = AxisH + Dpi.S(4);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Shapes.Fill(g, new RectangleF(lx, ly, w, h), Dpi.S(3), T.WarnBg);
+                TextRenderer.DrawText(g, k.Label, Fonts.Small, new Point(lx + pad, ly + Dpi.S(2)), T.WarnFg, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            }
         }
 
         void PaintAxis(Graphics g, List<GanttTick> ticks)

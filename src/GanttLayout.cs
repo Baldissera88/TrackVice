@@ -96,6 +96,23 @@ namespace TrackVice
             return rows;
         }
 
+        // Restarts of the device, drawn as thin lines across the chart at the time it went down.
+        public static List<GanttTick> RestartMarks(Session s, TimeZoneInfo zone)
+        {
+            List<GanttTick> l = new List<GanttTick>();
+            Phase p = s.FindPhase(Phases.Restarts);
+            if (p == null) return l;
+            foreach (Item i in p.Items)
+            {
+                GanttTick k = new GanttTick();
+                k.Utc = BarStart(i);
+                k.Label = "Restart " + TimeZoneInfo.ConvertTimeFromUtc(k.Utc, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
+                l.Add(k);
+            }
+            l.Sort(delegate (GanttTick a, GanttTick b) { return a.Utc.CompareTo(b.Utc); });
+            return l;
+        }
+
         // The time span the chart shows: every bar, now for a live session, and never less than a minute.
         public static void Range(List<GanttRow> rows, DateTime nowUtc, bool live, out DateTime fromUtc, out DateTime toUtc)
         {

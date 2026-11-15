@@ -109,6 +109,7 @@ namespace TrackVice
             ".gbar,.legend i{background:var(--idleb)}.gbar{position:absolute;top:6px;height:10px;border-radius:3px;min-width:3px}.gbar.ok,.legend i.ok{background:var(--okb)}.gbar.bad,.legend i.bad{background:var(--badb)}.gbar.warn,.legend i.warn{background:var(--warnb)}" +
             ".gbar.run,.legend i.run{background-color:var(--runb);background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.4) 0 3px,transparent 3px 7px)}.gbar.ph{top:9px;height:4px;background:var(--phb)}" +
             ".gdur{position:absolute;top:3px;font-size:11px;font-style:normal;color:var(--t3);white-space:nowrap;padding-left:6px}.gdur.l{padding:0 6px 0 0;transform:translateX(-100%)}.gdur.in{padding:0 6px;margin-left:-4px;transform:translateX(-100%);color:var(--text);background:var(--card);border-radius:3px;top:3px}" +
+            ".ggrid i.grst{border-left:1.5px solid var(--warn);z-index:1}.grst span{position:absolute;top:4px;left:4px;font-size:11px;font-style:normal;color:var(--warn);background:var(--card);border:1px solid var(--warn);border-radius:3px;padding:0 4px;white-space:nowrap}.grst.l span{left:auto;right:4px}" +
             ".hrow{display:flex;align-items:center;gap:12px;padding:6px 12px;border-top:1px solid var(--grid)}.hrow:first-child{border-top:0}.hname{flex:0 0 230px;width:230px;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
             ".htrack{position:relative;flex:1 1 auto;height:14px}.htrack b{position:absolute;left:0;top:2px;height:10px;border-radius:3px;background:var(--runb);min-width:3px}.hval{flex:0 0 400px;font-size:12px;color:var(--t3)}" +
             ".rbar{display:inline-block;width:70px;height:6px;border-radius:3px;background:var(--grid);margin-left:8px;vertical-align:1px;position:relative;overflow:hidden}.rbar b{position:absolute;left:0;top:0;bottom:0;background:var(--badb)}" +
@@ -353,6 +354,7 @@ namespace TrackVice
             }
             b.Append("</div></div><div class=\"gbody\"><div class=\"ggrid\">");
             foreach (GanttTick k in ticks) b.Append("<i style=\"left:").Append(Pct(At(k.Utc, from, to))).Append("%\"></i>");
+            RestartMarks(b, s, from, to);
             b.Append("</div>");
 
             foreach (GanttRow r in all)
@@ -378,6 +380,17 @@ namespace TrackVice
                 GRow(b, "", i.DisplayName, i.DisplayName + " - " + States.Label(st) + (dur.Length > 0 ? ", " + dur : ""), left, right - left, Css(st), dur);
             }
             b.Append("</div></div>");
+        }
+
+        // A thin line where the device restarted, with a small label.
+        static void RestartMarks(StringBuilder b, Session s, DateTime from, DateTime to)
+        {
+            foreach (GanttTick k in GanttLayout.RestartMarks(s, TimeZoneInfo.Local))
+            {
+                if (k.Utc < from || k.Utc > to) continue;
+                double x = At(k.Utc, from, to);
+                b.Append("<i class=\"grst").Append(x > 85 ? " l" : "").Append("\" style=\"left:").Append(Pct(x)).Append("%\"><span>").Append(H(k.Label)).Append("</span></i>");
+            }
         }
 
         static void GRow(StringBuilder b, string cls, string name, string tip, double left, double width, string css, string dur)

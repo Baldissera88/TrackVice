@@ -208,6 +208,7 @@ namespace TrackVice
                 foreach (DemoStep st in sc.Steps)
                 {
                     if (st.RegPath != null) continue;
+                    if (st.Event != null) continue;
                     // The same rule as DemoPlayer.WriteLogs, which puts the WinPE and full OS smsts.log in folders of their own.
                     string path;
                     if (!sc.Paths.TryGetValue(st.Log, out path)) path = st.Log + ".log";
