@@ -815,6 +815,7 @@ namespace TrackVice
             Add(new SectionTitle("LogVice"));
             Add(logViceRow);
             UpdateLogVice();
+            foreach (Control c in ViceLinks.SettingRows(theme, delegate { Relayout(); })) Add(c);
 
             TextBox client = Field(Prefs.Get("GraphClientId", ""), Dpi.S(300), true);
             client.TextChanged += Safe.Wrap(delegate
@@ -917,6 +918,7 @@ namespace TrackVice
             new string[] { "/session <file.json>", "Save the session as JSON and exit" },
             new string[] { "/title <text>", "With /report or /fleet-report: the title at the top of the report" },
             new string[] { "/fleet-report <file.html> /upload <location>", "Save an HTML report over every enrollment the agents uploaded there and exit. It covers the uploads of the last /hours (default 24, 0 for all)" },
+            new string[] { "/export-data <folder> /upload <location>", "Save every enrollment the agents uploaded there as CSV tables for Power BI: Enrollments, Items and Findings, with a README. It covers the uploads of the last /hours (default 24, 0 for all)" },
             new string[] { "/folder <path>", "With /report, /csv or /session: read a folder of logs instead of this device" },
             new string[] { "/ship-report <file.html> [/from <session.json>]", "Save a one-page ready to ship report of this device, or of a saved session, checked against the reference of the customer in use, and exit. Exits with 2 when the device is not ready" },
             new string[] { "/hours <n>", "Hours of history to read (default 24, 0 for everything since Windows was installed)" },

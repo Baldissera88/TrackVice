@@ -210,6 +210,7 @@ namespace TrackVice
             string ship = null, from = null;
             string publishTo = null, publishExe = null, applyExe = null, applySha = null;
             bool publish = false;
+            string exportData = null;
             try
             {
                 for (int i = 0; i < args.Length; i++)
@@ -239,6 +240,7 @@ namespace TrackVice
                         case "fleet-report": fleet = Next(args, ref i); break;
                         case "ship-report": ship = Next(args, ref i); break;
                         case "from": from = Next(args, ref i); break;
+                        case "export-data": exportData = Next(args, ref i); break;
                         case "update": ao.UpdateLink = Next(args, ref i); break;
                         case "update-key": ao.UpdateKey = Next(args, ref i); break;
                         case "agent-update-apply": agent = "update-apply"; applyExe = Next(args, ref i); break;
@@ -269,6 +271,7 @@ namespace TrackVice
                 if (agent == "run") return Agent.Run(ao);
                 if (fleet != null) return Report.FleetCli(fleet, ao.Upload, hours, title);
                 if (ship != null) return ReferenceUi.ShipCli(ship, from, folder, hours);
+                if (exportData != null) return DataExport.Cli(exportData, ao.Upload, hours);
                 if (report == null && csv == null && session == null)
                 {
                     Usage();
