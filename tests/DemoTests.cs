@@ -42,7 +42,7 @@ namespace TrackVice.Tests
         public static void Run()
         {
             Session a = Play("autopilot");
-            T.Eq(12, a.Items.Count, "Autopilot demo items");
+            T.Eq(13, a.Items.Count, "Autopilot demo items");
             T.Eq("Autopilot", a.Kind, "Autopilot demo kind");
             T.Eq(1, a.Count(State.Failed), "Autopilot demo failed items");
             Item vpn = ByName(a, "Contoso VPN Client 5.2");
@@ -52,6 +52,9 @@ namespace TrackVice.Tests
             T.Check(acro != null && !acro.Percent.HasValue, "download percent is not shown as install progress");
             T.Check(Has(a, FindingKinds.Retries), "Autopilot demo retry finding");
             T.Check(Has(a, FindingKinds.EspTimeLimit), "Autopilot demo ESP time limit finding");
+            Phase restarts = a.FindPhase(Phases.Restarts);
+            T.Check(restarts != null && restarts.Items.Count == 1 && restarts.Items[0].Get("Requested by") == "Microsoft Intune Management Extension", "Autopilot demo restart by the IME");
+            T.Check(Has(a, FindingKinds.SlowDownload), "Autopilot demo slow download finding");
             Item sheet = ByName(a, "Contoso Timesheet");
             T.Check(sheet != null && sheet.ExitCode == 1603, "Timesheet failed with 1603");
 

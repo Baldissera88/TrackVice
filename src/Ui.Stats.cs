@@ -145,6 +145,8 @@ namespace TrackVice
             ic.SortKey = delegate (FleetItem f) { return Num(f.Timed == 0 ? -1 : f.AvgSeconds); };
             ic = items.Col("Longest", 100, delegate (FleetItem f) { return f.Timed == 0 ? "" : Txt.Duration(TimeSpan.FromSeconds(f.MaxSeconds)); });
             ic.SortKey = delegate (FleetItem f) { return Num(f.Timed == 0 ? -1 : f.MaxSeconds); };
+            ic = items.Col("Download", 150, delegate (FleetItem f) { return f.Downloads == 0 ? "" : Downloads.Time(f.AvgDownloadSeconds) + (f.Speeds == 0 ? "" : ", " + Downloads.Speed(f.AvgDownloadMbit)); });
+            ic.SortKey = delegate (FleetItem f) { return Num(f.Downloads == 0 ? -1 : f.AvgDownloadSeconds); };
             items.Col("Slowest on", 150, delegate (FleetItem f) { return f.SlowestOn; });
             items.ForeColor = delegate (FleetItem f) { return f.Failed > 0 ? theme.ErrFg : f.Timed == 0 ? theme.Text3 : Color.Empty; };
             items.EmptyText = "Reading the uploads…";
