@@ -37,6 +37,9 @@ namespace TrackVice
 
     public static class SessionDiff
     {
+        // A duration differs when it is at least this much longer, and this many times as long.
+        public const double SlowerSeconds = 60, SlowerFactor = 1.5;
+
         static string Sig(Item i)
         {
             return i.Kind + "|" + i.DisplayName;
@@ -179,7 +182,7 @@ namespace TrackVice
                 {
                     double lo = Math.Min(r.SecondsA.Value, r.SecondsB.Value), hi = Math.Max(r.SecondsA.Value, r.SecondsB.Value);
                     // A difference only counts when it is both large and long enough to notice.
-                    if (hi - lo >= 60 && hi >= lo * 1.5)
+                    if (hi - lo >= SlowerSeconds && hi >= lo * SlowerFactor)
                     {
                         notes.Add(Txt.DurationShort(TimeSpan.FromSeconds(hi - lo)) + " longer on " + (r.SecondsA.Value > r.SecondsB.Value ? na : nb));
                         w = 1;

@@ -207,6 +207,7 @@ namespace TrackVice
             AgentOptions ao = new AgentOptions();
             int hours = 24;
             string title = null, fleet = null;
+            string ship = null, from = null;
             string publishTo = null, publishExe = null, applyExe = null, applySha = null;
             bool publish = false;
             try
@@ -236,6 +237,8 @@ namespace TrackVice
                         case "no-mask": ao.Mask = false; break;
                         case "title": title = Next(args, ref i); break;
                         case "fleet-report": fleet = Next(args, ref i); break;
+                        case "ship-report": ship = Next(args, ref i); break;
+                        case "from": from = Next(args, ref i); break;
                         case "update": ao.UpdateLink = Next(args, ref i); break;
                         case "update-key": ao.UpdateKey = Next(args, ref i); break;
                         case "agent-update-apply": agent = "update-apply"; applyExe = Next(args, ref i); break;
@@ -265,6 +268,7 @@ namespace TrackVice
                 if (agent == "run" && ao.AlertTest) return AgentAlerts.Test(ao.Alert, Environment.MachineName);
                 if (agent == "run") return Agent.Run(ao);
                 if (fleet != null) return Report.FleetCli(fleet, ao.Upload, hours, title);
+                if (ship != null) return ReferenceUi.ShipCli(ship, from, folder, hours);
                 if (report == null && csv == null && session == null)
                 {
                     Usage();
