@@ -93,6 +93,7 @@ namespace TrackVice
                 Size = start.Size;
             }
             BuildHeader();
+            BuildReference();
             BuildViews();
             Controls.Add(content);
             Controls.Add(tabs);
@@ -732,6 +733,7 @@ namespace TrackVice
         {
             if (start.Shot == null) FetchUnknownNames();
             Session s = engine.S;
+            BindReference();
             List<string> sub = new List<string>();
             if (engine.Mode == Modes.Demo) sub.Add("Demo data");
             else if (engine.Mode == Modes.Intune) sub.Add("Intune");
@@ -1232,6 +1234,7 @@ namespace TrackVice
             Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
             Menus.Add(m, "Wall view\u2026", delegate { OpenWall(null, false); });
             CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
+            ReferenceMenu(m);
             Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
             Menus.Separator(m);
             Menus.Add(m, "Watch this device", delegate { Begin(Settings.NewLive(), true); });
@@ -1258,6 +1261,7 @@ namespace TrackVice
             ContextMenuStrip m = Menus.New(theme);
             Menus.Add(m, "HTML report…  (Ctrl+E)", delegate { ExportHtml(); });
             Menus.Add(m, "Every event as CSV…", delegate { ExportCsv(); });
+            Menus.Add(m, "Ready to ship report\u2026", delegate { ExportShip(); });
             return m;
         }
 
@@ -1677,6 +1681,7 @@ namespace TrackVice
             else if (start.Page == "customer") { CustomerBook cb = CustomerBook.Demo(); page = new CustomerEditor(theme, cb, cb.Find("Contoso")); }
             else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
             else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
+            else if (start.Page == "refcompare") page = ReferenceUi.DemoCompareDialog(theme);
             else if (start.Page == "wall") { WallView wv = new WallView(theme, new AgentCatalog(new WallDemoStore()), true); wv.FiltersAtStart = start.Select == "filters"; if (start.Tab >= 0) wv.FilterIndex = start.Tab; page = wv; }
             else if (start.Page == "publish") page = PublishDialog.ForDemo(theme);
             else if (start.Page == "names") page = new NamesDialog(theme, engine != null ? engine.S.Computer : null);
