@@ -584,6 +584,9 @@ namespace TrackVice
         // Set by /agent-start for the agent in a task sequence: the session ID from /id or the device, and the end with the task sequence.
         public string Id;
         public bool TaskSequence;
+        // Self-update: the administrator's public key and where the signed release is read from.
+        public string UpdateKey;
+        public string UpdateLink;
     }
 
     // Runs on the device while it deploys: reads it like the window does, and uploads the session as it changes.
@@ -714,6 +717,7 @@ namespace TrackVice
                 else if (installed) SetReg("StartedUtc", started.ToString("o", CultureInfo.InvariantCulture));
                 if (installed && o.Alert == null) o.Alert = Reg("Alert");
                 if (installed && Reg("Mask") == "0") o.Mask = false;
+                if (installed && Reg("Version") != Program.Version) SetReg("Version", Program.Version);
                 int keep;
                 if (installed && int.TryParse(Reg("KeepHours"), NumberStyles.Integer, CultureInfo.InvariantCulture, out keep) && keep > 0) o.KeepHours = keep;
                 DateTime until = started.AddHours(o.KeepHours);
@@ -735,6 +739,8 @@ namespace TrackVice
                 bool mask = o.Mask;
                 LogUploads logs = new LogUploads(store, AgentData.BlobName(sid), delegate (Session x) { return LogBundle.Make(mask ? Secrets.MaskedCopy(x) : x); }, Log);
                 string shownError = null;
+                bool updating = false;
+                AgentSelfUpdate self = installed && !o.Once ? AgentSelfUpdate.For(Reg("UpdateKey"), Reg("UpdateLink"), Program.Version, InstallDir, new WinUpdateLauncher(System.Reflection.Assembly.GetExecutingAssembly().Location), Log) : null;
                 // Everything since Windows was installed: after a restart the session is read again in full.
                 using (Engine e = Engine.ForLive(0, true, true, 2000))
                 {
@@ -754,10 +760,16 @@ namespace TrackVice
                         if (alerts != null) alerts.Cycle(e.S, idle, now);
                         logs.Cycle(e.S, idle, last, now);
                         if (last) break;
+                        if (self != null && self.Cycle(now))
+                        {
+                            a.Cycle(e.S, now, o, true);
+                            updating = true;
+                            break;
+                        }
                         Thread.Sleep(a.Idle(e.S, now, o.IdleMinutes) ? 15000 : 2000);
                     }
                 }
-                if (installed && !o.Once)
+                if (installed && !o.Once && !updating)
                 {
                     Log("Time is up after " + o.KeepHours + " hours. Removing the agent.");
                     Remove();
@@ -774,12 +786,16 @@ namespace TrackVice
         {
             if (string.IsNullOrWhiteSpace(o.Upload)) throw new ArgumentException("Give the upload location: /agent-install /upload <SAS link or folder>");
             if (o.Alert != null && AlertSender.Problem(o.Alert) != null) throw new ArgumentException(AlertSender.Problem(o.Alert));
+            if (!string.IsNullOrWhiteSpace(o.UpdateKey) && UpdateKeys.Problem(o.UpdateKey) != null) throw new ArgumentException(UpdateKeys.Problem(o.UpdateKey));
+            if (!string.IsNullOrWhiteSpace(o.UpdateLink)) Stores.Open(o.UpdateLink);
             if (!Program.IsAdmin) throw new UnauthorizedAccessException("Installing the agent needs administrator rights.");
             Stores.Open(o.Upload);
             string dir = InstallDir;
             Directory.CreateDirectory(dir);
             string target = Path.Combine(dir, "TrackVice.exe");
-            if (!string.Equals(Path.GetFullPath(exePath), target, StringComparison.OrdinalIgnoreCase) && !SameFile(exePath, target))
+            bool newer = File.Exists(target) && SemVer.Compare(SemVer.OfFile(target), SemVer.OfFile(exePath)) > 0;
+            if (newer) Log("The installed agent " + SemVer.OfFile(target) + " is newer than " + SemVer.OfFile(exePath) + " and is kept.");
+            if (!newer && !string.Equals(Path.GetFullPath(exePath), target, StringComparison.OrdinalIgnoreCase) && !SameFile(exePath, target))
                 Replace(exePath, target);
             using (RegistryKey k = Registry.LocalMachine.CreateSubKey(Key))
             {
@@ -804,6 +820,10 @@ namespace TrackVice
                 else k.DeleteValue("Alert", false);
                 if (!o.Mask) k.SetValue("Mask", "0");
                 else k.DeleteValue("Mask", false);
+                if (!string.IsNullOrWhiteSpace(o.UpdateKey)) k.SetValue("UpdateKey", o.UpdateKey.Trim());
+                else k.DeleteValue("UpdateKey", false);
+                if (!string.IsNullOrWhiteSpace(o.UpdateLink)) k.SetValue("UpdateLink", o.UpdateLink.Trim());
+                else k.DeleteValue("UpdateLink", false);
             }
             string xml = Path.Combine(dir, "task.xml");
             File.WriteAllText(xml, TaskXml(target), Encoding.Unicode);
@@ -853,25 +873,20 @@ namespace TrackVice
                 catch (UnauthorizedAccessException ex) { last = ex; }
                 Thread.Sleep(500);
             }
-            throw new IOException("The running agent could not be replaced: " + (last != null ? last.Message : "the file is in use."));
+            throw new IOException(AgentProcesses.ReplaceFailed(target, last != null ? last.Message : "the file is in use.", AgentProcesses.Describe(AgentProcesses.Matching(new WinProcessSource().Find("TrackVice"), target, Process.GetCurrentProcess().Id))));
         }
 
         static void StopRunning(string target)
         {
-            int self = Process.GetCurrentProcess().Id;
-            foreach (Process p in Process.GetProcessesByName("TrackVice"))
-            {
-                try
-                {
-                    if (p.Id != self && string.Equals(p.MainModule.FileName, target, StringComparison.OrdinalIgnoreCase))
-                    {
-                        p.Kill();
-                        p.WaitForExit(5000);
-                    }
-                }
-                catch (Exception) { }
-                finally { p.Dispose(); }
-            }
+            try { AgentProcesses.Stop(new WinProcessSource(), target, Process.GetCurrentProcess().Id); }
+            catch (Exception ex) { Log("Could not stop the running agent: " + ex.Message); }
+        }
+
+        // /agent-update-apply: run by the copy the agent made of itself, after it downloaded and checked a new version.
+        public static int ApplyUpdate(string newExe, string sha256)
+        {
+            if (!Program.IsAdmin) throw new UnauthorizedAccessException("Updating the agent needs administrator rights.");
+            return UpdateApply.Run(new WinUpdateOps(Schtasks), newExe, Path.Combine(InstallDir, "TrackVice.exe"), sha256, Log);
         }
 
         public static string TaskXml(string exe)

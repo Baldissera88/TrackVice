@@ -203,6 +203,8 @@ namespace TrackVice
             AgentOptions ao = new AgentOptions();
             int hours = 24;
             string title = null, fleet = null;
+            string publishTo = null, publishExe = null, applyExe = null, applySha = null;
+            bool publish = false;
             try
             {
                 for (int i = 0; i < args.Length; i++)
@@ -230,12 +232,21 @@ namespace TrackVice
                         case "no-mask": ao.Mask = false; break;
                         case "title": title = Next(args, ref i); break;
                         case "fleet-report": fleet = Next(args, ref i); break;
+                        case "update": ao.UpdateLink = Next(args, ref i); break;
+                        case "update-key": ao.UpdateKey = Next(args, ref i); break;
+                        case "agent-update-apply": agent = "update-apply"; applyExe = Next(args, ref i); break;
+                        case "sha256": applySha = Next(args, ref i); break;
+                        case "publish-agent": publish = true; break;
+                        case "to": publishTo = Next(args, ref i); break;
+                        case "exe": publishExe = Next(args, ref i); break;
                         case "?":
                         case "h":
                         case "help": Usage(); return 0;
                         default: throw new ArgumentException("Unknown option: " + args[i]);
                     }
                 }
+                if (publish) return UpdatePublisher.Cli(publishTo, publishExe ?? System.Reflection.Assembly.GetExecutingAssembly().Location, new DpapiKeyStore());
+                if (agent == "update-apply") return Agent.ApplyUpdate(applyExe, applySha);
                 if (agent == "install") return Agent.Install(ao, System.Reflection.Assembly.GetExecutingAssembly().Location);
                 if (agent == "remove")
                 {

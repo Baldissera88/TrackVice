@@ -10,6 +10,8 @@ $Upload    = ''   # Where the agent uploads: the container SAS link with Create 
 $KeepHours = 48   # The agent removes itself after this long
 $MaxAgeHours = 0  # Only install on a device enrolled within this many hours. 0 installs on every device
 $Alert     = ''   # Optional: a Teams workflow or other webhook link. The agent posts failures and the end of the deployment there
+$UpdateKey = ''   # Optional: the public key from TrackVice > Settings > Agent updates. With it the agent installs new versions you publish
+$UpdateLink = ''  # Optional, with $UpdateKey: where the agent reads published versions: a container SAS link with Read, or a folder
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -42,6 +44,12 @@ if ($hash -ne $Sha256) {
 $arguments = '/agent-install', '/upload', "`"$Upload`"", '/keep', $KeepHours
 if ($Alert) {
     $arguments += '/alert', "`"$Alert`""
+}
+if ($UpdateKey) {
+    $arguments += '/update-key', $UpdateKey
+}
+if ($UpdateLink) {
+    $arguments += '/update', "`"$UpdateLink`""
 }
 $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
 

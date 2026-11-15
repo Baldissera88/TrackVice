@@ -839,6 +839,13 @@ namespace TrackVice
             Add(new SectionTitle("Customers"));
             Add(new SettingRow(Glyphs2.Device, "Customers", "Saved connections for each customer you work for: the Intune tenant, where its agents upload to and its SCCM site. Choose one at the top of a device list. In use: " + (CustomerUi.CurrentName ?? "none") + ".", bCustomers));
 
+            FlatButton bPublish = SmallButton("Publish", delegate
+            {
+                using (PublishDialog p = PublishDialog.ForCustomer(theme)) p.ShowDialog(this);
+            });
+            Add(new SectionTitle("Agent updates"));
+            Add(new SettingRow(Glyphs.Shield, "Publish agent update", "Upload a TrackVice.exe with a signed agent/latest.json. Agents installed with $UpdateKey and $UpdateLink update themselves to it, so the platform script stays the same.", bPublish));
+
             Add(new SectionTitle("Autopilot in Intune"));
             string kept = MainForm.KeptAccount;
             FlatButton bSignOut = SmallButton("Sign out", delegate { });
@@ -920,6 +927,8 @@ namespace TrackVice
             new string[] { "/keep <hours>", "With /agent-install: how long the agent stays before it removes itself. With /agent-start: how long it runs at most (default 48)" },
             new string[] { "/alert <link>", "With /agent, /agent-install or /agent-start: send failures and the end of a deployment to a Teams workflow or other webhook" },
             new string[] { "/agent /alert <link> /alert-test", "Send one test alert and exit" },
+            new string[] { "/update-key <key> /update <location>", "With /agent-install: the agent installs newer versions published there, signed with this key. The location is a SAS link with Read, or a folder" },
+            new string[] { "/publish-agent /to <location> [/exe <path>]", "Upload TrackVice.exe, or the given exe, with a signed agent/latest.json for the agents to update to. The location needs Create and Write" },
             new string[] { "/no-mask", "With /agent, /agent-install or /agent-start: upload passwords, keys and tokens as they are, without hiding them" },
             new string[] { "--demo", "Play a sample Autopilot deployment" },
             new string[] { "--demo osd", "Play a sample SCCM task sequence" },

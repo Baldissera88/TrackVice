@@ -1674,6 +1674,7 @@ namespace TrackVice
             else if (start.Page == "customer") { CustomerBook cb = CustomerBook.Demo(); page = new CustomerEditor(theme, cb, cb.Find("Contoso")); }
             else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
             else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
+            else if (start.Page == "publish") page = PublishDialog.ForDemo(theme);
             else if (start.Page == "names") page = new NamesDialog(theme, engine != null ? engine.S.Computer : null);
             else if (start.Remote != null && start.Pick == null)
             {
