@@ -37,6 +37,9 @@ namespace TrackVice
         readonly FlatButton bClose = new FlatButton("Close", null);
         readonly FlatButton bRefresh = new FlatButton("Refresh", Glyphs2.Sync);
         readonly FlatButton bExport = new FlatButton("Export CSV", Glyphs.Export);
+        readonly FlatButton bPowerBi = new FlatButton("Export for Power BI\u2026", Glyphs.Export);
+        List<Session> loaded = new List<Session>();
+        List<string> loadedKeys = new List<string>();
         readonly TextBox search = new TextBox();
         readonly Segmented since = new Segmented("24 h", "7 d", "30 d", "90 d");
         static readonly int[] SinceHours = { 24, 168, 720, 2160 };
@@ -104,6 +107,12 @@ namespace TrackVice
             bExport.Enabled = false;
             bExport.Click += Safe.Wrap(delegate { Export(); });
             themed.Add(bExport);
+            bPowerBi.Compact = true;
+            bPowerBi.AutoWidth();
+            bPowerBi.Margin = new Padding(0, Dpi.S(2), Dpi.S(16), 0);
+            bPowerBi.Enabled = false;
+            bPowerBi.Click += Safe.Wrap(delegate { ExportPowerBi(); });
+            themed.Add(bPowerBi);
             search.Width = Dpi.S(260);
             search.BorderStyle = BorderStyle.FixedSingle;
             search.Margin = new Padding(0, Dpi.S(5), Dpi.S(12), 0);
@@ -111,6 +120,7 @@ namespace TrackVice
             bar.Controls.Add(since);
             bar.Controls.Add(bRefresh);
             bar.Controls.Add(bExport);
+            bar.Controls.Add(bPowerBi);
             bar.Controls.Add(search);
             if (demo)
             {
@@ -344,6 +354,8 @@ namespace TrackVice
                     {
                         if (cancel != stop) return;
                         refBadges = rb;
+                        loaded = sessions;
+                        loadedKeys = keys;
                         ShowStats(st, map, total, unreadable);
                     });
                 }
@@ -371,6 +383,7 @@ namespace TrackVice
             items.EmptyText = "No apps, scripts or steps in this period.";
             runs.EmptyText = "No uploads in this period.";
             bExport.Enabled = st.Runs.Count > 0;
+            bPowerBi.Enabled = st.Runs.Count > 0;
             Bind();
             string s = catalog.Source + " · " + st.Runs.Count + " enrollment" + (st.Runs.Count == 1 ? "" : "s");
             if (total > MaxSessions) s += ", the newest " + MaxSessions + " of " + total + " uploads";
@@ -416,6 +429,19 @@ namespace TrackVice
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 File.WriteAllText(d.FileName, stats.ToCsv() + "\r\n" + stats.RunsToCsv(), new UTF8Encoding(true));
                 Status("Saved " + d.FileName);
+            }
+        }
+
+        // Every enrollment of the period as flat tables for Power BI, in a folder.
+        void ExportPowerBi()
+        {
+            if (loaded.Count == 0) return;
+            using (FolderBrowserDialog d = new FolderBrowserDialog())
+            {
+                d.Description = "Choose the folder for Enrollments.csv, Items.csv, Findings.csv and README.txt. Files from an earlier export there are replaced.";
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                DataExport.Result r = DataExport.Write(d.SelectedPath, loaded, loadedKeys, DateTime.UtcNow, catalog.Source + ", the uploads of the last " + SinceHours[Math.Max(0, Math.Min(SinceHours.Length - 1, since.Selected))] + " hours");
+                Status("Saved " + r.Enrollments + " enrollments, " + r.Items + " items and " + r.Findings + " findings in " + d.SelectedPath + ". README.txt says how to load them in Power BI.");
             }
         }
 
