@@ -50,6 +50,29 @@ namespace TrackVice
             return i.Kind + "|" + i.Key;
         }
 
+        // Restarts are named and keyed by their time, so they never match by name or ID. They are matched in order instead.
+        static Dictionary<Item, string> RestartSigs(Session s)
+        {
+            List<Item> l = new List<Item>();
+            foreach (Item i in s.Items) if (i.Kind == Kinds.Restart) l.Add(i);
+            l.Sort(delegate (Item x, Item y) { return x.FirstUtc.CompareTo(y.FirstUtc); });
+            Dictionary<Item, string> d = new Dictionary<Item, string>();
+            for (int n = 0; n < l.Count; n++) d[l[n]] = Kinds.Restart + "|#" + (n + 1).ToString(CultureInfo.InvariantCulture);
+            return d;
+        }
+
+        static string Sig(Item i, Dictionary<Item, string> restarts)
+        {
+            string r;
+            return restarts.TryGetValue(i, out r) ? r : Sig(i);
+        }
+
+        static string KeySig(Item i, Dictionary<Item, string> restarts)
+        {
+            string r;
+            return restarts.TryGetValue(i, out r) ? r : KeySig(i);
+        }
+
         static DateTime NowOf(Session s)
         {
             return s.ClockUtc.Year > 2000 ? s.ClockUtc : DateTime.UtcNow;
@@ -87,27 +110,28 @@ namespace TrackVice
             string na = NameA(a, b), nb = NameB(a, b);
             Dictionary<string, Item> byKey = new Dictionary<string, Item>(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, Item> byName = new Dictionary<string, Item>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<Item, string> ra = RestartSigs(a), rb = RestartSigs(b);
             foreach (Item j in b.Items)
             {
-                if (!byKey.ContainsKey(KeySig(j))) byKey[KeySig(j)] = j;
-                if (!byName.ContainsKey(Sig(j))) byName[Sig(j)] = j;
+                if (!byKey.ContainsKey(KeySig(j, rb))) byKey[KeySig(j, rb)] = j;
+                if (!byName.ContainsKey(Sig(j, rb))) byName[Sig(j, rb)] = j;
             }
             List<DiffRow> rows = new List<DiffRow>();
             HashSet<Item> used = new HashSet<Item>();
             HashSet<string> seenA = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (Item i in a.Items)
             {
-                if (!seenA.Add(KeySig(i))) continue;
+                if (!seenA.Add(KeySig(i, ra))) continue;
                 Item j;
-                if (!byKey.TryGetValue(KeySig(i), out j) || used.Contains(j))
-                    if (!byName.TryGetValue(Sig(i), out j) || used.Contains(j)) j = null;
+                if (!byKey.TryGetValue(KeySig(i, ra), out j) || used.Contains(j))
+                    if (!byName.TryGetValue(Sig(i, ra), out j) || used.Contains(j)) j = null;
                 if (j != null) used.Add(j);
                 rows.Add(Row(i, j, nowA, nowB, na, nb));
             }
             HashSet<string> seenB = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (Item j in b.Items)
             {
-                if (used.Contains(j) || !seenB.Add(KeySig(j))) continue;
+                if (used.Contains(j) || !seenB.Add(KeySig(j, rb))) continue;
                 rows.Add(Row(null, j, nowA, nowB, na, nb));
             }
             AddFindings(rows, a, b, na, false);
