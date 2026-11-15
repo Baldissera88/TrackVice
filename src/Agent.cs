@@ -360,6 +360,8 @@ namespace TrackVice
             if (cur != null) m["current"] = Txt.Short(States.Label(cur.State) + " " + cur.DisplayName, 120);
             DateTime? first = s.FirstUtc;
             if (first.HasValue) m["started"] = Iso(first.Value);
+            DateTime? ended = WallModel.Ended(s);
+            if (ended.HasValue) m["ended"] = Iso(ended.Value);
             m["updated"] = Iso(nowUtc);
             m["idle"] = idle ? "1" : "0";
             m["version"] = s.AppVersion;
