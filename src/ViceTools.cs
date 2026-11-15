@@ -201,7 +201,9 @@ namespace TrackVice
             r.Msi = msi;
             if (IsRooted(msi))
             {
-                if (p.FileExists(msi)) r.Path = msi;
+                // A share is not checked: the window would wait for a server that does not answer.
+                if (msi.StartsWith("\\\\")) r.Path = msi;
+                else if (p.FileExists(msi)) r.Path = msi;
                 else r.Reason = msi + " was not found.";
                 return r;
             }

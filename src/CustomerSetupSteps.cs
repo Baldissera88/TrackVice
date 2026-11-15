@@ -245,12 +245,12 @@ namespace TrackVice
             {
                 v.Download = Links.Download;
                 v.Upload = Links.Upload;
-                if (UpdateKey.Length > 0) v.UpdateLink = Links.UpdateRead;
+                if (UpdateKey.Trim().Length > 0) v.UpdateLink = Links.UpdateRead;
             }
             v.Sha256 = ExeSha256;
             v.Alert = Alert.Trim();
             v.MaxAgeHours = MaxAgeHours;
-            v.UpdateKey = UpdateKey;
+            v.UpdateKey = UpdateKey.Trim();
             return v;
         }
 
