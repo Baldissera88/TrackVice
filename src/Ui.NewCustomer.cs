@@ -584,7 +584,7 @@ namespace TrackVice
                 l.Add(Row(Glyphs2.Apps, "Name", nameText.Length > 0 ? nameText : "3 to 24 lowercase letters and digits, unique in all of Azure. Checked with Azure before it is made.", tAccount));
                 l.Add(Row(Glyphs.Info, "Region", "Where the data is kept.", cRegion));
             }
-            else l.Add(Row(Glyphs2.Folder, "Existing account", accounts.Count == 0 ? "This subscription has no storage accounts." : "Its settings are not changed.", cAccount));
+            else l.Add(Row(Glyphs2.Folder, "Existing account", accounts.Count == 0 ? "This subscription has no storage accounts." : "Its settings are kept. Only the cleanup rule is added.", cAccount));
             l.Add(Row(Glyphs2.Calendar, "Delete sessions and logs after", "Days. A lifecycle rule deletes the blobs under " + Arm.Sessions + "/sessions/ and " + Arm.Sessions + "/logs/ when they are older.", nDays));
             bCreate.Text = run.NewAccount ? "Create" : "Set up";
             bCreate.Enabled = !run.StorageReady;
