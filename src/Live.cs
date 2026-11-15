@@ -445,6 +445,7 @@ namespace TrackVice
         };
 
         readonly Dictionary<string, long> lastRecord = new Dictionary<string, long>();
+        readonly RestartWatch restarts = new RestartWatch();
         // The device's MDM enrollments. Policies set by anything else, such as the Windows image, are left out.
         public readonly HashSet<string> Enrollments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -475,6 +476,8 @@ namespace TrackVice
                 try { ReadChannel(ch[0], ch[1], ch[2], sinceUtc, list); }
                 catch (Exception) { }
             }
+            try { list.AddRange(restarts.Read(sinceUtc)); }
+            catch (Exception) { }
             return list;
         }
 
