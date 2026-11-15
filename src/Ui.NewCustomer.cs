@@ -857,6 +857,7 @@ namespace TrackVice
             byte[] data;
             try { data = demo ? Encoding.ASCII.GetBytes("MZ TrackVice demo") : File.ReadAllBytes(run.ExePath); }
             catch (Exception ex) { note.Say("TrackVice.exe could not be read: " + ex.Message, true); return; }
+            if (!demo && MessageBox.Show(this, "Upload " + run.ExePath + " to " + Arm.AgentFiles + " in " + run.Account.Name + " as TrackVice.exe?\n\nIt replaces a TrackVice.exe that is there. Devices whose script has another $Sha256 then stop installing the agent until that script is updated.", "Upload TrackVice.exe", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             Work("Uploading TrackVice.exe...", delegate { run.Upload(web, data); }, delegate
             {
                 uploadText = "SHA-256 " + run.ExeSha256 + ". " + (demo ? "" : (run.ExeSize / 1048576.0).ToString("0.0", CultureInfo.CurrentCulture) + " MB. ")

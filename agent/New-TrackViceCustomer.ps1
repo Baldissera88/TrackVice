@@ -143,6 +143,8 @@ if (-not (Test-Path -Path $TemplatePath -PathType Leaf)) { throw "Install-TrackV
 $ExePath = (Resolve-Path -Path $ExePath).ProviderPath
 $TemplatePath = (Resolve-Path -Path $TemplatePath).ProviderPath
 $OutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
+$Alert = $Alert.Trim()
+$UpdateKey = $UpdateKey.Trim()
 if ($Alert -and $Alert -notmatch '^https://') { throw 'The alert link must start with https://' }
 
 # Sign in to Azure and pick the subscription.

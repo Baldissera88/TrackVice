@@ -144,6 +144,10 @@ namespace TrackVice.Tests
             Item abs = App(Kinds.Application, "msiexec /i \"\\\\fs01.contoso.com\\apps\\Contoso.msi\" /q");
             p.Files.Add(@"\\fs01.contoso.com\apps\Contoso.msi");
             T.Eq(@"\\fs01.contoso.com\apps\Contoso.msi", InstallerFinder.For(abs, p).Path, "a full path is used as it is");
+            p.Files.Remove(@"\\fs01.contoso.com\apps\Contoso.msi");
+            T.Eq(@"\\fs01.contoso.com\apps\Contoso.msi", InstallerFinder.For(abs, p).Path, "a share is not probed, so the window never waits for it");
+            Item local = App(Kinds.Application, "msiexec /i \"D:\\Apps\\Contoso.msi\" /q");
+            T.Check(!InstallerFinder.For(local, p).Found, "a full local path is checked");
         }
 
         static void InstallerNotMsi()

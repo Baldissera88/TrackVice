@@ -353,6 +353,9 @@ namespace TrackVice
         public static readonly TimeSpan Every = TimeSpan.FromHours(6);
         public const string HelperName = "TrackVice-apply.exe";
         public const string StageFolder = "update";
+        // Written before the helper starts: the version it installs. Still there and not the running version at the
+        // next start means the update failed, and the next check waits its 6 hours instead of trying again at once.
+        public const string TriedFile = "update-tried.txt";
 
         public static UpdateDecision Decide(string current, string key, string link, string published)
         {
@@ -465,6 +468,7 @@ namespace TrackVice
         readonly Action<string> log;
         readonly IUpdateLauncher launcher;
         DateTime nextUtc = DateTime.MinValue;
+        bool waitFirst;
 
         public AgentSelfUpdate(ISessionStore store, string publicKey, string current, string installDir, IUpdateLauncher launcher, Action<string> log)
         {
@@ -505,8 +509,29 @@ namespace TrackVice
                 log("Self-update is off: " + ex.Message);
                 return null;
             }
-            log("Self-update is on. It checks " + st.Title + " now and every " + AgentUpdate.Every.TotalHours + " hours.");
-            return new AgentSelfUpdate(st, publicKey, current, installDir, launcher, log);
+            string tried = Tried(installDir);
+            AgentSelfUpdate u = new AgentSelfUpdate(st, publicKey, current, installDir, launcher, log);
+            if (tried != null && tried != current)
+            {
+                u.waitFirst = true;
+                log("The update to " + tried + " did not finish. Self-update is on and checks " + st.Title + " again in " + AgentUpdate.Every.TotalHours + " hours.");
+            }
+            else log("Self-update is on. It checks " + st.Title + " now and every " + AgentUpdate.Every.TotalHours + " hours.");
+            return u;
+        }
+
+        // The version the last update started to install, or null. The file is removed once read.
+        static string Tried(string installDir)
+        {
+            try
+            {
+                string f = Path.Combine(installDir, AgentUpdate.TriedFile);
+                if (!File.Exists(f)) return null;
+                string v = File.ReadAllText(f).Trim();
+                File.Delete(f);
+                return v;
+            }
+            catch (Exception) { return null; }
         }
 
         // Removes what an earlier update left. The helper may still be closing, so this only tries.
@@ -527,6 +552,11 @@ namespace TrackVice
         {
             if (nowUtc < nextUtc) return false;
             nextUtc = nowUtc + AgentUpdate.Every;
+            if (waitFirst)
+            {
+                waitFirst = false;
+                return false;
+            }
             UpdateCheck r;
             try { r = AgentUpdate.Check(store, key, current, Path.Combine(dir, AgentUpdate.StageFolder)); }
             catch (Exception ex)
@@ -539,6 +569,7 @@ namespace TrackVice
             try
             {
                 string helper = Path.Combine(dir, AgentUpdate.HelperName);
+                File.WriteAllText(Path.Combine(dir, AgentUpdate.TriedFile), r.Manifest.Version);
                 launcher.CopySelf(helper);
                 launcher.StartDetached(helper, "/agent-update-apply \"" + r.Path + "\" /sha256 " + r.Manifest.Sha256.ToUpperInvariant());
                 log("The update helper is started. The agent stops so version " + r.Manifest.Version + " can replace it.");
@@ -546,6 +577,7 @@ namespace TrackVice
             }
             catch (Exception ex)
             {
+                try { File.Delete(Path.Combine(dir, AgentUpdate.TriedFile)); } catch (Exception) { }
                 log("The update could not be started, the agent goes on with " + current + ": " + ex.Message);
                 return false;
             }
@@ -582,7 +614,9 @@ namespace TrackVice
         {
             log("Update helper started for " + newExe + ".");
             if (!ops.Exists(newExe)) return Fail(ops, log, "The new TrackVice.exe is not there.", null);
-            if (!string.IsNullOrEmpty(sha256) && !string.Equals(ops.Hash(newExe), sha256, StringComparison.OrdinalIgnoreCase))
+            // The hash is what ties the file to the signed manifest, so without it nothing is replaced.
+            if (string.IsNullOrEmpty(sha256)) return Fail(ops, log, "No SHA-256 was given for the new TrackVice.exe.", newExe);
+            if (!string.Equals(ops.Hash(newExe), sha256, StringComparison.OrdinalIgnoreCase))
                 return Fail(ops, log, "The new TrackVice.exe does not have the SHA-256 that was checked.", newExe);
             if (!ops.WaitForAgentExit(WaitMs))
             {
@@ -607,7 +641,7 @@ namespace TrackVice
                 ops.Sleep(1000);
             }
             if (last != null) return Fail(ops, log, "TrackVice.exe could not be replaced: " + last.Message, newExe);
-            if (!string.IsNullOrEmpty(sha256) && !string.Equals(ops.Hash(target), sha256, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(ops.Hash(target), sha256, StringComparison.OrdinalIgnoreCase))
             {
                 ops.Restore(target);
                 return Fail(ops, log, "The replaced TrackVice.exe does not have the checked SHA-256. The earlier one is put back.", newExe);
