@@ -918,6 +918,7 @@ namespace TrackVice
             new string[] { "/title <text>", "With /report or /fleet-report: the title at the top of the report" },
             new string[] { "/fleet-report <file.html> /upload <location>", "Save an HTML report over every enrollment the agents uploaded there and exit. It covers the uploads of the last /hours (default 24, 0 for all)" },
             new string[] { "/folder <path>", "With /report, /csv or /session: read a folder of logs instead of this device" },
+            new string[] { "/ship-report <file.html> [/from <session.json>]", "Save a one-page ready to ship report of this device, or of a saved session, checked against the reference of the customer in use, and exit. Exits with 2 when the device is not ready" },
             new string[] { "/hours <n>", "Hours of history to read (default 24, 0 for everything since Windows was installed)" },
             new string[] { "/agent-install /upload <location>", "Install the agent: it uploads this device's session while it deploys. The location is a storage container SAS link or a folder" },
             new string[] { "/agent-remove", "Remove the agent" },

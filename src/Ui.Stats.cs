@@ -47,6 +47,9 @@ namespace TrackVice
         readonly ValueChip cMedian = new ValueChip("Median", 0);
         readonly ValueChip cLongest = new ValueChip("Longest", 0);
         FleetStats stats;
+        // The reference of the customer, and what each enrollment shows against it, by upload.
+        readonly Reference reference;
+        Dictionary<string, string> refBadges = new Dictionary<string, string>();
         Dictionary<string, RemoteDeployment> byKey = new Dictionary<string, RemoteDeployment>();
         // Set to stop the load that runs now. A new load or closing the window sets it.
         ManualResetEvent cancel;
@@ -56,6 +59,7 @@ namespace TrackVice
             theme = t;
             catalog = c;
             Catalog = c;
+            reference = ReferenceUi.ForStats(demo);
             Text = "Statistics";
             Icon = Program.AppIcon();
             Font = Fonts.Ui;
@@ -160,6 +164,7 @@ namespace TrackVice
             rc.SortKey = delegate (FleetRun r) { return Num(r.Seconds); };
             runs.Col("Items", 62, delegate (FleetRun r) { return r.Items.ToString(CultureInfo.InvariantCulture); });
             runs.Col("Failed", 62, delegate (FleetRun r) { return r.Failed.ToString(CultureInfo.InvariantCulture); });
+            if (reference != null) runs.Col("Reference", 150, delegate (FleetRun r) { string b; return r.Key != null && refBadges.TryGetValue(r.Key, out b) ? b : ""; });
             runs.Col("Slowest part", 240, delegate (FleetRun r) { return r.Slowest == null ? "" : r.Slowest + " (" + Txt.DurationShort(TimeSpan.FromSeconds(r.SlowestSeconds)) + ")"; }).Fill = true;
             runs.ForeColor = delegate (FleetRun r) { return r.Failed > 0 ? theme.ErrFg : !r.Finished ? theme.Accent : Color.Empty; };
             runs.EmptyText = "Reading the uploads…";
@@ -332,9 +337,11 @@ namespace TrackVice
                     }
                     if (stop.WaitOne(0)) return;
                     FleetStats st = FleetStats.Build(sessions, keys, DateTime.UtcNow);
+                    Dictionary<string, string> rb = ReferenceCheck.Badges(reference, sessions, keys);
                     Ui(delegate
                     {
                         if (cancel != stop) return;
+                        refBadges = rb;
                         ShowStats(st, map, total, unreadable);
                     });
                 }
