@@ -35,6 +35,50 @@ namespace TrackVice.Tests
             Parsing();
             SlowFinding();
             Fleet();
+            CompareRestarts();
+        }
+
+        static Session WithRestart(string computer, DateTime start, double restartAfter)
+        {
+            Session s = new Session();
+            s.Computer = computer;
+            Item app = new Item();
+            app.Key = "app-1";
+            app.Name = "Contoso VPN Client 5.2";
+            app.Kind = Kinds.Win32App;
+            app.PhaseKey = Phases.IntuneApps;
+            app.State = State.Succeeded;
+            app.FirstUtc = app.StateUtc = app.LastUtc = start;
+            s.Items.Add(app);
+            DateTime at = start.AddSeconds(restartAfter);
+            Item r = new Item();
+            r.Key = "restart:" + at.ToString("yyyyMMdd'T'HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+            r.Name = "Restart at " + at.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            r.Kind = Kinds.Restart;
+            r.PhaseKey = Phases.Restarts;
+            r.State = State.Succeeded;
+            r.FirstUtc = r.StateUtc = r.LastUtc = at;
+            s.Items.Add(r);
+            s.ClockUtc = at.AddMinutes(5);
+            return s;
+        }
+
+        // Restarts are named after their time, so two enrollments never share a name for them.
+        static void CompareRestarts()
+        {
+            Session a = WithRestart("CONTOSO-PC01", T0, 600);
+            Session b = WithRestart("CONTOSO-PC02", T0.AddDays(-1), 1500);
+            int restartRows = 0;
+            foreach (DiffRow row in SessionDiff.Compare(a, b))
+                if (!row.IsFinding && ((row.ItemA != null && row.ItemA.Kind == Kinds.Restart) || (row.ItemB != null && row.ItemB.Kind == Kinds.Restart)))
+                {
+                    restartRows++;
+                    T.Check(row.ItemA != null && row.ItemB != null, "compare: the first restart on each side is one row");
+                }
+            T.Eq(1, restartRows, "compare: restarts at different times are paired");
+            Reference r = Reference.From(b, b.ClockUtc, "Contoso", "test");
+            ReferenceResult res = ReferenceCheck.Check(a, a.ClockUtc, r);
+            T.Eq(0, res.Extra.Count + res.Missing.Count, "reference: a restart at another time is not extra or missing");
         }
 
         static void Requesters()

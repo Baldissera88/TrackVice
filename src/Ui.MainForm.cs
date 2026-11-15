@@ -1241,8 +1241,8 @@ namespace TrackVice
             ReferenceMenu(m);
             Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
             Menus.Add(m, "Check devices before enrollment\u2026", delegate { OpenReadiness(false); });
-            AddNotifyViceMenu(m);
             Menus.Add(m, "New customer\u2026", delegate { OpenNewCustomer(false); });
+            AddNotifyViceMenu(m);
             Menus.Separator(m);
             Menus.Add(m, "Watch this device", delegate { Begin(Settings.NewLive(), true); });
             Menus.Separator(m);

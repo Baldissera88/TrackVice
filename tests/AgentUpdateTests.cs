@@ -295,6 +295,10 @@ namespace TrackVice.Tests
             gone.NewExists = false;
             T.Eq(1, UpdateApply.Run(gone, "new.exe", "agent.exe", "AB", l), "apply: no new exe");
             T.Eq("start", Steps(gone), "apply: no new exe starts the agent again");
+
+            FakeOps nohash = new FakeOps();
+            T.Eq(1, UpdateApply.Run(nohash, "new.exe", "agent.exe", null, l), "apply: no hash given");
+            T.Check(!nohash.Did.Contains("replace") && nohash.Did[nohash.Did.Count - 1] == "start", "apply: without a hash nothing is replaced and the agent goes on");
         }
 
         sealed class FakeProcs : IProcessSource
@@ -394,6 +398,24 @@ namespace TrackVice.Tests
                 T.Eq(Path.Combine(install, AgentUpdate.HelperName), fl.Copied, "the agent copies itself to the helper name");
                 T.Eq(fl.Copied, fl.Started, "the helper copy is started");
                 T.Check(fl.Args.StartsWith("/agent-update-apply \"") && fl.Args.Contains("TrackVice-1.0.6.exe") && fl.Args.Contains("/sha256 " + AgentUpdate.Sha256Hex(FakeExe(800))), "the helper gets the new exe and its hash");
+                T.Check(File.Exists(Path.Combine(install, AgentUpdate.TriedFile)), "the version being installed is noted");
+
+                // The helper failed and started the old agent again: it does not download and stop again at once.
+                log.Clear();
+                fl.Started = null;
+                AgentSelfUpdate again = AgentSelfUpdate.For(pub, link, "1.0.5", install, fl, l);
+                T.Check(log.Count == 1 && log[0].Contains("did not finish"), "a failed update is logged at the next start");
+                T.Check(!File.Exists(Path.Combine(install, AgentUpdate.TriedFile)), "the note is removed once read");
+                DateTime later = now.AddHours(7);
+                T.Check(!again.Cycle(later) && fl.Started == null, "after a failed update the first check waits");
+                T.Eq(later.AddHours(6), again.NextUtc, "the next try is 6 hours later");
+                T.Check(again.Cycle(later.AddHours(6)) && fl.Started != null, "then the update is tried again");
+
+                // The update worked: the new version starts as usual.
+                log.Clear();
+                AgentSelfUpdate done = AgentSelfUpdate.For(pub, link, "1.0.6", install, fl, l);
+                T.Check(log.Count == 1 && log[0].StartsWith("Self-update is on"), "after a good update the agent checks as usual");
+                T.Check(!done.Cycle(later.AddHours(7)), "the new version does not update to itself");
             }
             finally { Directory.Delete(dir, true); }
         }
