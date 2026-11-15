@@ -10,7 +10,7 @@ $Upload    = ''   # Where the agent uploads: the container SAS link with Create 
 $KeepHours = 48   # The agent removes itself after this long
 $MaxAgeHours = 0  # Only install on a device enrolled within this many hours. 0 installs on every device
 $Alert     = ''   # Optional: a Teams workflow or other webhook link. The agent posts failures and the end of the deployment there
-$UpdateKey = ''   # Optional: the public key from TrackVice > Settings > Agent updates. With it the agent installs new versions you publish
+$UpdateKey = ''   # Optional: the public key from TrackVice > Settings > Publish agent update. With it the agent installs new versions you publish
 $UpdateLink = ''  # Optional, with $UpdateKey: where the agent reads published versions: a container SAS link with Read, or a folder
 
 $ErrorActionPreference = 'Stop'
