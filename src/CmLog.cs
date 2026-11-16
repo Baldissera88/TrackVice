@@ -18,6 +18,8 @@ namespace TrackVice
         public string Thread;
         public string File;
         public int LineNo;
+        // The time was local time without a zone, as the Intune Management Extension writes it.
+        public bool LocalTime;
     }
 
     // Reads the CMTrace format that ConfigMgr and the Intune Management Extension write, the older simple
@@ -75,6 +77,7 @@ namespace TrackVice
                             int type;
                             if (int.TryParse(m.Groups["type"].Value, out type)) l.Severity = type >= 3 ? 2 : type == 2 ? 1 : 0;
                             l.Utc = Time(m.Groups["date"].Value, m.Groups["time"].Value, zone);
+                            l.LocalTime = l.Utc.HasValue && !HasBias(m.Groups["time"].Value);
                         }
                     }
                     else l.Text = raw.Substring(Open.Length);
@@ -95,6 +98,7 @@ namespace TrackVice
                         l.Component = m.Groups["comp"].Value;
                         l.Thread = m.Groups["thread"].Value;
                         l.Utc = Time(m.Groups["date"].Value, m.Groups["time"].Value, zone);
+                        l.LocalTime = l.Utc.HasValue && !HasBias(m.Groups["time"].Value);
                     }
                     else l.Text = raw;
                     next = lineEnd;
@@ -126,6 +130,14 @@ namespace TrackVice
 
         // CMTrace time is local time with the bias in minutes, UTC = local + bias: "10:02:03.123-060".
         // The IME writes local time with seven decimals and no bias.
+        public static bool HasBias(string time)
+        {
+            string t = (time ?? "").Trim();
+            int sign = Math.Max(t.LastIndexOf('+'), t.LastIndexOf('-'));
+            int bias;
+            return sign > 0 && int.TryParse(t.Substring(sign), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out bias);
+        }
+
         public static DateTime? Time(string date, string time, TimeZoneInfo zone)
         {
             if (string.IsNullOrEmpty(date) || string.IsNullOrEmpty(time)) return null;

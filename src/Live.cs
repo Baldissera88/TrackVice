@@ -182,8 +182,13 @@ namespace TrackVice
             b.Sources.Add(path);
         }
 
+        // When the device changed time zone, such as from the Pacific time of the image to the zone of its region.
+        public readonly ZoneHistory Zones = new ZoneHistory();
+
         void Feed(LogParser p, LogLine l, Batch b)
         {
+            // Read with TimeZoneInfo.Local, as LogTail does without a zone.
+            if (l.LocalTime && l.Utc.HasValue && Zones.Count > 0) l.Utc = Zones.Fix(l.Utc.Value, TimeZoneInfo.Local);
             int before = b.Obs.Count;
             p.Read(l, b.Obs);
             // Lines from before the window still move the parser's state, but are not shown.
@@ -195,6 +200,12 @@ namespace TrackVice
         {
             Batch b = new Batch();
             reads++;
+            // Before any log line is read, so the lines written before a change of time zone get the zone they were written in.
+            if (UseEvents)
+            {
+                try { Zones.Read(SinceUtc); }
+                catch (Exception) { }
+            }
             if (reads == 1 || reads % 5 == 0) Discover(b);
             if (reads == 1 || reads % 15 == 0)
             {
