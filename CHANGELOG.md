@@ -1,5 +1,17 @@
 # Changelog
 
+## TrackVice 1.1.2
+
+16 November 2026.
+
+- Apps: one phase for every app the ESP does not wait for, grouped into Device, after the ESP; User, after the ESP; Available in Company Portal; Dependencies; and Uninstall. Each app says whether it targets the device or a user, and whether it is required or available. Available apps are not counted as waiting.
+- The ESP step Apps in device setup and account setup says which app it waits for.
+- The agent stays until 48 hours after the deployment is done instead of 48 hours after it was installed, waits through a pre-provisioning reseal for the user phase, and always removes itself after at most 30 days (`$MaxDays`, `/max-days`).
+- Fixed: on a device that changed time zone during the deployment, such as an en-US image moved to the time zone of its region, Intune Management Extension log lines written before the change were read hours wrong, and the deployment seemed to have started hours earlier. TrackVice now reads the changes of time zone from the System event log.
+- Fixed: an ESP step could stay Installing when Windows never wrote its time, such as after Continue anyway.
+- Fixed: a log separator line could show as an app's text.
+- Fixed: a platform script with a warning in its output could stay Installing.
+
 ## TrackVice 1.1.1
 
 16 November 2026.

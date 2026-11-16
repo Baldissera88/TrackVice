@@ -246,7 +246,7 @@ Intune admin center > Devices > Scripts and remediations > **Platform scripts** 
 | Setting | Value |
 |---|---|
 | Name | TrackVice agent |
-| Description | Installs the TrackVice agent during enrollment. It uploads the device's deployment progress to the trackvice storage container for 48 hours, then removes itself. |
+| Description | Installs the TrackVice agent during enrollment. It uploads the device's deployment progress to the trackvice storage container until 48 hours after the deployment is done, then removes itself. |
 | Script location | Your filled-in `Install-TrackViceAgent.ps1` |
 | Run this script using the logged on credentials | No |
 | Enforce script signature check | No |
@@ -273,7 +273,7 @@ The viewer link is saved encrypted for your Windows account, so you only paste i
 
 ## Assigning it to all devices
 
-A platform script runs once on every device it is assigned to, also on devices that were enrolled long ago. Those would each install the agent, upload their history for 48 hours and fill your list.
+A platform script runs once on every device it is assigned to, also on devices that were enrolled long ago. Those would each install the agent, upload their history and fill your list.
 
 To avoid that, set `$MaxAgeHours` in the script, for example to `24`. The script then only installs the agent on a device whose Intune Management Extension folder is younger than that, which means a device that has just enrolled. Older devices exit with success and install nothing. Leave it at `0` while you test on your own PC.
 
