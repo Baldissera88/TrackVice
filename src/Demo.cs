@@ -16,6 +16,9 @@ namespace TrackVice
         public string Text;
         public string RegPath;
         public int RegValue;
+        // A value other than InstallationState, under HKLM\SOFTWARE\Microsoft\Enrollments. RegStamp writes the time of the step.
+        public string RegName;
+        public bool RegStamp;
         public SysEvent Event;
     }
 
@@ -72,6 +75,27 @@ namespace TrackVice
             return this;
         }
 
+        // A value of the enrollment's FirstSync key, for the ESP steps. relPath is under FirstSync.
+        public DemoScenario FirstSync(string relPath, string name, int value)
+        {
+            DemoStep s = new DemoStep();
+            s.At = at;
+            s.RegPath = Demo.FirstSyncKey + (string.IsNullOrEmpty(relPath) ? "" : "\\" + relPath);
+            s.RegName = name;
+            s.RegValue = value;
+            Steps.Add(s);
+            at += 0.2;
+            return this;
+        }
+
+        // The Timestamp of a FirstSync key: when the phase started.
+        public DemoScenario FirstSyncStart(string relPath)
+        {
+            FirstSync(relPath, "Timestamp", 0);
+            Steps[Steps.Count - 1].RegStamp = true;
+            return this;
+        }
+
         // A record in the System event log, such as a restart.
         public DemoScenario SystemEvent(string provider, int id, params object[] props)
         {
@@ -106,6 +130,7 @@ namespace TrackVice
         public readonly DateTime StartUtc;
         readonly MemoryRegistry reg = new MemoryRegistry();
         readonly EspWatch esp = new EspWatch();
+        readonly EspFirstSync firstSync = new EspFirstSync();
         readonly RestartWatch restarts = new RestartWatch();
         readonly Dictionary<string, LogParser> parsers = new Dictionary<string, LogParser>(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string, int> lineNos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -141,6 +166,14 @@ namespace TrackVice
             {
                 DemoStep s = Scenario.Steps[next++];
                 DateTime t = StartUtc.AddSeconds(s.At);
+                if (s.RegPath != null && s.RegName != null)
+                {
+                    reg.Clock = t;
+                    if (s.RegStamp) reg.Set(s.RegPath, s.RegName, "REG_QWORD", t.ToFileTimeUtc().ToString(CultureInfo.InvariantCulture));
+                    else reg.Dword(s.RegPath, s.RegName, s.RegValue);
+                    b.Obs.AddRange(firstSync.Read(reg, t));
+                    continue;
+                }
                 if (s.RegPath != null)
                 {
                     reg.Clock = t;
@@ -158,6 +191,8 @@ namespace TrackVice
                 Feed(s, t, b);
             }
             Position = Math.Max(Position, seconds);
+            // The ESP steps end once Windows stops counting them, which the reader sees as time goes on.
+            b.Obs.AddRange(firstSync.Read(reg, StartUtc.AddSeconds(Position)));
             return b;
         }
 
@@ -230,6 +265,7 @@ namespace TrackVice
         const string Ime = @"C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\";
         const string Ccm = @"C:\Windows\CCM\Logs\";
         const string Sid = "S-1-12-1-2841156872-1293587611-3128474290-1572936428";
+        public const string FirstSyncKey = EspFirstSync.EnrollmentsKey + @"\5D2E8A41-7C3B-4F9E-A1D6-0B8C4E2F7A13\FirstSync";
 
         public static DemoScenario Get(string name)
         {
@@ -255,6 +291,8 @@ namespace TrackVice
             string m365 = "3f8a2c1e-5b6d-4a7e-9c21-7d4e5f6a8b01", vpn = "a1c47e92-0d3b-4f5e-8a6c-2b9d1e4f7a02", zip = "6e2b9d14-7c8a-4b3f-a5d1-9e0f2c6b8d03";
             string teams = "9b3e5f71-2a4c-4d8e-b6f0-1c7a3e5d9f04", acrobat = "4d7f1a3c-8e2b-4c6d-9a5f-0b3e7d1c5a05", sheet = "c5e8a2d6-1f4b-4a9c-8d3e-6b0f2a7c4e06";
             string cp = "e7b1d4f8-3c6a-4e2d-a9b5-8f0c1d3e6a07";
+            string support = "2f6a9c3e-7b1d-4e8a-b5c2-0d4f6e8a1b08", vcredist = "8c1e4a7f-3d9b-4f2a-9e6c-5b7d0a2c4e09", expenses = "5a9d2c7e-1b4f-4c8a-8d3e-7f0b2c6e9a10";
+            string visio = "b3f7e1a9-6c2d-4a5b-9f8e-1d3c5a7b9e11", training = "d1a5c9e3-4f7b-4e2a-8c6d-0b9e3f5a7c12";
             d.Names[m365] = "Microsoft 365 Apps for enterprise";
             d.Names[vpn] = "Contoso VPN Client 5.2";
             d.Names[zip] = "7-Zip 24.08";
@@ -262,6 +300,11 @@ namespace TrackVice
             d.Names[acrobat] = "Adobe Acrobat Reader";
             d.Names[sheet] = "Contoso Timesheet";
             d.Names[cp] = "Company Portal";
+            d.Names[support] = "Contoso Remote Support";
+            d.Names[vcredist] = "Microsoft Visual C++ 2015-2022 Redistributable";
+            d.Names[expenses] = "Contoso Expenses";
+            d.Names[visio] = "Microsoft Visio Viewer";
+            d.Names[training] = "Contoso Training";
 
             string prep = @"Device\DevicePreparation\";
             string dev = @"Device\Setup\Apps\Tracking\Sidecar\";
@@ -273,7 +316,13 @@ namespace TrackVice
             d.At(1.3).Line("IntuneManagementExtension", "IntuneManagementExtension", "[Win32App] Intune Management Extension started, ESP mode: DevicePreparation");
             d.At(2.6).Reg(prep + "SidecarProvisioning", 3);
 
-            // Device setup: the ESP lists what it waits for
+            // Device setup: the ESP lists what it waits for, and the agent gets the apps of the device
+            d.At(3.0).FirstSync("", "SyncFailureTimeout", 60).FirstSyncStart("");
+            d.At(3.5).Line("AppWorkload", "AppWorkload", "[Win32App] Get policies = [" + Policy(m365, d, 3, 2) + "," + Policy(vpn, d, 3, 2) + "," + Policy(zip, d, 3, 2) + ","
+                + Policy(support, d, 3, 2) + "," + Policy(vcredist, d, 0, 2) + "]");
+            d.At(4.1).FirstSync("", "NetworkingDuration", 66);
+            d.At(4.2).FirstSync("", "PolicyDuration", 72);
+            d.At(4.8).FirstSync("", "CertificatesDuration", 108);
             d.At(3.0).Reg(@"Device\Setup\Certificates\Contoso Device Certificate", 1).Reg(@"Device\Setup\Profiles\Wi-Fi Contoso Corp", 1)
              .Reg(dev + "Win32App_" + m365 + "_1", 1).Reg(dev + "Win32App_" + vpn + "_1", 1).Reg(dev + "Win32App_" + zip + "_1", 1)
              .Reg(@"Device\Setup\Apps\Tracking\ModernApp\ModernApp_" + cp, 1);
@@ -309,7 +358,7 @@ namespace TrackVice
             }
             // Company Portal from the Store
             d.At(17.2).Reg(@"Device\Setup\Apps\Tracking\ModernApp\ModernApp_" + cp, 2);
-            d.At(18.9).Reg(@"Device\Setup\Apps\Tracking\ModernApp\ModernApp_" + cp, 3);
+            d.At(18.9).Reg(@"Device\Setup\Apps\Tracking\ModernApp\ModernApp_" + cp, 3).FirstSync("", "ApplicationsDuration", 954);
 
             // The Intune Management Extension restarts the device before account setup
             d.At(19.4).SystemEvent(Restarts.User32, 1074, @"C:\Program Files (x86)\Microsoft Intune Management Extension\Microsoft.Management.Services.IntuneWindowsAgent.exe (CONTOSO-LT0417)",
@@ -317,7 +366,16 @@ namespace TrackVice
             d.At(19.5).SystemEvent(Restarts.KernelGeneral, 13).SystemEvent(Restarts.EventLog, 6006);
             d.At(20.9).SystemEvent(Restarts.KernelGeneral, 12).SystemEvent(Restarts.EventLog, 6005);
 
-            // Account setup after sign-in
+            // Account setup after sign-in, and the apps of the user: three the ESP waits for, one it does not, two in Company Portal
+            d.At(21.5).FirstSyncStart(Sid);
+            d.At(21.6).Line("AppWorkload", "AppWorkload", "[Win32App] Get policies = [" + Policy(teams, d, 3, 1) + "," + Policy(sheet, d, 3, 1) + "," + Policy(acrobat, d, 3, 1) + ","
+                + Policy(expenses, d, 3, 1) + "," + Policy(visio, d, 1, 1) + "," + Policy(training, d, 1, 1) + "]");
+            d.At(21.7).FirstSync(Sid, "NetworkingDuration", 12).FirstSync(Sid, "CertificatesDuration", 12);
+            d.At(22.5).FirstSync(Sid, "PolicyDuration", 60);
+            // Not waited for by the ESP: a dependency and a device app, then a user app while Acrobat still runs
+            AppAfter(d, 22.8, vcredist, new int[] { 100 }, 0.2, 0.4, 25165824);
+            AppAfter(d, 23.6, support, new int[] { 40, 100 }, 0.3, 0.8, 41943040);
+            AppAfter(d, 29.8, expenses, new int[] { 35, 80, 100 }, 0.2, 5.0, 31457280);
             d.At(21.5).Reg(Sid + @"\Setup\Policies\UserPolicies", 2).Reg(user + "Win32App_" + teams + "_1", 1).Reg(user + "Win32App_" + sheet + "_1", 1).Reg(user + "Win32App_" + acrobat + "_1", 1);
             d.At(22.4).Reg(Sid + @"\Setup\Policies\UserPolicies", 3);
             ImeApp(d, 22.6, teams, user + "Win32App_" + teams + "_1", 3, new int[] { 22, 58, 100 }, 0.6, 1.4, "0", 188743680);
@@ -340,6 +398,25 @@ namespace TrackVice
             d.Sort();
             d.StartAt = 30.6 * 60;
             return d;
+        }
+
+        static string Policy(string id, DemoScenario d, int intent, int target)
+        {
+            string name;
+            d.Names.TryGetValue(id, out name);
+            return "{\"Id\":\"" + id + "\",\"Name\":\"" + name + "\",\"Version\":1,\"Intent\":" + intent + ",\"TargetType\":" + target + ",\"DetectionRule\":null}";
+        }
+
+        // A Win32 app that the ESP does not wait for.
+        static void AppAfter(DemoScenario d, double startMin, string id, int[] pcts, double stepMin, double installMin, long bytes)
+        {
+            Download(d, startMin, id, pcts, stepMin, bytes);
+            double s = startMin + pcts.Length * stepMin + 0.3;
+            d.At(s).Line("AppWorkload", "AppWorkload", "[Win32App][ExecutionActionHandler] Handler invoked for policy with id: " + id + ", starting to execute install command.")
+             .Line("AppWorkload", "AppWorkload", "[Win32App][Win32AppExecutionExecutor] Launch Win32AppInstaller in machine session for app with id: " + id + ".");
+            d.At(s + installMin).Line("AppWorkload", "AppWorkload", "[Win32App][Win32AppExecutionExecutor] app with id: " + id + " lpExitCode 0")
+             .Line("AppWorkload", "AppWorkload", "[Win32App][DetectionActionHandler] Detection for policy with id: " + id + " resulted in action status: Success and detection state: Detected.")
+             .Line("AppWorkload", "AppWorkload", "[Win32App][ReportingManager] Execution state for app with id: " + id + " has been updated. Report delta: {\"EnforcementState\":\"InProgress -> Success\",\"ErrorCode\":\"null -> 0\"}");
         }
 
         static void Download(DemoScenario d, double startMin, string id, int[] pcts, double stepMin, long bytes)

@@ -378,6 +378,8 @@ namespace TrackVice
                     if (i.StartUtc != null || a != null) i.EndUtc = t;
                 }
             }
+            // An app that is only offered in Company Portal waits for nobody while it is not installed.
+            if ((i.State == State.Pending || i.State == State.Unknown) && AppGroups.IsAvailable(i)) i.State = State.Skipped;
             Changes++;
         }
     }
@@ -486,6 +488,7 @@ namespace TrackVice
             }
 
             AutopilotFlow.Apply(s, list, nowUtc);
+            EspSteps.Apply(s, list, nowUtc);
             Downloads.Apply(s, list);
             list.Sort(delegate (Finding a, Finding b)
             {

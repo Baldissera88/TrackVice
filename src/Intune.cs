@@ -78,7 +78,38 @@ namespace TrackVice
         {
             Obs o = Item(New(l), IntuneKeys.App(id), null, Kinds.Win32App, Origins.Intune, Phases.IntuneApps);
             o.AddInfo("ID", id);
+            AppGroups.Policy p;
+            if (policies.TryGetValue(id, out p)) o.AddInfo(AppGroups.AssignmentKey, p.Assignment).AddInfo(AppGroups.TargetKey, p.Target);
             return o;
+        }
+
+        readonly Dictionary<string, AppGroups.Policy> policies = new Dictionary<string, AppGroups.Policy>(StringComparer.OrdinalIgnoreCase);
+        static readonly Regex RxUserApp = new Regex(@"user with id:?\s*\{?(?<u>[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\}?\s*and app:?\s*\{?(?<a>[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})", Ci);
+
+        // The app policies the agent got: who each app is for and its intent. Apps offered in Company Portal are shown
+        // from here, because nothing else is logged about them until someone installs one.
+        bool ReadPolicies(LogLine l, string t, List<Obs> output)
+        {
+            if (t.IndexOf("Get policies =", StringComparison.OrdinalIgnoreCase) < 0) return false;
+            foreach (AppGroups.Policy p in AppGroups.Policies(t))
+            {
+                bool known = policies.ContainsKey(p.Id);
+                policies[p.Id] = p;
+                Obs o = ForApp(l, p.Id);
+                o.Text = null;
+                o.Severity = 0;
+                if (p.Assignment == AppGroups.Available && !known)
+                {
+                    o.ItemName = p.Name;
+                    o.WeakName = true;
+                    o.Text = "Available in Company Portal";
+                    // The line lists every app with its rules, so the evidence keeps only its start.
+                    o.Evidence = new Evidence(EvidenceKinds.LogLine, l.File, l.LineNo, Txt.Short(l.Raw, 300));
+                }
+                else o.OnlyIfExists = true;
+                output.Add(o);
+            }
+            return true;
         }
 
         public override void Read(LogLine l, List<Obs> output)
@@ -86,6 +117,7 @@ namespace TrackVice
             string t = l.Text ?? "";
             if (source != "AppWorkload" && scripts.Read(l, source, output)) return;
             if (t.IndexOf("Win32App", StringComparison.OrdinalIgnoreCase) < 0 && source != "AgentExecutor" && source != "AppWorkload") return;
+            if (ReadPolicies(l, t, output)) return;
             string thread = l.Thread ?? "";
             string id = null;
             // "for user with id: <user> and app: <app>": the first ID is the user, and all zeros means the device.
@@ -119,6 +151,8 @@ namespace TrackVice
             }
 
             Obs o = ForApp(l, id);
+            Match um = RxUserApp.Match(t);
+            if (um.Success && um.Groups["a"].Value.Equals(id, StringComparison.OrdinalIgnoreCase)) o.AddInfo(AppGroups.TargetKey, AppGroups.TargetOfUser(um.Groups["u"].Value));
             bool useful = m.Success;
             string say = null;
             Match cm = RxCommand.Match(t);
@@ -222,7 +256,13 @@ namespace TrackVice
                     useful = true;
                 }
             }
-            if (!useful && l.Severity < 1) return;
+            // A line that only marks where the agent's work starts or stops says nothing about the app.
+            if (say == null && o.State == null && !o.ExitCode.HasValue && AppGroups.IsSeparator(RxIdPhrase.Replace(t, ""))) return;
+            if (!useful && l.Severity < 1)
+            {
+                TargetOnly(o, um, output);
+                return;
+            }
             // The MSI product code of the detection rule is not on the device: the app is not installed yet.
             if (say == null && t.IndexOf("CheckProductCodeExists fails", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -230,7 +270,11 @@ namespace TrackVice
                 useful = true;
             }
             // Bookkeeping about reporting says nothing about the app itself.
-            if (say == null && o.State == null && !o.ExitCode.HasValue && RxNoise.IsMatch(t)) return;
+            if (say == null && o.State == null && !o.ExitCode.HasValue && RxNoise.IsMatch(t))
+            {
+                TargetOnly(o, um, output);
+                return;
+            }
             // The same thing said again for the same app adds nothing.
             if (say != null && o.State != State.Failed && !o.ExitCode.HasValue)
             {
@@ -242,6 +286,17 @@ namespace TrackVice
             o.Text = say ?? RxIdPhrase.Replace(t, "").Trim();
             if (o.State == State.Failed) o.Severity = 2;
             if (l.Severity > o.Severity) o.Severity = l.Severity;
+            output.Add(o);
+        }
+
+        // Who the app is for still counts when the rest of the line says nothing.
+        static void TargetOnly(Obs o, Match user, List<Obs> output)
+        {
+            if (!user.Success) return;
+            o.Text = null;
+            o.State = null;
+            o.Severity = 0;
+            o.OnlyIfExists = true;
             output.Add(o);
         }
 
@@ -461,7 +516,8 @@ namespace TrackVice
                 o.PhaseKey = Phases.IntuneApps;
                 o.ItemName = Names != null ? Names(it.Id.ToLowerInvariant()) : null;
                 o.AddInfo("ID", it.Id.ToLowerInvariant());
-                o.AddInfo("Assignment", it.Assignment);
+                o.AddInfo(AppGroups.AssignmentKey, AppGroups.AssignmentOf(it.Assignment) ?? it.Assignment);
+                o.AddInfo(AppGroups.TargetKey, AppGroups.TargetOfUser(it.User));
                 o.AddInfo("Status in the registry", it.Status);
                 bool reboot;
                 o.State = Map(it.Status, it.Failed, out reboot);
