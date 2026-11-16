@@ -61,9 +61,11 @@ Export the ESP tracking key for comparison:
 reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking esp.reg
 ```
 
-## 5. Intune apps after the ESP
+## 5. Apps after the ESP
 
-- [ ] A Win32 app assigned after enrollment shows under Intune apps.
+- [ ] A Win32 app assigned after enrollment shows under Apps, in Device, after the ESP or User, after the ESP. An available app shows under Available in Company Portal and is not counted as waiting.
+- [ ] The ESP step Apps in device setup and account setup says which app it waits for.
+- [ ] On a device whose time zone changes during the deployment (an en-US image moved to another region), the Started time in the header matches when the deployment started, not hours before.
 - [ ] A retried install counts its attempts.
 
 ## 6. Saving and sharing

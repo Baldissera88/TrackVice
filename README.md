@@ -57,10 +57,10 @@ TrackVice reads only. The exceptions are the agent's own folder, task and regist
 | SCCM software updates | Software updates | `UpdatesDeployment.log`, `UpdatesHandler.log` and `CCM_SoftwareUpdate` |
 | Autopilot and the ESP | Device preparation, device setup, account setup | `HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking`, also the keys of the user in account setup, the Autopilot profile and the ESP time limit |
 | Autopilot milestones | Device preparation, and on the timeline | The Autopilot event log (`ModernDeployment-Diagnostics-Provider/Autopilot`), the MDM, User Device Registration and Shell-Core event logs: TPM attestation, device enrollment by Autopilot, MDM enrollment, offline domain join, the domain controller check, hybrid Entra join, pre-provisioning and Autopilot device preparation |
-| Intune Win32 apps | Intune apps, or the ESP phase that waits for them | `IntuneManagementExtension.log`, `AppWorkload.log`, `AgentExecutor.log` and the `Win32Apps` key |
+| Intune Win32 apps | Apps, grouped by device or user, required, available, dependency or uninstall, or the ESP phase that waits for them | `IntuneManagementExtension.log`, `AppWorkload.log`, `AgentExecutor.log` and the `Win32Apps` key |
 | What the ESP waits for | Device setup, account setup | The policies, Wi-Fi and VPN profiles, certificates, MSI and Store apps under `EnrollmentStatusTracking\ESPTrackingInfo\Diagnostics`, with the time of each change |
-| Microsoft 365 Apps | The ESP phase that waits for it, or Intune apps | `HKLM\SOFTWARE\Microsoft\OfficeCSP`: products, channel, languages and result |
-| MSI apps from Intune | The ESP phase that waits for them, or Intune apps | `HKLM\SOFTWARE\Microsoft\EnterpriseDesktopAppManagement`: download and install state, error and product name |
+| Microsoft 365 Apps | The ESP phase that waits for it, or Apps | `HKLM\SOFTWARE\Microsoft\OfficeCSP`: products, channel, languages and result |
+| MSI apps from Intune | The ESP phase that waits for them, or Apps | `HKLM\SOFTWARE\Microsoft\EnterpriseDesktopAppManagement`: download and install state, error and product name |
 | Platform scripts | Platform scripts | `IntuneManagementExtension.log`, `AgentExecutor.log` and the `IntuneManagementExtension\Policies` key: result, exit code, output and error text |
 | Remediations | Remediations | `HealthScripts.log` and the `SideCarPolicies\Scripts` key: detection and remediation result and exit codes |
 | MDM policies | Policies, one item per policy area | Every setting the MDM client set, from the DeviceManagement Admin event log |
@@ -169,7 +169,7 @@ Intune and SCCM only know what a device has reported. With the agent, the device
 | | |
 |---|---|
 | Install | An Intune platform script (`agent/Install-TrackViceAgent.ps1`) or a Win32 app that runs `TrackVice.exe /agent-install /upload "<location>"` |
-| On the device | A startup task that runs as SYSTEM, survives restarts, and removes itself after 48 hours |
+| On the device | A startup task that runs as SYSTEM, survives restarts and a pre-provisioning reseal, and removes itself 48 hours after the deployment is done, and at most 30 days after it was installed |
 | Location | A container SAS link: Create and Write for the devices, Read and List for the viewer. Or a folder |
 | The list | Device, progress with the current item, deployment, profile, start, duration and last upload. Refreshed every 15 seconds |
 | One device | Everything the device itself shows. Read every 5 seconds |
@@ -318,7 +318,8 @@ TrackVice.exe /export-data <folder> /upload <location>
 
 TrackVice.exe /agent-install /upload <location>
                                        Install the agent. The location is a storage container SAS link or a folder
-  /keep <hours>                        How long the agent stays before it removes itself (default 48)
+  /keep <hours>                        Hours the agent stays after the deployment is done (default 48)
+  /max-days <days>                     Days after install when the agent always removes itself (default 30)
   /update-key <key> /update <location> Install newer versions published there, signed with this key. The location
                                        is a SAS link with Read, or a folder
 TrackVice.exe /agent-remove            Remove the agent
