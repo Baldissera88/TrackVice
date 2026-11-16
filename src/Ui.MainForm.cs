@@ -119,6 +119,7 @@ namespace TrackVice
             clockTimer.Start();
             Shown += Safe.Wrap(delegate
             {
+                CheckYourStorage();
                 if (start.Remote != null && start.Pick != null)
                 {
                     IRemoteCatalog c = RemoteDialog.DemoCatalog(start.Remote);
@@ -1231,6 +1232,8 @@ namespace TrackVice
         ContextMenuStrip DevicesMenu()
         {
             ContextMenuStrip m = Menus.New(theme);
+            Menus.Add(m, "Add customer\u2026", delegate { OpenAddCustomer(false); });
+            Menus.Separator(m);
             Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
             Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
             Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
@@ -1241,7 +1244,7 @@ namespace TrackVice
             ReferenceMenu(m);
             Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
             Menus.Add(m, "Check devices before enrollment\u2026", delegate { OpenReadiness(false); });
-            Menus.Add(m, "New customer\u2026", delegate { OpenNewCustomer(false); });
+            Menus.Add(m, "New customer with links\u2026", delegate { OpenNewCustomer(false); });
             AddNotifyViceMenu(m);
             Menus.Separator(m);
             Menus.Add(m, "Watch this device", delegate { Begin(Settings.NewLive(), true); });
@@ -1254,6 +1257,7 @@ namespace TrackVice
             Menus.Add(m, "Demo: compare two enrollments", delegate { using (CompareDialog d = CompareDialog.ForDemo(theme)) d.ShowDialog(this); });
             Menus.Add(m, "Demo: check before enrollment", delegate { OpenReadiness(true); });
             Menus.Add(m, "Demo: new customer", delegate { OpenNewCustomer(true); });
+            Menus.Add(m, "Demo: add customer", delegate { OpenAddCustomer(true); });
             return m;
         }
 
@@ -1697,6 +1701,7 @@ namespace TrackVice
             else if (start.Page == "publish") page = PublishDialog.ForDemo(theme);
             else if (start.Page == "names") page = new NamesDialog(theme, engine != null ? engine.S.Computer : null);
             else if (start.Page == "newcustomer") page = NewCustomerDialog.ForDemo(theme, start.Tab);
+            else if (Array.IndexOf(AddCustomerUi.Pages, start.Page) >= 0) page = ShotAddCustomer();
             else if (start.Page == "readiness") { ReadinessDialog rd = new ReadinessDialog(theme, new DemoReadinessGraph(DateTime.UtcNow), null, true); rd.RunAtStart = true; page = rd; }
             else if (start.Remote != null && start.Pick == null)
             {
