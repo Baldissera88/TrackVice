@@ -57,6 +57,7 @@ namespace TrackVice.Tests
             ZoneHistoryTests.Run();
             ViceToolTests.Run();
             CustomerSetupTests.Run();
+            AgentLifetimeTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

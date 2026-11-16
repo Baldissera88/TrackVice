@@ -10,7 +10,7 @@ namespace TrackVice
     public sealed class ScriptValues
     {
         public string Download = "", Sha256 = "", Upload = "", Alert = "", UpdateKey = "", UpdateLink = "";
-        public int KeepHours = 48, MaxAgeHours = 24;
+        public int KeepHours = 48, MaxDays = 30, MaxAgeHours = 24;
     }
 
     public static class AgentScript
@@ -38,6 +38,7 @@ namespace TrackVice
             s = Set(s, "Sha256", Quote(v.Sha256));
             s = Set(s, "Upload", Quote(v.Upload));
             s = Set(s, "KeepHours", v.KeepHours.ToString(CultureInfo.InvariantCulture));
+            s = Set(s, "MaxDays", v.MaxDays.ToString(CultureInfo.InvariantCulture));
             s = Set(s, "MaxAgeHours", v.MaxAgeHours.ToString(CultureInfo.InvariantCulture));
             s = Set(s, "Alert", Quote(v.Alert));
             s = Set(s, "UpdateKey", Quote(v.UpdateKey));
@@ -66,7 +67,7 @@ namespace TrackVice
         public const string ScriptScope = "https://graph.microsoft.com/DeviceManagementScripts.ReadWrite.All";
         public const string GroupScope = "https://graph.microsoft.com/Group.ReadBasic.All";
         public const string ScriptsUrl = "https://graph.microsoft.com/beta/deviceManagement/deviceManagementScripts";
-        public const string Description = "Installs the TrackVice agent during enrollment. It uploads the device's deployment progress to the trackvice storage container for 48 hours, then removes itself.";
+        public const string Description = "Installs the TrackVice agent during enrollment. It uploads the device's deployment progress to the trackvice storage container until 48 hours after the deployment is done, then removes itself.";
 
         readonly IWeb web;
         readonly Func<string> token;

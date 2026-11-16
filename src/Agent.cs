@@ -576,6 +576,7 @@ namespace TrackVice
     {
         public string Upload;
         public int KeepHours = 48;
+        public int MaxDays = AgentLifetime.DefaultMaxDays;
         public int IdleMinutes = 30;
         public int UploadSeconds = 10;
         public int HeartbeatSeconds = 30;
@@ -603,6 +604,8 @@ namespace TrackVice
         DateTime lastChange, lastUpload = DateTime.MinValue;
         public int Uploads;
         public string LastError;
+        // While a resealed device waits for its user: upload only when something changed.
+        public bool Paused;
 
         public Agent(ISessionStore s, string sessionId, DateTime nowUtc)
         {
@@ -622,6 +625,7 @@ namespace TrackVice
             string sig = AgentData.Signature(s);
             bool changed = sig != lastSignature;
             if (changed) lastChange = nowUtc;
+            if (Paused && !changed && !force) return false;
             bool idle = Idle(s, nowUtc, o.IdleMinutes);
             double since = (nowUtc - lastUpload).TotalSeconds;
             int heartbeat = idle ? Math.Max(o.HeartbeatSeconds, 300) : o.HeartbeatSeconds;
@@ -720,10 +724,15 @@ namespace TrackVice
                 if (installed && o.Alert == null) o.Alert = Reg("Alert");
                 if (installed && Reg("Mask") == "0") o.Mask = false;
                 if (installed && Reg("Version") != Program.Version) SetReg("Version", Program.Version);
-                int keep;
-                if (installed && int.TryParse(Reg("KeepHours"), NumberStyles.Integer, CultureInfo.InvariantCulture, out keep) && keep > 0) o.KeepHours = keep;
-                DateTime until = started.AddHours(o.KeepHours);
-                Log("Agent " + Program.Version + " started, session " + sid + ", uploading to " + store.Title + " until " + until.ToString("u", CultureInfo.InvariantCulture));
+                AgentLifetime life = installed ? AgentLifetime.FromSettings(Reg, started) : new AgentLifetime(started, o.KeepHours, o.MaxDays);
+                o.KeepHours = life.KeepHours;
+                life.Log = Log;
+                if (installed) life.Save = delegate
+                {
+                    SetReg("DoneUtc", life.DoneUtc.HasValue ? life.DoneUtc.Value.ToString("o", CultureInfo.InvariantCulture) : "");
+                    SetReg("DoneItems", life.DoneItems.ToString(CultureInfo.InvariantCulture));
+                };
+                Log("Agent " + Program.Version + " started, session " + sid + ", uploading to " + store.Title + " until " + life.KeepHours + " hours after the deployment is done, at the latest " + AgentLifetime.U(life.LimitUtc));
 
                 Agent a = new Agent(store, sid, DateTime.UtcNow);
                 AgentAlerts alerts = null;
@@ -741,6 +750,7 @@ namespace TrackVice
                 bool mask = o.Mask;
                 LogUploads logs = new LogUploads(store, AgentData.BlobName(sid), delegate (Session x) { return LogBundle.Make(mask ? Secrets.MaskedCopy(x) : x); }, Log);
                 string shownError = null;
+                string ending = null;
                 bool updating = false;
                 AgentSelfUpdate self = installed && !o.Once ? AgentSelfUpdate.For(Reg("UpdateKey"), Reg("UpdateLink"), Program.Version, InstallDir, new WinUpdateLauncher(System.Reflection.Assembly.GetExecutingAssembly().Location), Log) : null;
                 // Everything since Windows was installed: after a restart the session is read again in full.
@@ -751,7 +761,10 @@ namespace TrackVice
                         DateTime now = DateTime.UtcNow;
                         try { e.Apply(e.Poll()); }
                         catch (Exception ex) { Log("Reading failed: " + ex.Message); }
-                        bool last = o.Once || now >= until;
+                        LifetimeDecision decision = life.Check(e.S, a.Idle(e.S, now, o.IdleMinutes), now);
+                        a.Paused = life.Waiting;
+                        bool last = o.Once || decision.Remove;
+                        if (decision.Remove) ending = decision.Reason;
                         if (a.Cycle(e.S, now, o, last) && a.Uploads == 1) Log("First upload done, " + e.S.Items.Count + " items.");
                         if (a.LastError != shownError)
                         {
@@ -773,7 +786,7 @@ namespace TrackVice
                 }
                 if (installed && !o.Once && !updating)
                 {
-                    Log("Time is up after " + o.KeepHours + " hours. Removing the agent.");
+                    Log(ending ?? "Removing the agent.");
                     Remove();
                 }
                 return a.LastError == null ? 0 : 1;
@@ -816,6 +829,7 @@ namespace TrackVice
                 catch (Exception ex) { Log("Could not restrict the registry key: " + ex.Message); }
                 k.SetValue("Upload", o.Upload.Trim());
                 k.SetValue("KeepHours", o.KeepHours.ToString(CultureInfo.InvariantCulture));
+                k.SetValue("MaxDays", o.MaxDays.ToString(CultureInfo.InvariantCulture));
                 k.SetValue("Version", Program.Version);
                 // Installed again while it runs, as when the platform script is changed in Intune: the same session goes on.
                 if (!string.IsNullOrWhiteSpace(o.Alert)) k.SetValue("Alert", o.Alert.Trim());
@@ -840,7 +854,7 @@ namespace TrackVice
             }
             Schtasks("/Run /TN \"" + TaskName + "\"");
             Log("Agent " + Program.Version + " installed.");
-            Console.WriteLine("The TrackVice agent is installed and running. It removes itself after " + o.KeepHours + " hours.");
+            Console.WriteLine("The TrackVice agent is installed and running. It removes itself " + o.KeepHours + " hours after the deployment is done, and at most " + o.MaxDays + " days after it was installed.");
             return 0;
         }
 
