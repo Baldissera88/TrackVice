@@ -382,10 +382,44 @@ namespace TrackVice
             string keepItem = SelectedItem != null ? SelectedItem.Key : null;
             string keepPhase = SelectedItem == null && SelectedPhase != null ? SelectedPhase.Key : null;
             rows.Clear();
+            // Every app in one Apps section: the apps the ESP waits for are listed there, not under their ESP phase.
+            List<Item> espApps = new List<Item>();
+            Phase appsPhase = null;
+            int lastEsp = -1, at = 0;
             foreach (Phase p in source)
             {
+                if (p.Key == Phases.IntuneApps) appsPhase = p;
+                if (p.Key == Phases.DeviceSetup || p.Key == Phases.AccountSetup)
+                {
+                    lastEsp = at;
+                    foreach (Item i in p.Items) if (AppGroups.IsApp(i)) espApps.Add(i);
+                }
+                at++;
+            }
+            List<Phase> shown = new List<Phase>();
+            Phase apps = null;
+            if (espApps.Count > 0)
+            {
+                apps = new Phase();
+                apps.Key = Phases.IntuneApps;
+                apps.Name = appsPhase != null ? appsPhase.Name : Phases.Name(Phases.IntuneApps);
+                apps.Order = appsPhase != null ? appsPhase.Order : 0;
+                apps.Items.AddRange(espApps);
+                if (appsPhase != null) apps.Items.AddRange(appsPhase.Items);
+            }
+            at = 0;
+            foreach (Phase p in source)
+            {
+                if (apps != null && p == appsPhase) shown.Add(apps);
+                else shown.Add(p);
+                if (apps != null && appsPhase == null && at == lastEsp) shown.Add(apps);
+                at++;
+            }
+            foreach (Phase p in shown)
+            {
+                bool esp = apps != null && (p.Key == Phases.DeviceSetup || p.Key == Phases.AccountSetup);
                 List<Item> items = new List<Item>();
-                foreach (Item i in p.Items) if (Filter == null || Filter(i)) items.Add(i);
+                foreach (Item i in p.Items) if ((Filter == null || Filter(i)) && !(esp && AppGroups.IsApp(i))) items.Add(i);
                 if (items.Count == 0 && Filter != null) continue;
                 Row h = new Row();
                 h.Phase = p;
