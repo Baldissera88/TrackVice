@@ -254,11 +254,37 @@ namespace TrackVice
                     try { foreach (string id in EventWatch.ReadEnrollments(reg)) events.Enrollments.Add(id); }
                     catch (Exception) { }
                 }
+                if (reads == 1) events.RestartFloor = RestartFloor(b.Obs, nowUtc);
                 try { b.Obs.AddRange(events.Read(reads == 1 ? SinceUtc : (DateTime?)null)); }
                 catch (Exception) { }
             }
             if (reg.Denied.Count > 0 && reads == 1) b.Notes.Add("Some registry keys could not be read. Run TrackVice as administrator to see every ESP and Intune app state.");
             return b;
+        }
+
+        // An hour before the earliest thing the deployment logged, and not before Intune Management Extension came on the
+        // device. Without either, two hours back. The System log keeps restarts from long before, such as when Windows was
+        // installed months ago and enrolled today.
+        public DateTime RestartFloor(List<Obs> found, DateTime nowUtc)
+        {
+            DateTime? first = null;
+            foreach (Obs o in found)
+            {
+                if (o.TimeUtc == DateTime.MinValue || o.TimeUtc < SinceUtc || o.TimeUtc > nowUtc.AddMinutes(5)) continue;
+                if (!first.HasValue || o.TimeUtc < first.Value) first = o.TimeUtc;
+            }
+            DateTime floor = first.HasValue ? first.Value.AddHours(-1) : nowUtc.AddHours(-2);
+            try
+            {
+                string ime = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Microsoft\IntuneManagementExtension");
+                if (Directory.Exists(ime))
+                {
+                    DateTime made = Directory.GetCreationTimeUtc(ime).AddHours(-2);
+                    if (made > floor && made < nowUtc) floor = made;
+                }
+            }
+            catch (Exception) { }
+            return floor < SinceUtc ? SinceUtc : floor;
         }
 
         public void Dispose()
@@ -446,6 +472,14 @@ namespace TrackVice
 
         readonly Dictionary<string, long> lastRecord = new Dictionary<string, long>();
         readonly RestartWatch restarts = new RestartWatch();
+
+        // Where restarts start to count, and that this is the device itself. See RestartWatch.Floor.
+        public DateTime? RestartFloor
+        {
+            get { return restarts.Floor; }
+            set { restarts.Floor = value; restarts.Clock = delegate { return DateTime.UtcNow; }; }
+        }
+
         // The device's MDM enrollments. Policies set by anything else, such as the Windows image, are left out.
         public readonly HashSet<string> Enrollments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

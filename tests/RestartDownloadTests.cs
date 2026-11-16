@@ -36,6 +36,59 @@ namespace TrackVice.Tests
             SlowFinding();
             Fleet();
             CompareRestarts();
+            OldHistory();
+            NeverStarted();
+        }
+
+        // The System log keeps restarts from long before the enrollment. Only those after the floor count.
+        static void OldHistory()
+        {
+            RestartWatch w = new RestartWatch();
+            w.Floor = T0;
+            List<Obs> o = w.Add(new SysEvent[]
+            {
+                E("Microsoft-Windows-Kernel-General", 13, -86400 * 300.0), E("Microsoft-Windows-Kernel-General", 12, -86400 * 300.0 + 60),
+                E("Microsoft-Windows-Kernel-General", 13, 600), E("Microsoft-Windows-Kernel-General", 12, 660),
+            });
+            HashSet<string> keys = new HashSet<string>();
+            foreach (Obs x in o) keys.Add(x.ItemKey);
+            T.Eq(1, keys.Count, "restarts: one from before the floor is left out");
+        }
+
+        // A restart that was asked for but Windows never started again: closed by the next one, or by time on the device.
+        static void NeverStarted()
+        {
+            List<Restart> rs = Restarts.Build(new SysEvent[]
+            {
+                Request(0, @"C:\Windows\system32\winlogon.exe", "Other (Unplanned)", "CONTOSO\\anna"),
+                Request(7200, @"C:\Windows\system32\winlogon.exe", "Other (Unplanned)", "CONTOSO\\anna"),
+                E("Microsoft-Windows-Kernel-General", 13, 7210), E("Microsoft-Windows-Kernel-General", 12, 7260),
+            });
+            T.Eq(2, rs.Count, "restarts: a request hours before the next is its own restart");
+            T.Check(!rs[0].BootUtc.HasValue && rs[1].BootUtc.HasValue, "restarts: only the second started again");
+
+            RestartWatch w = new RestartWatch();
+            State? first = null, second = null;
+            foreach (Obs x in w.Add(new SysEvent[] { E("User32", 1074, 10000, "p (C)", "C", "r", "0x0", "restart", "", "u"), E("Microsoft-Windows-Kernel-General", 13, 10010),
+                E("User32", 1074, 20000, "p (C)", "C", "r", "0x0", "restart", "", "u"), E("Microsoft-Windows-Kernel-General", 13, 20010), E("Microsoft-Windows-Kernel-General", 12, 20060) }))
+            {
+                if (!x.State.HasValue) continue;
+                if (x.ItemKey == "restart:" + T0.AddSeconds(10000).ToString("yyyyMMdd'T'HHmmss", System.Globalization.CultureInfo.InvariantCulture)) first = x.State;
+                else second = x.State;
+            }
+            T.Check(first == State.Skipped, "restarts: one without a start is closed by the next restart");
+            T.Check(second == State.Succeeded, "restarts: the next one is done");
+
+            RestartWatch live = new RestartWatch();
+            live.Clock = delegate { return T0.AddSeconds(30000 + 3600); };
+            bool closed = false;
+            foreach (Obs x in live.Add(new SysEvent[] { E("Microsoft-Windows-Kernel-General", 13, 30000) }))
+                if (x.State == State.Skipped) closed = true;
+            T.Check(closed, "restarts: on the device, one without a start is closed after half an hour");
+            RestartWatch fresh = new RestartWatch();
+            fresh.Clock = delegate { return T0.AddSeconds(40000 + 60); };
+            foreach (Obs x in fresh.Add(new SysEvent[] { E("Microsoft-Windows-Kernel-General", 13, 40000) }))
+                T.Check(x.State != State.Skipped, "restarts: a restart a minute ago is still going on");
         }
 
         static Session WithRestart(string computer, DateTime start, double restartAfter)

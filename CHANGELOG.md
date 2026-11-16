@@ -1,5 +1,12 @@
 # Changelog
 
+## TrackVice 1.1.1
+
+16 November 2026.
+
+- Fixed: on a device where Windows was installed long before the enrollment, restarts from months back were read from the System event log. The deployment then seemed to have started then, and ran for thousands of hours. Restarts now count from an hour before the first thing the deployment logged, and not from before Intune Management Extension came on the device.
+- Fixed: a restart that was asked for but where Windows never started again stayed Installing. It is now closed when the next restart begins, or on the device after half an hour, with the note that no start of Windows was logged.
+
 ## TrackVice 1.1.0
 
 15 November 2026.

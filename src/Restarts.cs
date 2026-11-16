@@ -58,6 +58,8 @@ namespace TrackVice
         public const string Channel = "System";
         public const string User32 = "User32", EventLog = "EventLog", KernelGeneral = "Microsoft-Windows-Kernel-General", KernelPower = "Microsoft-Windows-Kernel-Power";
         const string KeyPrefix = "restart:";
+        // How long a restart may wait for Windows to start again before the next request or stop starts another.
+        public static readonly TimeSpan OpenGap = TimeSpan.FromMinutes(30);
 
         static readonly Regex RxIso = new Regex(@"^(?<d>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(?<f>\d+))?Z?$", RegexOptions.Compiled);
 
@@ -146,6 +148,9 @@ namespace TrackVice
             {
                 if (IsRequest(e) || IsStop(e))
                 {
+                    // A restart that was asked for but never happened, or a gap in the log: Windows did not start again
+                    // before this next request, so the open one is closed without a start.
+                    if (open != null && e.TimeUtc - open.Events[open.Events.Count - 1].TimeUtc > OpenGap) open = null;
                     if (open == null) { open = New(e); list.Add(open); }
                     open.Events.Add(e);
                     continue;
@@ -352,6 +357,11 @@ namespace TrackVice
         readonly Dictionary<string, string> said = new Dictionary<string, string>();
         long lastRecord;
         public TimeZoneInfo Zone = TimeZoneInfo.Local;
+        // Events before this are not part of the deployment: the System log keeps the restarts of the device's whole life.
+        public DateTime? Floor;
+        // The time now, on the device itself. Set when the events are read live: Windows is running, so a restart that has not
+        // started again after OpenGap never will.
+        public Func<DateTime> Clock;
 
         public List<Obs> Add(IEnumerable<SysEvent> events)
         {
@@ -359,6 +369,7 @@ namespace TrackVice
             foreach (SysEvent e in events)
             {
                 if (e == null || !Restarts.Known(e)) continue;
+                if (Floor.HasValue && e.TimeUtc < Floor.Value) continue;
                 string id = e.Provider + "|" + e.Id + "|" + e.Record + "|" + e.TimeUtc.Ticks;
                 if (!seen.Add(id)) continue;
                 all.Add(e);
@@ -367,11 +378,14 @@ namespace TrackVice
             List<Obs> output = new List<Obs>();
             if (fresh.Count == 0) return output;
             List<Restart> rs = Restarts.Build(all);
-            foreach (Restart r in rs)
+            for (int k = 0; k < rs.Count; k++)
             {
+                Restart r = rs[k];
                 string name = Restarts.Name(r, Zone);
                 StringBuilder sig = new StringBuilder(name);
                 List<Pair> info = Restarts.Info(r);
+                DateTime? closed = Closed(r, k + 1 < rs.Count ? rs[k + 1] : null);
+                if (closed.HasValue) info.Add(new Pair("Started again", "Not logged"));
                 foreach (Pair p in info) sig.Append('|').Append(p.Key).Append('=').Append(p.Value);
                 string old;
                 if (!said.TryGetValue(r.Key, out old) || old != sig.ToString())
@@ -386,8 +400,27 @@ namespace TrackVice
                     if (!fresh.Contains(e)) continue;
                     output.Add(EventObs(e, r, name));
                 }
+                if (closed.HasValue && !said.ContainsKey(r.Key + "|closed"))
+                {
+                    said[r.Key + "|closed"] = "";
+                    Obs c = For(r, name, closed.Value);
+                    c.State = State.Skipped;
+                    c.Text = "No start of Windows was logged after this. The restart was cancelled, or the log has a gap";
+                    output.Add(c);
+                }
             }
             return output;
+        }
+
+        // When a restart without a start of Windows is known to be over: when the next restart began, or, on the device
+        // itself, once OpenGap has passed. Null while it may still be going on.
+        DateTime? Closed(Restart r, Restart next)
+        {
+            if (r.BootUtc.HasValue) return null;
+            DateTime last = r.Events.Count > 0 ? r.Events[r.Events.Count - 1].TimeUtc : r.FirstUtc;
+            if (next != null) return next.FirstUtc > last ? next.FirstUtc : last;
+            if (Clock != null && Clock() - last > Restarts.OpenGap) return last.Add(Restarts.OpenGap);
+            return null;
         }
 
         Obs For(Restart r, string name, DateTime t)
