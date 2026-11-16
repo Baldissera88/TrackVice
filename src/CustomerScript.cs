@@ -5,10 +5,9 @@ namespace TrackVice
     {
         public const string Variable = "Customer";
 
-        // Placeholder until the one-line script is in place; the setup calls only this.
         public static string For(string customerCode)
         {
-            return "$Customer = " + AgentScript.Quote(customerCode ?? "") + "\r\n";
+            return AgentScript.Set(AgentScriptTemplate.Text, Variable, AgentScript.Quote((customerCode ?? "").Trim()));
         }
     }
 }

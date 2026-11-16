@@ -66,7 +66,7 @@ The Intune Management Extension runs platform scripts before it installs Win32 a
 - An Azure subscription where you can create a storage account, or an existing storage account. The cost is negligible: a session is a few hundred kilobytes per device.
 - Intune, with the right to add a platform script.
 - Outbound HTTPS (port 443) from the devices to `<account>.blob.core.windows.net`.
-- `TrackVice.exe` and `agent/Install-TrackViceAgent.ps1` from this repository.
+- `TrackVice.exe` and `agent/Install-TrackViceAgent-Links.ps1` from this repository. The steps below use it, with the links filled in. `agent/Install-TrackViceAgent.ps1` holds only a customer code made by TrackVice instead.
 
 The storage account does not have to be in the same tenant as the devices. The devices only use the upload link.
 
@@ -113,7 +113,7 @@ It reads the account key once to sign the links on your PC. The key is not shown
 
 | Where | What |
 |---|---|
-| The script | `Install-TrackViceAgent-<customer>.ps1`, a copy of `Install-TrackViceAgent.ps1` with `$Download`, `$Sha256`, `$Upload`, `$Alert`, `$MaxAgeHours` and, when this PC has an update key, `$UpdateKey` and `$UpdateLink` filled in. It holds the links, so keep it like a password |
+| The script | `Install-TrackViceAgent-<customer>.ps1`, a copy of `Install-TrackViceAgent-Links.ps1` with `$Download`, `$Sha256`, `$Upload`, `$Alert`, `$MaxAgeHours` and, when this PC has an update key, `$UpdateKey` and `$UpdateLink` filled in. It holds the links, so keep it like a password |
 | Intune, if you choose | The platform script **TrackVice agent**, set as in [step 6](#step-6-the-platform-script-in-intune), assigned to the device group you pick. It is the only part that changes Intune |
 | TrackVice on this PC | The customer with its tenant and the viewer link, and the publish link for Publish agent update, both links encrypted for your Windows account |
 
@@ -208,7 +208,7 @@ Then open TrackVice > **Devices > Devices with the TrackVice agent**, paste the 
 
 ## Step 5: fill in and test the script
 
-Open `agent/Install-TrackViceAgent.ps1` and fill in the first lines. Keep the single quotes:
+Open `agent/Install-TrackViceAgent-Links.ps1` and fill in the first lines. Keep the single quotes:
 
 ```powershell
 $Download  = 'https://<account>.blob.core.windows.net/trackvice/TrackVice.exe?sp=r&...'
@@ -224,7 +224,7 @@ $Alert     = ''
 Run it on your own PC, in PowerShell **as administrator**:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\Install-TrackViceAgent.ps1
+powershell.exe -ExecutionPolicy Bypass -File .\Install-TrackViceAgent-Links.ps1
 ```
 
 It prints "The TrackVice agent is installed and running" within a few seconds. Check:
@@ -247,7 +247,7 @@ Intune admin center > Devices > Scripts and remediations > **Platform scripts** 
 |---|---|
 | Name | TrackVice agent |
 | Description | Installs the TrackVice agent during enrollment. It uploads the device's deployment progress to the trackvice storage container until 48 hours after the deployment is done, then removes itself. |
-| Script location | Your filled-in `Install-TrackViceAgent.ps1` |
+| Script location | Your filled-in `Install-TrackViceAgent-Links.ps1` |
 | Run this script using the logged on credentials | No |
 | Enforce script signature check | No |
 | Run script in 64 bit PowerShell Host | Yes |
@@ -401,7 +401,7 @@ An installed agent can update itself, so a new TrackVice version reaches the dev
 
 **Make the key.** In TrackVice, open **Settings > Agent updates > Publish agent update** and press **Create key**. The key is also made the first time you publish. The private key stays on your PC in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted for your Windows account, and is used for every customer. The dialog shows its fingerprint, and **Copy** copies the public key.
 
-**Put the key in the script.** Fill in the two lines of `agent/Install-TrackViceAgent.ps1`:
+**Put the key in the script.** Fill in the two lines of `agent/Install-TrackViceAgent-Links.ps1`:
 
 ```powershell
 $UpdateKey  = '<the public key>'

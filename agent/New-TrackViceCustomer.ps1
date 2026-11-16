@@ -11,7 +11,7 @@
     HTTPS only, TLS 1.2, no anonymous blob access, account key access on), the private containers
     trackvice and trackvice-agent, and a lifecycle rule that deletes sessions/ and logs/ after
     RetentionDays. It uploads TrackVice.exe to trackvice-agent, makes the upload, viewer and download
-    links, and writes a copy of Install-TrackViceAgent.ps1 with the values filled in.
+    links, and writes a copy of Install-TrackViceAgent-Links.ps1 with the values filled in.
 
     An existing storage account is used as it is. Other lifecycle rules on it are kept.
     The account key is only used to sign the links; it is not written anywhere.
@@ -95,7 +95,7 @@ param(
 
     [string]$UpdateKey = '',
 
-    [string]$TemplatePath = (Join-Path $PSScriptRoot 'Install-TrackViceAgent.ps1'),
+    [string]$TemplatePath = (Join-Path $PSScriptRoot 'Install-TrackViceAgent-Links.ps1'),
 
     [string]$OutputPath
 )
@@ -138,7 +138,7 @@ if (-not $OutputPath) {
     $OutputPath = Join-Path (Get-Location).Path ('Install-TrackViceAgent-' + $safeName + '.ps1')
 }
 if (-not (Test-Path -Path $ExePath -PathType Leaf)) { throw "TrackVice.exe was not found at $ExePath. Give it with -ExePath." }
-if (-not (Test-Path -Path $TemplatePath -PathType Leaf)) { throw "Install-TrackViceAgent.ps1 was not found at $TemplatePath. Give it with -TemplatePath." }
+if (-not (Test-Path -Path $TemplatePath -PathType Leaf)) { throw "Install-TrackViceAgent-Links.ps1 was not found at $TemplatePath. Give it with -TemplatePath." }
 # .NET file methods do not know the current PowerShell folder, so the paths are made full.
 $ExePath = (Resolve-Path -Path $ExePath).ProviderPath
 $TemplatePath = (Resolve-Path -Path $TemplatePath).ProviderPath

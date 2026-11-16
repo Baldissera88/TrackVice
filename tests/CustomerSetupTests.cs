@@ -140,7 +140,7 @@ namespace TrackVice.Tests
             v.Upload = "https://contosotrackvice.blob.core.windows.net/trackvice?sp=cw&sig=def";
             v.Alert = "https://contoso.example/alert?it's";
             v.MaxAgeHours = 24;
-            string s = AgentScript.Fill(AgentScriptTemplate.Text, v);
+            string s = AgentScript.Fill(AgentScriptTemplate.Links, v);
             T.Check(s.Contains("$Download  = '" + v.Download + "'   # Link to TrackVice.exe"), "Script: download filled and comment kept");
             T.Check(s.Contains("$Sha256    = '0123ABCD'"), "Script: hash filled");
             T.Check(s.Contains("$Upload    = '" + v.Upload + "'"), "Script: upload filled");
@@ -149,7 +149,7 @@ namespace TrackVice.Tests
             T.Check(s.Contains("$Alert     = 'https://contoso.example/alert?it''s'"), "Script: a quote in a value is doubled");
             T.Check(s.Contains("$UpdateKey = ''") && s.Contains("$UpdateLink = ''"), "Script: update values stay empty without a key");
             T.Check(s.Contains("if (-not $Download -or -not $Sha256 -or -not $Upload)"), "Script: the rest is unchanged");
-            T.Eq(AgentScriptTemplate.Text.Split('\n').Length, s.Split('\n').Length, "Script: same number of lines");
+            T.Eq(AgentScriptTemplate.Links.Split('\n').Length, s.Split('\n').Length, "Script: same number of lines");
             bool threw = false;
             try { AgentScript.Set("$Other = ''", "Download", "'x'"); }
             catch (SetupException) { threw = true; }

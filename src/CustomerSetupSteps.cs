@@ -257,7 +257,7 @@ namespace TrackVice
 
         public string Script()
         {
-            return AgentScript.Fill(AgentScriptTemplate.Text, Values());
+            return AgentScript.Fill(AgentScriptTemplate.Links, Values());
         }
 
         public void AddToIntune(IntuneScripts intune)
