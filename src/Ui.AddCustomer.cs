@@ -18,7 +18,8 @@ namespace TrackVice
             get { return Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "TrackVice"), "Scripts"); }
         }
 
-        public static readonly string[] Pages = { "addcustomer", "yourstorage", "yourstorage-settings", "customercode", "publishnote" };
+        public static readonly string[] Pages = { "addcustomer", "yourstorage", "yourstorage-settings", "customercode", "publishnote", "storagesecurity", "removecustomer" };
+        public const string AgentDoc = "https://github.com/Baldissera88/TrackVice/blob/main/docs/AGENT.md";
 
         public static string PublicKey(IUpdateKeyStore keys)
         {
@@ -55,7 +56,9 @@ namespace TrackVice
         readonly TextBox tName, tAlert, tTenant, tAccount;
         readonly ComboBox cSub, cGroup, cRegion, cAccount;
         readonly Segmented sKind;
-        readonly Toggle gOwn, gGroup, gScript;
+        readonly Toggle gGroup, gScript;
+        readonly ChoiceCard cYours, cTheirs;
+        readonly FlatButton bMore;
         readonly FlatButton bGraph, bSkip, bArm;
         OwnStorage own;
         WebSignIn graphIn, armIn;
@@ -91,7 +94,12 @@ namespace TrackVice
             cRegion.Text = Arm.DefaultRegion;
             cAccount = Combo(360, true);
             sKind = Kept(new Segmented("New account", "Existing account"));
-            gOwn = Kept(new Toggle());
+            cYours = Kept(new ChoiceCard("Your storage (default)", ""));
+            cTheirs = Kept(new ChoiceCard("The customer's own Azure", "A storage account in the customer's subscription. They own and control the data, its region and how long it is kept, and pay for it (a few kroner a month). Needs an account in their tenant with Contributor on a subscription or resource group. Devices still download TrackVice from your storage."));
+            List<ChoiceCard> group = new List<ChoiceCard>(new ChoiceCard[] { cYours, cTheirs });
+            cYours.Group = cTheirs.Group = group;
+            cYours.IsChosen = true;
+            bMore = Button("More about this", delegate { Open(AddCustomerUi.AgentDoc); });
             gGroup = Kept(new Toggle());
             gGroup.On = true;
             gScript = Kept(new Toggle());
@@ -143,7 +151,7 @@ namespace TrackVice
             AddCustomerDialog d = new AddCustomerDialog(t, CustomerBook.Demo(), new DemoAddCustomerWeb(), YourStorageUi.DemoSecrets(), YourStorageUi.DemoKeys(), AddCustomerUi.ScriptFolder, true);
             d.tName.Text = "Northwind Traders";
             d.tAlert.Text = "https://northwind.example/workflows/trackvice-alerts";
-            if (select == "own") d.gOwn.On = true;
+            if (select == "own") { d.cYours.IsChosen = false; d.cTheirs.IsChosen = true; }
             if (tab >= 1) d.Next();
             if (tab >= 1 && d.run.OwnAzure) { d.tAccount.Text = "northwindtrackvice"; d.SignInAzure(); }
             if (tab >= 2) { d.SignInIntune(); d.Next(); }
@@ -186,9 +194,15 @@ namespace TrackVice
             get { return armIn != null && armIn.SignedIn && cSub.SelectedItem is AzureSubscription && (sKind.Selected == 0 || cAccount.SelectedItem is AzureAccount); }
         }
 
+        // Your storage keeps no account key, so Create reads it through an Azure sign-in.
+        bool NeedOwnKey
+        {
+            get { return own != null && !own.KeyKept; }
+        }
+
         bool CanLeave()
         {
-            if (page == 1) return (IntuneReady || skipped) && (!run.OwnAzure || AzureReady);
+            if (page == 1) return (IntuneReady || skipped) && (!run.OwnAzure || AzureReady) && (run.OwnAzure || !NeedOwnKey || OwnSignedIn);
             return true;
         }
 
@@ -221,15 +235,32 @@ namespace TrackVice
             l.Add(new SectionTitle("1. Customer"));
             l.Add(Row(Glyphs.Info, "What this does", "Adds a customer in three steps. Devices of the customer upload to a private container in your storage " + (own != null ? own.Account : "") + " and download TrackVice from it. Nothing is created until you press Create in step 3.", null));
             l.Add(Row(Glyphs2.Device, "Customer name", "Shown at the top of the device lists. When a customer with this name exists, its tenant and upload location are replaced.", tName));
-            l.Add(Row(Glyphs2.Folder, "Store this customer's data in their own Azure", "Off: the uploads go to your storage. On: a storage account in the customer's Azure subscription is made, as New customer with links does. Devices download TrackVice from your storage either way.", gOwn));
+            l.Add(new SectionTitle("Where the device data goes"));
+            cYours.Desc = YourChoiceText(own);
+            l.Add(cYours);
+            l.Add(cTheirs);
+            l.Add(Row(Glyphs.Info, "What is uploaded", WhatIsUploaded, bMore));
             l.Add(Row(Glyphs.Shield, "Alert link (optional)", "A Teams workflow link. The agent posts to the channel when something fails and when a deployment is finished. Anyone with the link can post to the channel.", tAlert));
+        }
+
+        // What the agent really uploads: the session (src/Model.cs Session, masked by Secrets.MaskedCopy) and the log zip.
+        public const string WhatIsUploaded = "The device name and Windows version, the Autopilot profile and tenant, the apps, scripts, policies and task sequence steps with their states, error codes, command lines and script output, and the log lines and events behind them, which can hold user names. When something fails, when the device goes idle and at the end, also a zip of the device's logs. Passwords, keys and tokens in the session are masked; the log files in the zip are uploaded as they are. No serial number is uploaded.";
+
+        static string YourChoiceText(OwnStorage own)
+        {
+            string where = own == null ? "your Azure storage account" : "your Azure storage account " + own.Account + (own.Region.Length > 0 ? ", in " + own.Region : "");
+            int days = own != null ? own.RetentionDays : StorageSecurity.DefaultDays;
+            string delete = own != null && own.RuleDays > 0
+                ? "Data is deleted after " + own.RuleDays + " days."
+                : "Data is kept until it is deleted: Check security in Settings > Your storage adds the rule that deletes it after " + days + " days.";
+            return "The device data of this customer goes to a private container only for them in " + where + ". The devices can only add files there; only TrackVice on this PC can read them. " + delete + " You can stop it at any time with Remove customer.";
         }
 
         bool TakeCustomer()
         {
             run.Customer = tName.Text.Trim();
             run.Alert = tAlert.Text.Trim();
-            run.OwnAzure = gOwn.On;
+            run.OwnAzure = cTheirs.IsChosen;
             string p = run.Problem(book);
             if (p != null) { note.Say(p, true); return false; }
             if (tAccount.Text.Length == 0) tAccount.Text = Arm.Suggest(run.Customer, 0);
@@ -246,6 +277,11 @@ namespace TrackVice
             bGraph.Text = IntuneReady ? "Sign in again" : pending != null && armIn == null ? "Copy code and open" : "Sign in";
             l.Add(Row(Glyphs2.Sync, "Sign in to Intune", graphText.Length > 0 ? graphText : "With a code in the browser, with DeviceManagementScripts.ReadWrite.All and Group.ReadWrite.All.", bGraph));
             if (!IntuneReady) l.Add(Row(Glyphs2.Help, "Skip: I add the script to Intune myself", "Create then makes the storage, the customer code and the script, and saves the script on this PC.", bSkip));
+            if (!run.OwnAzure && NeedOwnKey)
+            {
+                l.Add(new SectionTitle("Your storage"));
+                l.Add(OwnSignInRow(own, "The account key of " + own.Account + " is not kept on this PC. Sign in to your own Azure to read it for this customer; it is not kept."));
+            }
             if (!run.OwnAzure) return;
             l.Add(new SectionTitle("The customer's Azure"));
             bArm.Text = armIn != null && armIn.SignedIn ? "Sign in again" : pending != null && armIn != null && !armIn.SignedIn ? "Copy code and open" : "Sign in";
@@ -268,6 +304,7 @@ namespace TrackVice
             if (busy && pending != null && armIn == null) { ShowCode(pending); return; }
             if (busy) return;
             if (armIn != null && !armIn.SignedIn) armIn = null;
+            if (ownIn != null && !ownIn.SignedIn) ownIn = null;
             Customer have = book.Find(run.Customer);
             WebSignIn s = new WebSignIn(web, have != null ? have.GraphClientId : null, tTenant.Text, IntuneSetup.Scopes);
             graphIn = s;
@@ -333,7 +370,7 @@ namespace TrackVice
 
         bool TakeSignIn()
         {
-            if (!CanLeave()) { note.Say(run.OwnAzure && !AzureReady ? "Sign in to the customer's Azure and pick the storage account." : "Sign in to Intune, or skip it.", true); return false; }
+            if (!CanLeave()) { note.Say(run.OwnAzure && !AzureReady ? "Sign in to the customer's Azure and pick the storage account." : !run.OwnAzure && NeedOwnKey && !OwnSignedIn ? "Sign in to Azure for your storage." : "Sign in to Intune, or skip it.", true); return false; }
             run.Tenant = tTenant.Text.Trim();
             if (IntuneReady && run.Tenant.Length == 0)
             {
@@ -408,16 +445,8 @@ namespace TrackVice
                 DateTime now = DateTime.UtcNow;
                 string keyProblem = OwnPublish.KeyProblem(web, own, key);
                 if (keyProblem != null) throw new SetupException(keyProblem);
-                if (run.OwnAzure)
-                {
-                    NewCustomerRun st = run.Storage;
-                    int from = st.Done.Count;
-                    if (!st.StorageReady) st.SetUpStorage(arm, delegate (string p) { Ui(delegate { note.Say(p, false); }); });
-                    if (st.Links == null) { Ui(delegate { note.Say("Signing the links...", false); }); st.MakeLinks(arm, now); }
-                    run.Done.AddRange(st.Done.GetRange(from, st.Done.Count - from));
-                    run.UseLinks(st.Links);
-                }
-                else if (run.Upload.Length == 0 || run.Container != run.ContainerName) run.MakeStorage(web, own, now);
+                if (run.OwnAzure) run.SetUpOwnAzure(arm, now, delegate (string p) { Ui(delegate { note.Say(p, false); }); });
+                else if (run.Upload.Length == 0 || run.Container != run.ContainerName) run.MakeStorage(web, OwnWithKey(own), now);
                 run.MakeCode(own, key);
                 if (api != null)
                 {
@@ -451,6 +480,8 @@ namespace TrackVice
                 CustomerUi.Edited(before);
             }
             CustomerCodes.Save(secrets, run.Customer, run.Code.ToString());
+            // A search for the account may have found its ID and region; the key stays unkept.
+            if (NeedOwnKey) SaveOwn(own, secrets);
             if (demo) { run.ScriptPath = Path.Combine(folder, AgentScript.FileName(run.Customer)); return; }
             try { run.SaveScript(folder); }
             catch (Exception ex) { note.Say("The script could not be saved in " + folder + ": " + ex.Message, true); }
@@ -484,15 +515,20 @@ namespace TrackVice
         readonly ISecretStore secrets;
         readonly string folder;
         readonly Customer customer;
+        readonly CustomerBook book;
+        readonly OwnStorage own;
+        readonly string container;
         string code;
         readonly TextBox tAlert;
-        readonly FlatButton bSave, bGraph, bUpdate;
+        readonly FlatButton bSave, bGraph, bUpdate, bLinks, bRemove;
         WebSignIn graphIn;
-        string saveText = "", graphText = "", updateText = "";
+        string saveText = "", graphText = "", updateText = "", linksText = "";
 
-        public CustomerCodeDialog(Theme t, Customer c, IWeb web, ISecretStore secrets, string folder, bool isDemo) : base("Customer code for " + c.Name, t, web, isDemo)
+        public CustomerCodeDialog(Theme t, Customer c, CustomerBook book, IWeb web, ISecretStore secrets, string folder, bool isDemo) : base("Customer code for " + c.Name, t, web, isDemo)
         {
             customer = c;
+            this.book = book;
+            own = OwnStorage.Load(secrets);
             this.secrets = secrets;
             this.folder = folder;
             code = CustomerCodes.Load(secrets, c.Name) ?? "";
@@ -504,6 +540,12 @@ namespace TrackVice
             bGraph = Button("Sign in", delegate { SignInIntune(); });
             bUpdate = Button("Update", delegate { UpdateIntune(); });
             bUpdate.Primary = true;
+            bLinks = Button("New links", delegate { NewLinks(); });
+            bRemove = Button("Remove customer\u2026", delegate { RemoveCustomer(); });
+            string upload = null;
+            try { upload = CustomerCode.Parse(code).Upload; }
+            catch (Exception) { }
+            container = CustomerAccess.ContainerOf(own, upload);
             Add(body);
             Rebuild();
         }
@@ -515,14 +557,14 @@ namespace TrackVice
 
         public static void Open(IWin32Window owner, Theme t, Customer c)
         {
-            using (CustomerCodeDialog d = new CustomerCodeDialog(t, c, YourStorageUi.Web, YourStorageUi.Secrets, AddCustomerUi.ScriptFolder, YourStorageUi.Demo)) d.ShowDialog(owner);
+            using (CustomerCodeDialog d = new CustomerCodeDialog(t, c, CustomerUi.Book, YourStorageUi.Web, YourStorageUi.Secrets, AddCustomerUi.ScriptFolder, YourStorageUi.Demo)) d.ShowDialog(owner);
         }
 
         // A made-up customer with a code, for screenshots.
         public static CustomerCodeDialog ForDemo(Theme t)
         {
             MemorySecrets sec = YourStorageUi.DemoSecrets();
-            IWeb w = new DemoAddCustomerWeb();
+            IWeb w = new DemoStorageWeb(true);
             OwnStorage own = OwnStorage.Load(sec);
             AddCustomerRun r = new AddCustomerRun();
             r.Customer = "Contoso";
@@ -531,7 +573,7 @@ namespace TrackVice
             r.MakeCode(own, AddCustomerUi.PublicKey(YourStorageUi.DemoKeys()));
             CustomerCodes.Save(sec, "Contoso", r.Code.ToString());
             CustomerBook b = CustomerBook.Demo();
-            CustomerCodeDialog d = new CustomerCodeDialog(t, b.Find("Contoso"), w, sec, AddCustomerUi.ScriptFolder, true);
+            CustomerCodeDialog d = new CustomerCodeDialog(t, b.Find("Contoso"), b, w, sec, AddCustomerUi.ScriptFolder, true);
             d.SignInIntune();
             return d;
         }
@@ -552,6 +594,59 @@ namespace TrackVice
             l.Add(Row(Glyphs2.Sync, "Sign in to Intune", graphText.Length > 0 ? graphText : "To " + (customer.Tenant.Length > 0 ? customer.Tenant : "the tenant of the account you use") + ", with DeviceManagementScripts.ReadWrite.All. Signing in changes nothing.", bGraph));
             bUpdate.Enabled = graphIn != null && graphIn.SignedIn;
             l.Add(Row(Glyphs2.Apps, "Update the script in Intune", updateText.Length > 0 ? updateText : "Puts the script for this customer code in the platform script " + AddCustomerRun.ScriptName + ". Its assignments are kept.", bUpdate));
+            l.Add(new SectionTitle("Links"));
+            if (container != null)
+            {
+                if (!own.KeyKept) l.Add(OwnSignInRow(own, "The account key of " + own.Account + " is not kept on this PC. Sign in to read it for New links; it is not kept."));
+                l.Add(Row(Glyphs2.Sync, "New links", linksText.Length > 0 ? linksText : "Replaces the access policies of " + container + " with new ones and signs a new upload link and viewer link, valid for 2 years. The old links stop within 30 seconds, so devices with the old customer code can no longer upload. Then update the script in Intune.", bLinks));
+            }
+            else l.Add(Row(Glyphs.Info, "New links", "The data of " + customer.Name + " is not in your storage, so TrackVice cannot make new links for it.", null));
+            l.Add(Row(Glyphs.Shield, "Remove customer", "Stops every link of " + customer.Name + " at once and removes the customer from TrackVice. Deleting the container with its data is a separate choice.", bRemove));
+        }
+
+        void NewLinks()
+        {
+            if (busy || container == null) return;
+            if (!own.KeyKept && !OwnSignedIn) { note.Say("Sign in to Azure first.", true); return; }
+            if (!demo && MessageBox.Show(this, "Make new links for " + customer.Name + "? The old upload and viewer links stop within 30 seconds, and devices with the old customer code can no longer upload until they get the new script.", "New links", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            string old = code;
+            CustomerRenewal r = null;
+            Work("Making new links...", delegate { r = CustomerRenewal.Make(web, OwnWithKey(own), old, DateTime.UtcNow); }, delegate
+            {
+                code = r.Code.ToString();
+                CustomerCodes.Save(secrets, customer.Name, code);
+                Customer c = customer.Copy();
+                c.AgentLocation = r.Links.Viewer;
+                if (book != null && book.Find(customer.Name) != null)
+                {
+                    Customer before = book.Current == null ? null : book.Current.Copy();
+                    book.Update(customer.Name, c);
+                    if (book == CustomerUi.Book) { book.Save(); CustomerUi.Edited(before); }
+                }
+                linksText = "New links signed with the policies " + r.Links.UploadPolicy + " and " + r.Links.ViewerPolicy + ", valid until " + r.Links.ExpiresUtc.ToLocalTime().ToString("d MMMM yyyy") + ". They work within 30 seconds. The customer code is new.";
+                if (r.OldLinksWithoutPolicy) linksText += " The old links were signed without a policy, so they keep working until they expire or the account key is rotated.";
+                if (!demo)
+                {
+                    AddCustomerRun s = new AddCustomerRun();
+                    s.Customer = customer.Name;
+                    s.Script = CustomerScript.For(code);
+                    try { linksText += " The script is in " + s.SaveScript(folder) + "."; }
+                    catch (Exception ex) { linksText += " The script could not be saved: " + ex.Message; }
+                }
+                linksText += " Update the script in Intune to give it to new devices.";
+                // Signed in to Intune already: offer the update at once, with its own question.
+                if (!demo && graphIn != null && graphIn.SignedIn) BeginInvoke((MethodInvoker)delegate { UpdateIntune(); });
+            }, null);
+        }
+
+        void RemoveCustomer()
+        {
+            if (busy) return;
+            using (RemoveCustomerDialog d = new RemoveCustomerDialog(theme, customer, book ?? CustomerUi.Book, web, secrets, demo))
+            {
+                d.ShowDialog(this);
+                if (d.Removed) Close();
+            }
         }
 
         void SaveAlert()
@@ -681,6 +776,8 @@ namespace TrackVice
                     sd.Shown += delegate { sd.BeginInvoke((MethodInvoker)delegate { foreach (Control c in sd.Controls) { Panel p = c as Panel; if (p != null && p.AutoScroll) p.AutoScrollPosition = new Point(0, Dpi.S(start.Tab >= 0 ? start.Tab : 1500)); } }); };
                     return sd;
                 case "customercode": return CustomerCodeDialog.ForDemo(theme);
+                case "storagesecurity": return StorageSecurityDialog.ForDemo(theme);
+                case "removecustomer": return RemoveCustomerDialog.ForDemo(theme);
                 default: ShowPublishNote(YourStorageUi.RunningVersion); return null;
             }
         }

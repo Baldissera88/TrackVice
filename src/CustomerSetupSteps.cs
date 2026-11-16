@@ -163,6 +163,8 @@ namespace TrackVice
         public string ResourceGroup = "", Region = Arm.DefaultRegion, AccountName = "";
         public bool NewGroup, NewAccount = true;
         public int RetentionDays = 30;
+        // The container trackvice-agent, for TrackVice versions. Add customer has no use for it in the customer's Azure.
+        public bool AgentContainer = true;
         public AzureAccount Account;
         public bool StorageDone;
         public AgentLinks Links;
@@ -208,7 +210,7 @@ namespace TrackVice
                 Done.Add("Storage account " + Account.Name + ": StorageV2, Standard_LRS, HTTPS only, TLS 1.2, no anonymous access");
             }
             else if (Account == null) throw new SetupException("Pick a storage account.");
-            foreach (string c in new string[] { Arm.Sessions, Arm.AgentFiles })
+            foreach (string c in AgentContainer ? new string[] { Arm.Sessions, Arm.AgentFiles } : new string[] { Arm.Sessions })
             {
                 progress("Creating the container " + c + "...");
                 bool made = arm.CreateContainer(Account, c);

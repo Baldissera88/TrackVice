@@ -52,6 +52,30 @@ namespace TrackVice
         public string AgentWrite = "";
         public DateTime ExpiresUtc;
         public string PublishedVersion = "";
+        // The resource ID, region and tenant in Azure, when known. Older setups have none until Check security finds them.
+        public string Id = "", Region = "", Tenant = "";
+        // Do not keep the account key: Add customer, Publish and the customer's links sign in to Azure to read it.
+        public bool AskKey;
+        // Uploads are deleted this many days after they last changed. RuleDays is what the rule in Azure was last seen
+        // to do, 0 when TrackVice has not seen it.
+        public int RetentionDays = StorageSecurity.DefaultDays, RuleDays;
+
+        public bool KeyKept
+        {
+            get { return !string.IsNullOrEmpty(Key); }
+        }
+
+        public OwnStorage Copy()
+        {
+            return (OwnStorage)MemberwiseClone();
+        }
+
+        // Forgets the account key and the publish link. The read link stays: it only reads TrackVice versions.
+        public void DropKey()
+        {
+            Key = "";
+            AgentWrite = "";
+        }
 
         [DataContract(Namespace = "")]
         sealed class Doc
@@ -64,6 +88,12 @@ namespace TrackVice
             [DataMember(Order = 6)] public string AgentWrite;
             [DataMember(Order = 7)] public string Expires;
             [DataMember(Order = 8)] public string Published;
+            [DataMember(Order = 9, EmitDefaultValue = false)] public string Id;
+            [DataMember(Order = 10, EmitDefaultValue = false)] public string Region;
+            [DataMember(Order = 11, EmitDefaultValue = false)] public string Tenant;
+            [DataMember(Order = 12, EmitDefaultValue = false)] public bool AskKey;
+            [DataMember(Order = 13, EmitDefaultValue = false)] public int Days;
+            [DataMember(Order = 14, EmitDefaultValue = false)] public int RuleDays;
         }
 
         public static OwnStorage Make(AzureAccount a, string key, string subscription, DateTime nowUtc)
@@ -73,6 +103,8 @@ namespace TrackVice
             o.BlobEndpoint = a.BlobEndpoint;
             o.Key = key;
             o.Subscription = subscription ?? "";
+            o.Id = a.Id ?? "";
+            o.Region = a.Location ?? "";
             o.SignAgentLinks(nowUtc);
             return o;
         }
@@ -96,6 +128,12 @@ namespace TrackVice
             d.AgentWrite = AgentWrite;
             d.Expires = SasLinks.Time(ExpiresUtc);
             d.Published = PublishedVersion;
+            d.Id = Empty(Id);
+            d.Region = Empty(Region);
+            d.Tenant = Empty(Tenant);
+            d.AskKey = AskKey;
+            d.Days = RetentionDays;
+            d.RuleDays = RuleDays;
             using (MemoryStream ms = new MemoryStream())
             {
                 new DataContractJsonSerializer(typeof(Doc)).WriteObject(ms, d);
@@ -112,18 +150,29 @@ namespace TrackVice
                 using (MemoryStream ms = new MemoryStream(Encoding.UTF8.GetBytes(text))) d = (Doc)new DataContractJsonSerializer(typeof(Doc)).ReadObject(ms);
             }
             catch (Exception) { return null; }
-            if (d == null || string.IsNullOrEmpty(d.Account) || string.IsNullOrEmpty(d.Key) || string.IsNullOrEmpty(d.AgentRead)) return null;
+            if (d == null || string.IsNullOrEmpty(d.Account) || (string.IsNullOrEmpty(d.Key) && !d.AskKey) || string.IsNullOrEmpty(d.AgentRead)) return null;
             OwnStorage o = new OwnStorage();
             o.Account = d.Account;
             o.BlobEndpoint = string.IsNullOrEmpty(d.BlobEndpoint) ? "https://" + d.Account + ".blob.core.windows.net/" : d.BlobEndpoint;
-            o.Key = d.Key;
+            o.Key = d.Key ?? "";
             o.Subscription = d.Subscription ?? "";
             o.AgentRead = d.AgentRead;
             o.AgentWrite = d.AgentWrite ?? "";
             DateTime t;
             if (DateTime.TryParse(d.Expires, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out t)) o.ExpiresUtc = t;
             o.PublishedVersion = d.Published ?? "";
+            o.Id = d.Id ?? "";
+            o.Region = d.Region ?? "";
+            o.Tenant = d.Tenant ?? "";
+            o.AskKey = d.AskKey;
+            o.RetentionDays = d.Days > 0 ? d.Days : StorageSecurity.DefaultDays;
+            o.RuleDays = d.RuleDays;
             return o;
+        }
+
+        static string Empty(string s)
+        {
+            return string.IsNullOrEmpty(s) ? null : s;
         }
 
         public static OwnStorage Load(ISecretStore s)
@@ -333,6 +382,11 @@ namespace TrackVice
         public AzureAccount Account;
         public OwnStorage Result;
         public bool KeyCreated, PublishedNow;
+        // Do not keep the account key on this PC after the setup.
+        public bool AskKey;
+        public int RetentionDays = StorageSecurity.DefaultDays;
+        // Why the lifecycle rule could not be set, or empty.
+        public string RuleError = "";
         public readonly List<string> Done = new List<string>();
 
         public void Run(Arm arm, IWeb web, IUpdateKeyStore keys, ISecretStore secrets, byte[] exe, string exeVersion, DateTime nowUtc, Action<string> progress)
@@ -360,9 +414,25 @@ namespace TrackVice
             progress("Creating the container " + Arm.AgentFiles + "...");
             bool made = arm.CreateContainer(Account, Arm.AgentFiles);
             Done.Add("Container " + Arm.AgentFiles + (made ? "" : ", there already"));
+            progress("Adding the lifecycle rule " + StorageSecurity.RuleName + "...");
+            bool ruleSet = false;
+            try
+            {
+                new StorageSecurity(arm).SetCustomerRule(Account, RetentionDays);
+                ruleSet = true;
+                Done.Add("Lifecycle rule " + StorageSecurity.RuleName + ": deletes blobs in the containers tv-... " + RetentionDays + " days after they last changed. Other rules are kept");
+            }
+            catch (SetupException ex)
+            {
+                RuleError = ex.Message;
+                Done.Add("The lifecycle rule " + StorageSecurity.RuleName + " was not added: " + ex.Message);
+            }
             progress("Reading the account key...");
             Result = OwnStorage.Make(Account, arm.Key(Account), Subscription.Name, nowUtc);
-            Done.Add("Account key and the links to " + Arm.AgentFiles + " kept on this PC, valid until " + Result.ExpiresUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            Result.Tenant = Subscription.Tenant ?? "";
+            Result.RetentionDays = RetentionDays;
+            Result.RuleDays = ruleSet ? RetentionDays : 0;
+            Done.Add((AskKey ? "A read link to " + Arm.AgentFiles + " kept on this PC" : "Account key and the links to " + Arm.AgentFiles + " kept on this PC") + ", valid until " + Result.ExpiresUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             using (RSACryptoServiceProvider key = UpdateKeys.LoadOrCreate(keys, out KeyCreated))
             {
                 if (KeyCreated) Done.Add("A new update key, kept on this PC");
@@ -381,6 +451,12 @@ namespace TrackVice
                     string problem = have != null ? OwnPublish.KeyProblem(web, Result, UpdateKeys.PublicKey(key)) : null;
                     if (problem != null) Done.Add(problem);
                 }
+            }
+            if (AskKey)
+            {
+                Result.AskKey = true;
+                Result.DropKey();
+                Done.Add("The account key is not kept on this PC. Add customer and Publish sign in to Azure to read it");
             }
             Result.Save(secrets);
         }
@@ -628,12 +704,12 @@ namespace TrackVice
             List<string> l = new List<string>();
             if (OwnAzure)
             {
-                l.Add("In the customer's Azure: the storage of the New customer guide, with the containers " + Arm.Sessions + " and " + Arm.AgentFiles + " and a lifecycle rule, and links valid for 2 years.");
+                l.Add("In the customer's Azure: a storage account with the private container " + Arm.Sessions + ", a lifecycle rule that deletes uploads after 30 days, and links valid for 2 years.");
             }
             else
             {
                 l.Add("In your storage " + (own != null ? own.Account : "") + ": the private container " + ContainerName + ", or the one that is there.");
-                l.Add("Two links to it, valid for 2 years: one that can only upload, for the devices, and one that can read, for you.");
+                l.Add("Two stored access policies on it, " + CustomerAccess.Upload + " (Create, Write) and " + CustomerAccess.Viewer + " (Read, List), valid for 2 years, and a link signed with each: one that can only upload, for the devices, and one that can read, for you. Remove customer removes the policies, and both links stop.");
             }
             l.Add("The customer code and the platform script, saved on this PC. Devices download TrackVice from your storage.");
             if (intune)
@@ -652,11 +728,26 @@ namespace TrackVice
             Container = ContainerName;
             bool made = BlobContainers.Create(web, own, Container, nowUtc);
             Done.Add("Container " + Container + " in " + own.Account + (made ? "" : ", there already"));
-            DateTime st = nowUtc.AddMinutes(-15), se = nowUtc.AddDays(LinkDays);
-            Upload = SasLinks.Container(own.BlobEndpoint, own.Account, Container, "cw", st, se, own.Key);
-            Viewer = SasLinks.Container(own.BlobEndpoint, own.Account, Container, "rl", st, se, own.Key);
-            LinksExpireUtc = se;
-            Done.Add("Upload and viewer links valid until " + se.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            CustomerLinks links = CustomerAccess.Grant(web, own, Container, made, nowUtc, LinkDays);
+            Upload = links.Upload;
+            Viewer = links.Viewer;
+            LinksExpireUtc = links.ExpiresUtc;
+            Done.Add("Access policies " + links.UploadPolicy + " and " + links.ViewerPolicy + " on " + Container + ", and the upload and viewer links signed with them, valid until " + links.ExpiresUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ". Azure puts them in force within 30 seconds");
+        }
+
+        // The storage in the customer's own Azure: the account, the container trackvice and the lifecycle rule, and the
+        // links. TrackVice versions still come from your storage, so no trackvice-agent container is made there.
+        public void SetUpOwnAzure(Arm arm, DateTime nowUtc, Action<string> progress)
+        {
+            NewCustomerRun st = Storage;
+            if (st == null) throw new SetupException("Sign in to the customer's Azure and pick the storage account.");
+            st.AgentContainer = false;
+            st.LinkDays = LinkDays;
+            int from = st.Done.Count;
+            if (!st.StorageReady) st.SetUpStorage(arm, progress);
+            if (st.Links == null) { progress("Signing the links..."); st.MakeLinks(arm, nowUtc); }
+            Done.AddRange(st.Done.GetRange(from, st.Done.Count - from));
+            UseLinks(st.Links);
         }
 
         // Takes the links the storage steps of the New customer guide made in the customer's Azure.

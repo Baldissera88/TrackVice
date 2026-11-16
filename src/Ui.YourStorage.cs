@@ -24,7 +24,7 @@ namespace TrackVice
     }
 
     // A page of a short guide: rows that change as it goes, a line for messages in the footer, and work away from the window.
-    abstract class GuideForm : PageForm
+    abstract partial class GuideForm : PageForm
     {
         protected readonly WizardBody body = new WizardBody();
         protected readonly FooterNote note = new FooterNote();
@@ -241,7 +241,7 @@ namespace TrackVice
         public static void UseDemo()
         {
             Secrets = DemoSecrets();
-            Web = new DemoAddCustomerWeb();
+            Web = new DemoStorageWeb(true);
             Keys = DemoKeys();
             Demo = true;
         }
@@ -252,6 +252,7 @@ namespace TrackVice
             AzureAccount a = new AzureAccount();
             a.Name = "contosotrackvice";
             a.BlobEndpoint = "https://contosotrackvice.blob.core.windows.net/";
+            a.Location = "westeurope";
             OwnStorage o = OwnStorage.Make(a, Convert.ToBase64String(Encoding.UTF8.GetBytes("made-up key for the TrackVice demo, not a real one")), "Contoso Production", DateTime.UtcNow);
             o.PublishedVersion = "1.1.2";
             o.Save(s);
@@ -281,6 +282,21 @@ namespace TrackVice
         {
             OwnStorage own = Load();
             if (own == null) { done("Your storage is not set up.", false); return; }
+            if (!own.KeyKept)
+            {
+                // The publish link is not kept with the key, so a sign-in reads the key for this publish.
+                Form f = owner.FindForm();
+                PageForm pf = f as PageForm;
+                string msg = "Not published.";
+                bool ok = false;
+                using (OwnPublishDialog d = new OwnPublishDialog(pf != null ? pf.CurrentTheme : Theme.Light(), Web, Secrets, Keys, Demo))
+                {
+                    d.ShowDialog(f);
+                    if (d.Message.Length > 0) { msg = d.Message; ok = d.Ok; }
+                }
+                done(msg, ok);
+                return;
+            }
             IWeb w = Web;
             ISecretStore s = Secrets;
             IUpdateKeyStore keys = Keys;
@@ -288,28 +304,38 @@ namespace TrackVice
             Thread th = new Thread(delegate ()
             {
                 string msg;
-                bool ok = false;
-                try
-                {
-                    byte[] exe = demo ? Encoding.ASCII.GetBytes("MZ TrackVice demo") : File.ReadAllBytes(Program.Location);
-                    string v = RunningVersion;
-                    bool created;
-                    using (RSACryptoServiceProvider key = UpdateKeys.LoadOrCreate(keys, out created))
-                    {
-                        string problem = OwnPublish.KeyProblem(w, own, UpdateKeys.PublicKey(key));
-                        if (problem != null) throw new SetupException(problem);
-                        OwnPublish.Publish(w, own, exe, v, key, DateTime.UtcNow);
-                    }
-                    own.Save(s);
-                    ok = true;
-                    msg = "Published TrackVice " + v + " to your storage." + (created ? " A new update key was made: customer codes made before have the old key, so make them again." : " Agents install it within 6 hours.");
-                }
-                catch (Exception ex) { msg = "Not published: " + ex.Message; }
+                bool ok = PublishWith(w, own, own, s, keys, demo, out msg);
                 try { owner.BeginInvoke((MethodInvoker)delegate { done(msg, ok); }); }
                 catch (Exception) { }
             });
             th.IsBackground = true;
             th.Start();
+        }
+
+        // Publishes with own, which has a publish link, and saves the version in kept, which may have no key. Runs away from the window.
+        public static bool PublishWith(IWeb w, OwnStorage own, OwnStorage kept, ISecretStore s, IUpdateKeyStore keys, bool demo, out string msg)
+        {
+            try
+            {
+                byte[] exe = demo ? Encoding.ASCII.GetBytes("MZ TrackVice demo") : File.ReadAllBytes(Program.Location);
+                string v = RunningVersion;
+                bool created;
+                using (RSACryptoServiceProvider key = UpdateKeys.LoadOrCreate(keys, out created))
+                {
+                    string problem = OwnPublish.KeyProblem(w, own, UpdateKeys.PublicKey(key));
+                    if (problem != null) throw new SetupException(problem);
+                    OwnPublish.Publish(w, own, exe, v, key, DateTime.UtcNow);
+                }
+                kept.PublishedVersion = own.PublishedVersion;
+                kept.Save(s);
+                msg = "Published TrackVice " + v + " to your storage." + (created ? " A new update key was made: customer codes made before have the old key, so make them again." : " Agents install it within 6 hours.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                msg = "Not published: " + ex.Message;
+                return false;
+            }
         }
 
         static FlatButton Small(Theme theme, string text, EventHandler click)
@@ -327,8 +353,11 @@ namespace TrackVice
         public static List<Control> SettingRows(Theme theme, MethodInvoker relayout)
         {
             List<Control> l = new List<Control>();
-            SettingRow main = null, version = null, remove = null;
-            Collapsible versionBox = null, removeBox = null;
+            SettingRow main = null, version = null, remove = null, security = null, days = null, keyRow = null;
+            Collapsible versionBox = null, removeBox = null, securityBox = null, daysBox = null, keyBox = null;
+            Segmented sDays = null;
+            Toggle gAsk = null;
+            bool filling = false;
             FlatButton bSetUp = null, bPublish = null, bRemove = null;
             ButtonStrip strip = null;
             MethodInvoker show = null;
@@ -342,10 +371,21 @@ namespace TrackVice
                 strip.Fit();
                 main.Desc = o == null
                     ? "Not set up. One storage account in your Azure for all customers: TrackVice versions for the devices in " + Arm.AgentFiles + ", and a private container for each customer's uploads. Devices > Add customer uses it."
-                    : o.Account + (o.Subscription.Length > 0 ? " in " + o.Subscription : "") + ". The links to " + Arm.AgentFiles + " are valid until " + Expires(o) + ". The account key and the links are kept on this PC, encrypted for your Windows account.";
-                versionBox.Shown = removeBox.Shown = o != null;
+                    : o.Account + (o.Subscription.Length > 0 ? " in " + o.Subscription : "") + ". The links to " + Arm.AgentFiles + " are valid until " + Expires(o) + ". " + (o.KeyKept ? "The account key and the links are kept on this PC, encrypted for your Windows account." : "The read link is kept on this PC, encrypted for your Windows account; the account key is not.");
+                versionBox.Shown = removeBox.Shown = securityBox.Shown = daysBox.Shown = keyBox.Shown = o != null;
                 if (o != null)
                 {
+                    filling = true;
+                    int di = Array.IndexOf(StorageSecurity.DayChoices, o.RetentionDays);
+                    sDays.Selected = di >= 0 ? di : Array.IndexOf(StorageSecurity.DayChoices, StorageSecurity.DefaultDays);
+                    gAsk.On = o.AskKey;
+                    filling = false;
+                    security.Desc = "Reads " + o.Account + " through Azure: anonymous blob access, HTTPS only, minimum TLS 1.2, soft delete of blobs and containers, and the rule that deletes old uploads. A setting that is not in order can be changed, one at a time, after you confirm. The account may also be used for other things, so TrackVice never changes network rules or keys.";
+                    days.Desc = "The lifecycle rule " + StorageSecurity.RuleName + " deletes blobs in the containers tv-... this many days after they last changed. "
+                        + (o.RuleDays == o.RetentionDays ? "The rule in Azure does this." : o.RuleDays > 0 ? "The rule in Azure deletes after " + o.RuleDays + " days; Check security updates it." : "TrackVice has not seen the rule in Azure; Check security adds it.");
+                    keyRow.Desc = o.KeyKept
+                        ? "Off: the account key is kept on this PC, encrypted for your Windows account, so Add customer needs no Azure sign-in. On: the key and the publish link are deleted from this PC, and Add customer, Publish, New links and Remove customer sign in to Azure to read the key, and forget it after."
+                        : "On: the account key is not kept on this PC. Add customer, Publish, New links and Remove customer sign in to Azure to read it, and forget it after." + (o.AskKey ? "" : " It is kept again the next time it is read.");
                     bool need = OwnPublish.Needed(o, o.PublishedVersion, running);
                     version.Desc = (o.PublishedVersion.Length > 0 ? "Published: " + o.PublishedVersion + "." : "Nothing is published yet.") + " This is TrackVice " + running + "."
                         + (need ? " Publish uploads it with a signed agent/latest.json, and the agents install it within 6 hours." : "");
@@ -353,6 +393,9 @@ namespace TrackVice
                 }
                 main.Invalidate();
                 version.Invalidate();
+                security.Invalidate();
+                days.Invalidate();
+                keyRow.Invalidate();
                 relayout();
             };
             bSetUp = Small(theme, "Set up", delegate
@@ -377,15 +420,61 @@ namespace TrackVice
                 OwnStorage.Forget(Secrets);
                 show();
             });
+            FlatButton bCheck = Small(theme, "Check security", delegate
+            {
+                Form f = bSetUp.FindForm();
+                PageForm page = f as PageForm;
+                using (StorageSecurityDialog d = StorageSecurityDialog.ForLive(page != null ? page.CurrentTheme : theme)) d.ShowDialog(f);
+                show();
+            });
+            string[] dayNames = new string[StorageSecurity.DayChoices.Length];
+            for (int i = 0; i < dayNames.Length; i++) dayNames[i] = StorageSecurity.DayChoices[i].ToString(CultureInfo.InvariantCulture) + " days";
+            sDays = new Segmented(dayNames);
+            sDays.Changed += Safe.Wrap(delegate
+            {
+                if (filling) return;
+                OwnStorage o = Load();
+                if (o == null) return;
+                o.RetentionDays = StorageSecurity.DayChoices[sDays.Selected];
+                o.Save(Secrets);
+                show();
+            });
+            gAsk = new Toggle();
+            gAsk.Changed += Safe.Wrap(delegate
+            {
+                if (filling) return;
+                OwnStorage o = Load();
+                if (o == null) return;
+                if (gAsk.On && o.KeyKept && !Demo && MessageBox.Show(gAsk.FindForm(), "Delete the account key of " + o.Account + " and the publish link from this PC? Add customer, Publish, New links and Remove customer then sign in to Azure to read the key. Nothing in Azure is changed.", "Your storage", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
+                {
+                    filling = true;
+                    gAsk.On = false;
+                    filling = false;
+                    return;
+                }
+                o.AskKey = gAsk.On;
+                if (o.AskKey) o.DropKey();
+                o.Save(Secrets);
+                show();
+            });
             strip = new ButtonStrip(bSetUp);
             main = new SettingRow(Glyphs2.Folder, "Your storage", "", strip);
             version = new SettingRow(Glyphs2.Sync, "TrackVice for the devices", "", bPublish);
             remove = new SettingRow(Glyphs.Shield, "Remove", "Forgets the account key and the links on this PC. Nothing in Azure is deleted.", bRemove);
+            security = new SettingRow(Glyphs.Shield, "Security", "", bCheck);
+            days = new SettingRow(Glyphs2.Calendar, "Delete uploads after", "", sDays);
+            keyRow = new SettingRow(Glyphs.Shield, "Ask for Azure sign-in when adding a customer instead of keeping the account key on this PC", "", gAsk);
+            securityBox = new Collapsible(security);
+            daysBox = new Collapsible(days);
+            keyBox = new Collapsible(keyRow);
             l.Add(new SectionTitle("Your storage"));
             versionBox = new Collapsible(version);
             removeBox = new Collapsible(remove);
             l.Add(main);
             l.Add(versionBox);
+            l.Add(securityBox);
+            l.Add(daysBox);
+            l.Add(keyBox);
             l.Add(removeBox);
             show();
             return l;
@@ -489,9 +578,23 @@ namespace TrackVice
         List<AzureSubscription> subs = new List<AzureSubscription>();
         List<AzureAccount> accounts = new List<AzureAccount>();
         bool filling;
+        readonly List<UsedAccount> used;
+        readonly Toggle gAsk;
+        readonly Segmented sDays;
+        // The account the customers' links point at, to select once the subscription is read.
+        string preselect;
 
-        public YourStorageDialog(Theme t, IWeb web, ISecretStore secrets, IUpdateKeyStore keys, Func<byte[]> exe, string version, bool isDemo) : base("Your storage", t, web, isDemo)
+        public YourStorageDialog(Theme t, IWeb web, ISecretStore secrets, IUpdateKeyStore keys, Func<byte[]> exe, string version, bool isDemo, IEnumerable<Customer> customers) : base("Your storage", t, web, isDemo)
         {
+            used = StorageFinder.Used(customers ?? new List<Customer>());
+            OwnStorage before = OwnStorage.Load(secrets);
+            gAsk = Kept(new Toggle());
+            gAsk.On = before != null && before.AskKey;
+            string[] dayNames = new string[StorageSecurity.DayChoices.Length];
+            for (int i = 0; i < dayNames.Length; i++) dayNames[i] = StorageSecurity.DayChoices[i].ToString(CultureInfo.InvariantCulture) + " days";
+            sDays = Kept(new Segmented(dayNames));
+            int di = Array.IndexOf(StorageSecurity.DayChoices, before != null ? before.RetentionDays : StorageSecurity.DefaultDays);
+            sDays.Selected = di >= 0 ? di : Array.IndexOf(StorageSecurity.DayChoices, StorageSecurity.DefaultDays);
             this.secrets = secrets;
             this.keys = keys;
             this.exe = exe;
@@ -516,21 +619,23 @@ namespace TrackVice
             cSub.SelectedIndexChanged += delegate { if (!filling) LoadSubscription(); };
             sKind.Changed += delegate { run.NewAccount = sKind.Selected == 0; Rebuild(); };
             foreach (Control c in new Control[] { cGroup, cRegion, tAccount }) c.TextChanged += delegate { if (!filling) Plan(); };
-            cAccount.SelectedIndexChanged += delegate { if (!filling) Plan(); };
+            cAccount.SelectedIndexChanged += delegate { if (!filling) { Plan(); Rebuild(); } };
+            sDays.Changed += delegate { Plan(); };
+            gAsk.Changed += delegate { Plan(); };
             Add(body);
             Rebuild();
         }
 
         public static YourStorageDialog ForLive(Theme t)
         {
-            return new YourStorageDialog(t, YourStorageUi.Web, YourStorageUi.Secrets, YourStorageUi.Keys, delegate { return File.ReadAllBytes(Program.Location); }, YourStorageUi.RunningVersion, false);
+            return new YourStorageDialog(t, YourStorageUi.Web, YourStorageUi.Secrets, YourStorageUi.Keys, delegate { return File.ReadAllBytes(Program.Location); }, YourStorageUi.RunningVersion, false, CustomerUi.Book.All);
         }
 
         // tab 0: before the sign-in, 1: signed in, 2: set up.
         public static YourStorageDialog ForDemo(Theme t, int tab)
         {
             MemoryKeyStore k = new MemoryKeyStore();
-            YourStorageDialog d = new YourStorageDialog(t, new DemoAddCustomerWeb(), new MemorySecrets(), k, delegate { return Encoding.ASCII.GetBytes("MZ TrackVice demo"); }, YourStorageUi.RunningVersion, true);
+            YourStorageDialog d = new YourStorageDialog(t, new DemoStorageWeb(true), new MemorySecrets(), k, delegate { return Encoding.ASCII.GetBytes("MZ TrackVice demo"); }, YourStorageUi.RunningVersion, true, DemoStorageWeb.Customers());
             if (tab >= 1) d.SignInAzure();
             if (tab >= 2) d.SetUp();
             d.note.Say("", false);
@@ -545,12 +650,13 @@ namespace TrackVice
         protected override void Build(List<Control> l)
         {
             l.Add(new SectionTitle("Your storage"));
-            l.Add(Row(Glyphs.Info, "What this does", "Sets up one storage account in your Azure for all customers. TrackVice versions go in the container " + Arm.AgentFiles + ", where devices download them, and Add customer makes a private container for each customer's uploads. The account key is kept on this PC, encrypted for your Windows account, to make those containers and their links. Signing in and listing change nothing.", null));
+            l.Add(Row(Glyphs.Info, "What this does", "Sets up one storage account in your Azure for all customers. TrackVice versions go in the container " + Arm.AgentFiles + ", where devices download them, and Add customer makes a private container for each customer's uploads. The account key is kept on this PC, encrypted for your Windows account, to make those containers and their links, unless you choose below to sign in each time. Signing in and listing change nothing.", null));
             if (run.Result != null)
             {
                 l.Add(new SectionTitle("Done"));
                 l.Add(Row(Glyphs.Save, "Made", string.Join("\n", run.Done.ToArray()), null));
                 l.Add(Row(Glyphs2.Help, "Next", "Add your customers with Devices > Add customer. When you update TrackVice, it offers to publish the new version to your storage.", null));
+                AddSecurityRows(l, run.Result, ArmApi, secrets);
                 return;
             }
             l.Add(new SectionTitle("Sign in"));
@@ -568,8 +674,19 @@ namespace TrackVice
                 l.Add(Row(Glyphs2.Apps, "Name", "3 to 24 lowercase letters and digits, unique in all of Azure. Checked with Azure before it is made.", tAccount));
                 l.Add(Row(Glyphs.Info, "Region", "Where the data of your customers is kept.", cRegion));
             }
-            else l.Add(Row(Glyphs2.Folder, "Existing account", accounts.Count == 0 ? "This subscription has no storage accounts." : "Its settings are kept. Account key access must be on.", cAccount));
+            else l.Add(Row(Glyphs2.Folder, "Existing account", accounts.Count == 0 ? "This subscription has no storage accounts." : (UsedText() + " Its settings are kept. Account key access must be on.").Trim(), cAccount));
+            l.Add(Row(Glyphs2.Calendar, "Delete uploads after", "The lifecycle rule " + StorageSecurity.RuleName + " deletes blobs in the containers tv-... this many days after they last changed. Other rules on the account are kept.", sDays));
+            l.Add(Row(Glyphs.Shield, "Ask for Azure sign-in when adding a customer instead of keeping the account key on this PC", "Off: the account key is kept on this PC, encrypted for your Windows account. On: it is not kept, and Add customer and Publish sign in to Azure to read it.", gAsk));
             l.Add(Row(Glyphs.Save, "Set up", PlanText(), bSetUp));
+        }
+
+        // "Used by your customers ..." for the account picked, or empty.
+        string UsedText()
+        {
+            AzureAccount a = cAccount.SelectedItem as AzureAccount;
+            if (a == null) return "";
+            foreach (UsedAccount u in used) if (string.Equals(u.Name, a.Name, StringComparison.OrdinalIgnoreCase)) return StorageFinder.UsedLine(u.Customers);
+            return "";
         }
 
         string GroupName
@@ -601,8 +718,10 @@ namespace TrackVice
                 AzureAccount a = cAccount.SelectedItem as AzureAccount;
                 b.Append("in ").Append(a != null ? a.Name : "the account").Append(" ");
             }
-            b.Append("the private container ").Append(Arm.AgentFiles).Append(". Reads the account key once and keeps it on this PC with a read link and a publish link to ").Append(Arm.AgentFiles)
-                .Append(", valid for 5 years. Makes the update key if this PC has none, and publishes this TrackVice ").Append(version).Append(" if nothing is published yet.");
+            b.Append("the private container ").Append(Arm.AgentFiles).Append(", and the lifecycle rule ").Append(StorageSecurity.RuleName).Append(" that deletes uploads after ").Append(StorageSecurity.DayChoices[sDays.Selected]).Append(" days. ");
+            if (gAsk.On) b.Append("Reads the account key once and keeps only a read link to ").Append(Arm.AgentFiles).Append(" on this PC");
+            else b.Append("Reads the account key once and keeps it on this PC with a read link and a publish link to ").Append(Arm.AgentFiles);
+            b.Append(", valid for 5 years. Makes the update key if this PC has none, publishes this TrackVice ").Append(version).Append(" if nothing is published yet, and checks the security of the account.");
             return b.ToString();
         }
 
@@ -631,15 +750,31 @@ namespace TrackVice
             armIn = s;
             subs = new List<AzureSubscription>();
             List<AzureSubscription> got = null;
-            SignIn(s, delegate (string text) { armText = text; }, delegate { got = new Arm(web, s.Token).Subscriptions(); }, delegate
+            List<FoundAccount> found = null;
+            SignIn(s, delegate (string text) { armText = text; }, delegate
+            {
+                Arm a = new Arm(web, s.Token);
+                got = a.Subscriptions();
+                Ui(delegate { note.Say("Looking for the storage account your customers use...", false); });
+                found = StorageFinder.Find(a, got, used);
+            }, delegate
             {
                 subs = got ?? new List<AzureSubscription>();
                 if (subs.Count == 0) armText += " The account has no enabled subscriptions in this tenant. Check the Azure tenant.";
+                int pick = 0;
+                preselect = null;
+                if (found != null && found.Count > 0)
+                {
+                    FoundAccount f = found[0];
+                    for (int i = 0; i < subs.Count; i++) if (subs[i].Id == f.Subscription.Id) pick = i;
+                    preselect = f.Account.Name;
+                    armText += " Found " + f.Account.Name + ", which your customers use.";
+                }
                 filling = true;
                 cSub.Items.Clear();
                 foreach (AzureSubscription x in subs) cSub.Items.Add(x);
                 filling = false;
-                if (subs.Count > 0) cSub.SelectedIndex = 0;
+                if (subs.Count > 0) cSub.SelectedIndex = pick;
             }, delegate { armText = ""; armIn = null; });
         }
 
@@ -666,7 +801,13 @@ namespace TrackVice
                 cAccount.Items.Clear();
                 foreach (AzureAccount x in accts) cAccount.Items.Add(x);
                 if (accts.Count > 0) cAccount.SelectedIndex = 0;
+                bool pre = false;
+                if (preselect != null)
+                    for (int i = 0; i < accts.Count; i++)
+                        if (string.Equals(accts[i].Name, preselect, StringComparison.OrdinalIgnoreCase)) { cAccount.SelectedIndex = i; pre = true; }
+                preselect = null;
                 filling = false;
+                if (pre) sKind.Selected = 1;
             }, null);
         }
 
@@ -693,6 +834,8 @@ namespace TrackVice
                 run.Account = (AzureAccount)cAccount.SelectedItem;
             }
             if (!demo && MessageBox.Show(this, PlanText() + "\n\nSet this up in " + run.Subscription.Name + "?", "Your storage", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            run.AskKey = gAsk.On;
+            run.RetentionDays = StorageSecurity.DayChoices[sDays.Selected];
             byte[] file;
             try { file = exe(); }
             catch (Exception ex) { note.Say("TrackVice.exe could not be read: " + ex.Message, true); return; }
@@ -700,6 +843,13 @@ namespace TrackVice
             Work("Setting up...", delegate
             {
                 run.Run(arm, web, keys, secrets, file, version, DateTime.UtcNow, delegate (string p) { Ui(delegate { note.Say(p, false); }); });
+                Ui(delegate { note.Say("Checking the security of " + run.Account.Name + "...", false); });
+                try
+                {
+                    ReadSecurity(arm, run.Result, run.Account);
+                    run.Result.Save(secrets);
+                }
+                catch (SetupException ex) { run.Done.Add("The security check could not read the account: " + ex.Message); }
             }, delegate
             {
                 bClose.Text = "Close";

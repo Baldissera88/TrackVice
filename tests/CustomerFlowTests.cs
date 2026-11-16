@@ -46,15 +46,34 @@ namespace TrackVice.Tests
             public readonly HashSet<string> Containers = new HashSet<string>();
             public readonly List<WebCall> Calls = new List<WebCall>();
             public readonly List<string> Order = new List<string>();
+            // The stored access policies of each container, set with Set Container ACL.
+            public readonly Dictionary<string, List<AccessPolicy>> Policies = new Dictionary<string, List<AccessPolicy>>();
 
             // 403 unless the link is signed for this container (or is an account SAS) and has one of the letters in need.
             string Allowed(string url, string container, string need, bool accountSas)
             {
                 Dictionary<string, string> q = Query(url);
-                string sp, sig, st, se;
+                string sp, sig, st, se, si;
+                string expect;
+                if (q.TryGetValue("si", out si) && !accountSas)
+                {
+                    // A link with a policy: its permissions and times come from the policy, and are not in the link.
+                    if (q.ContainsKey("sp") || q.ContainsKey("se") || q.ContainsKey("st")) return "a field both in the link and the policy";
+                    List<AccessPolicy> pol;
+                    AccessPolicy found = null;
+                    if (Policies.TryGetValue(container, out pol)) foreach (AccessPolicy p in pol) if (p.Id == si) found = p;
+                    if (found == null) return "no such policy";
+                    if (!q.ContainsKey("sr") || q["sr"] != "c" || !q.TryGetValue("sig", out sig)) return "not a container link";
+                    expect = SasLinks.Sign(string.Join("\n", new string[] { "", "", "", "/blob/" + Account + "/" + container, si, "", q["spr"], q["sv"], "c", "", "", "", "", "", "", "" }), Key);
+                    if (expect != sig) return "signature does not match";
+                    sp = found.Permission;
+                    st = found.Start;
+                    se = found.Expiry;
+                }
+                else
+                {
                 if (!q.TryGetValue("sp", out sp) || !q.TryGetValue("sig", out sig) || !q.TryGetValue("se", out se)) return "no SAS";
                 q.TryGetValue("st", out st);
-                string expect;
                 if (accountSas)
                 {
                     if (!q.ContainsKey("ss") || !q["ss"].Contains("b") || !q.ContainsKey("srt") || !q["srt"].Contains("c")) return "not an account SAS for containers";
@@ -67,6 +86,7 @@ namespace TrackVice.Tests
                     expect = SasLinks.Sign(SasLinks.StringToSign(sp, st, se, "/blob/" + Account + "/" + container, "https", q["sv"], "c"), Key);
                 }
                 if (expect != sig) return "signature does not match";
+                }
                 DateTime s, e;
                 DateTime.TryParse(se, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out e);
                 if (st != null && DateTime.TryParse(st, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out s) && s > Now) return "not valid yet";
@@ -91,7 +111,7 @@ namespace TrackVice.Tests
                 string container, blob;
                 Split(c.Url, out container, out blob);
                 Dictionary<string, string> q = Query(c.Url);
-                if (q.ContainsKey("restype") && q["restype"] == "container" && c.Method == "PUT")
+                if (q.ContainsKey("restype") && q["restype"] == "container" && c.Method == "PUT" && !q.ContainsKey("comp"))
                 {
                     string why = Allowed(c.Url, container, BlobContainers.ContainerPerms, true);
                     if (why != null) return Refused(why);
@@ -99,6 +119,15 @@ namespace TrackVice.Tests
                     return new WebReply(201, "");
                 }
                 if (!Containers.Contains(container)) return new WebReply(404, "");
+                if (q.ContainsKey("comp") && q["comp"] == "acl")
+                {
+                    string auth;
+                    if (!c.Headers.TryGetValue("Authorization", out auth) || !c.Headers.ContainsKey("x-ms-date")) return Refused("no Shared Key");
+                    if (auth != "SharedKey " + Account + ":" + SasLinks.Sign(SharedKey.StringToSign(c, Account), Key)) return Refused("Shared Key signature does not match");
+                    if (c.Method == "PUT") { Policies[container] = ContainerAcl.Parse(c.Text); return new WebReply(200, ""); }
+                    List<AccessPolicy> have;
+                    return new WebReply(200, ContainerAcl.Xml(Policies.TryGetValue(container, out have) ? have : new List<AccessPolicy>()));
+                }
                 string k = container + "/" + blob;
                 if (c.Method == "PUT")
                 {
@@ -308,7 +337,7 @@ namespace TrackVice.Tests
             r.MakeStorage(svc, own, Now);
             T.Check(svc.Containers.Contains("tv-northwind-traders"), "Flow: the customer's container is made");
             WebCall made = null;
-            foreach (WebCall c in svc.Calls) if (c.Url.Contains("restype=container")) made = c;
+            foreach (WebCall c in svc.Calls) if (c.Url.Contains("restype=container") && !c.Url.Contains("comp=acl")) made = c;
             Dictionary<string, string> aq = Query(made.Url);
             T.Eq(BlobContainers.ContainerPerms, aq["sp"], "Flow: the account SAS has only the permission to make a container");
             T.Eq("b", aq["ss"], "Flow: the account SAS is for the Blob service only");
@@ -327,8 +356,10 @@ namespace TrackVice.Tests
             T.Eq(own.AgentRead, a, "Flow: the code's agent link is the kept read link");
             Dictionary<string, string> qa = Query(a), qu = Query(u), qv = Query(r.Viewer);
             T.Check(a.StartsWith(Endpoint + Arm.AgentFiles + "?") && qa["sp"] == "r" && qa["sr"] == "c", "Flow: the agent link is the container link with Read only");
-            T.Check(u.StartsWith(Endpoint + "tv-northwind-traders?") && qu["sp"] == "cw" && qu["sr"] == "c", "Flow: the upload link has Create and Write on the customer's container");
-            T.Check(r.Viewer.StartsWith(Endpoint + "tv-northwind-traders?") && qv["sp"] == "rl" && qv["sr"] == "c", "Flow: the viewer link has Read and List on the customer's container");
+            T.Check(u.StartsWith(Endpoint + "tv-northwind-traders?") && qu["si"] == "upload" && qu["sr"] == "c" && qu["spr"] == "https", "Flow: the upload link uses the upload policy on the customer's container");
+            T.Check(r.Viewer.StartsWith(Endpoint + "tv-northwind-traders?") && qv["si"] == "viewer" && qv["sr"] == "c", "Flow: the viewer link uses the viewer policy on the customer's container");
+            T.Check(svc.CanPut(BlobLink(u, "sessions/x.json.gz")), "Flow: the upload link can upload to the customer's container");
+            T.Check(!svc.CanPut(BlobLink(r.Viewer, "sessions/x.json.gz")), "Flow: the viewer link cannot upload");
             T.Eq(pub, k, "Flow: the code holds the public update key");
             string writeSig = Query(own.AgentWrite)["sig"];
             foreach (string s in new string[] { code, script })
