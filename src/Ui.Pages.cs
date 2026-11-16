@@ -840,6 +840,8 @@ namespace TrackVice
             Add(new SectionTitle("Customers"));
             Add(new SettingRow(Glyphs2.Device, "Customers", "Saved connections for each customer you work for: the Intune tenant, where its agents upload to and its SCCM site. Choose one at the top of a device list. In use: " + (CustomerUi.CurrentName ?? "none") + ".", bCustomers));
 
+            foreach (Control c in YourStorageUi.SettingRows(theme, delegate { Relayout(); })) Add(c);
+
             FlatButton bPublish = SmallButton("Publish", delegate
             {
                 using (PublishDialog p = PublishDialog.ForCustomer(theme)) p.ShowDialog(this);

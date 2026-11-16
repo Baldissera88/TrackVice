@@ -60,6 +60,7 @@ namespace TrackVice.Tests
             CustomerSetupTests.Run();
             AgentLifetimeTests.Run();
             AppGroupTests.Run();
+            AddCustomerTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

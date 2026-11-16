@@ -336,6 +336,7 @@ namespace TrackVice
                 List<Control> buttons = new List<Control>();
                 if (!inUse) buttons.Add(SmallButton("Use", delegate { Use(one); }));
                 buttons.Add(SmallButton("Edit", delegate { Edit(one); }));
+                if (CustomerCodeDialog.Has(one.Name)) buttons.Add(SmallButton("Customer code\u2026", delegate { CustomerCodeDialog.Open(this, theme, one); }));
                 buttons.Add(SmallButton("Remove", delegate { Remove(one); }));
                 SettingRow r = new SettingRow(Glyphs2.Device, c.Name + (inUse ? "  ·  in use" : ""), CustomerUi.Summary(c), new ButtonStrip(buttons.ToArray()));
                 l.Add(r);
