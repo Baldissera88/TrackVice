@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.1.3
+
+16 November 2026.
+
+- Apps lists every app in one place. The apps the ESP waits for come first, in Device setup waits for and Account setup waits for, and Device setup and Account setup show their ESP steps and policies. Device setup and Account setup still count their apps, so the phase cards are unchanged.
+
 ## TrackVice 1.1.2
 
 16 November 2026.

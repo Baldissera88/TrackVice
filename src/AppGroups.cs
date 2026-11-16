@@ -5,7 +5,8 @@ namespace TrackVice
     using System.Text.RegularExpressions;
 
     // Who an Intune app is for and why it installs, and the group it has in the Apps phase.
-    // Apps the ESP waits for stay in Device setup and Account setup; every other app is in Apps.
+    // Apps the ESP waits for belong to Device setup and Account setup, which count them; the Progress list shows them
+    // with every other app under Apps, in the first two groups.
     public static class AppGroups
     {
         public const string TargetKey = "Target";
@@ -13,12 +14,14 @@ namespace TrackVice
         public const string Device = "Device", User = "User";
         public const string Required = "Required", Available = "Available", Dependency = "Dependency", Uninstall = "Uninstall";
 
+        public const string DeviceWaits = "Device setup waits for";
+        public const string AccountWaits = "Account setup waits for";
         public const string DeviceAfter = "Device, after the ESP";
         public const string UserAfter = "User, after the ESP";
         public const string InCompanyPortal = "Available in Company Portal";
         public const string Dependencies = "Dependencies";
         public const string Uninstalls = "Uninstall";
-        public static readonly string[] Order = { DeviceAfter, UserAfter, InCompanyPortal, Dependencies, Uninstalls };
+        public static readonly string[] Order = { DeviceWaits, AccountWaits, DeviceAfter, UserAfter, InCompanyPortal, Dependencies, Uninstalls };
 
         const string ZeroGuid = "00000000-0000-0000-0000-000000000000";
 
@@ -85,7 +88,10 @@ namespace TrackVice
 
         public static string Group(Item i)
         {
-            if (i == null || i.PhaseKey != Phases.IntuneApps || !IsApp(i)) return null;
+            if (i == null || !IsApp(i)) return null;
+            if (i.PhaseKey == Phases.DeviceSetup) return DeviceWaits;
+            if (i.PhaseKey == Phases.AccountSetup) return AccountWaits;
+            if (i.PhaseKey != Phases.IntuneApps) return null;
             string a = Assignment(i);
             if (a == Uninstall) return Uninstalls;
             if (a == Dependency) return Dependencies;
