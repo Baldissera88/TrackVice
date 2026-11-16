@@ -55,7 +55,7 @@ Install-TrackViceAgent.ps1  --->  downloads TrackVice.exe, checks hash
 | Idle | With nothing running and nothing new for 30 minutes it reads every 15 seconds and uploads every 5 minutes. It wakes up when something starts, such as account setup after pre-provisioning |
 | Logs | Uploads a zip of the device's logs when something fails, when it goes idle and at the end. See [Logs from the device](#logs-from-the-device) |
 | Alerts | With an alert link, posts to Teams when something fails and when the deployment is finished. See [Alerts in Teams](#alerts-in-teams) |
-| End | After 48 hours (`/keep <hours>`) it uploads one last time and removes its task and the saved link |
+| End | 48 hours after the deployment is done (`/keep <hours>`) it uploads one last time and removes its task and the saved link. Something new that starts in that time, such as an app or a restart, makes it count again when that is done. After pre-provisioning it waits for the user phase without counting. In any case it removes itself 30 days after it was installed (`/max-days <n>`) |
 
 The first minutes of a deployment happen before Intune can run anything on the device. They are still in the session, because the agent reads the logs and the ESP registry keys back to the Windows install.
 

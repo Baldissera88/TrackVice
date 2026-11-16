@@ -232,6 +232,7 @@ namespace TrackVice
                         case "id": ao.Id = Next(args, ref i); break;
                         case "upload": ao.Upload = Next(args, ref i); break;
                         case "keep": ao.KeepHours = Math.Max(1, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
+                        case "max-days": ao.MaxDays = Math.Max(1, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
                         case "once": ao.Once = true; break;
                         case "alert": ao.Alert = Next(args, ref i); break;
                         case "alert-test": ao.AlertTest = true; break;

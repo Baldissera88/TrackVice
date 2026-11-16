@@ -13,7 +13,8 @@ namespace TrackVice
 $Download  = ''   # Link to TrackVice.exe
 $Sha256    = ''   # SHA-256 of that TrackVice.exe, from Get-FileHash
 $Upload    = ''   # Where the agent uploads: the container SAS link with Create and Write
-$KeepHours = 48   # The agent removes itself after this long
+$KeepHours = 48   # The agent removes itself this many hours after the deployment is done, and at most $MaxDays days after it was installed
+$MaxDays   = 30   # The agent removes itself this many days after it was installed, also when the deployment is not done
 $MaxAgeHours = 0  # Only install on a device enrolled within this many hours. 0 installs on every device
 $Alert     = ''   # Optional: a Teams workflow or other webhook link. The agent posts failures and the end of the deployment there
 $UpdateKey = ''   # Optional: the public key from TrackVice > Settings > Publish agent update. With it the agent installs new versions you publish
@@ -48,6 +49,9 @@ if ($hash -ne $Sha256) {
 }
 
 $arguments = '/agent-install', '/upload', ""`""$Upload`"""", '/keep', $KeepHours
+if ($MaxDays) {
+    $arguments += '/max-days', $MaxDays
+}
 if ($Alert) {
     $arguments += '/alert', ""`""$Alert`""""
 }
