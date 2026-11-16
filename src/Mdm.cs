@@ -380,7 +380,7 @@ namespace TrackVice
                 Obs o = Make(When(reg, path, nowUtc), "Office CSP", key, OfficeName(config), Kinds.Office, PhaseFor(key, Phases.IntuneApps), st, text, path,
                     "Status = " + (status < 0 ? "(not set)" : status.ToString(CultureInfo.InvariantCulture)) + ", FinalStatus = " + (final < 0 ? "(not set)" : final.ToString(CultureInfo.InvariantCulture)));
                 if (st == State.Failed && status > 0) o.ExitCode = status;
-                o.AddInfo("ID", id.ToLowerInvariant());
+                o.AddInfo("ID", id.ToLowerInvariant()).AddInfo(AppGroups.TargetKey, AppGroups.Device);
                 foreach (Match m in RxAttr.Matches(config))
                     o.AddInfo(m.Groups["n"].Value.Equals("Channel", StringComparison.OrdinalIgnoreCase) ? "Update channel" : "Architecture", m.Groups["v"].Value + (m.Groups["n"].Value.Equals("Channel", StringComparison.OrdinalIgnoreCase) ? "" : "-bit"));
                 List<string> langs = new List<string>();
@@ -450,7 +450,7 @@ namespace TrackVice
                     if (!espPhase.ContainsKey(key) && user) o.PhaseKey = Phases.IntuneApps;
                     o.WeakName = name == null;
                     if (err != 0) o.ExitCode = unchecked((int)(uint)err);
-                    o.AddInfo("Product code", "{" + code + "}").AddInfo("Version", Str(reg, path, "ProductVersion")).AddInfo("Context", user ? "User" : "Device");
+                    o.AddInfo("Product code", "{" + code + "}").AddInfo("Version", Str(reg, path, "ProductVersion")).AddInfo("Context", user ? "User" : "Device").AddInfo(AppGroups.TargetKey, user ? AppGroups.User : AppGroups.Device);
                     string cmd = Str(reg, path, "CommandLine");
                     if (cmd != null) o.Command = cmd;
                     if (url != null)
@@ -516,7 +516,7 @@ namespace TrackVice
                     string path = Scripts + "\\" + user + "\\" + id;
                     string result = Str(reg, path, "Result");
                     if (result == null || id.Length != 36) continue;
-                    if (!seen.Add("s|" + id + "|" + result)) continue;
+                    if (!seen.Add("s|" + user + "|" + id + "|" + result)) continue;
                     State? st = result.Equals("Success", StringComparison.OrdinalIgnoreCase) ? State.Succeeded : result.Equals("Failed", StringComparison.OrdinalIgnoreCase) ? State.Failed : (State?)null;
                     long err = Num(reg, path, "ErrorCode", 0);
                     Obs o = Make(LocalStamp(Str(reg, path, "LastUpdatedTimeUtc"), nowUtc) ?? When(reg, path, nowUtc), "IME registry", ScriptKey(id), ScriptName(id), Kinds.Script, Phases.Scripts, st,
@@ -531,6 +531,8 @@ namespace TrackVice
     }
 
     // Platform scripts in IntuneManagementExtension.log and AgentExecutor.log.
+    // The IME log says when a run starts and its result; AgentExecutor.log has the exit code, the output and the errors of
+    // each run, so a run also ends from there when the IME result line is missing or comes late.
     public sealed class ScriptLog
     {
         static readonly Regex RxStart = new Regex(@"\[PowerShell\] Processing policy with id = (?<id>[0-9A-Fa-f-]{36}) for user (?<u>[0-9A-Fa-f-]{36})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -541,6 +543,9 @@ namespace TrackVice
 
         string current;
         string host;
+        long? exit;
+        string error;
+        readonly Dictionary<string, DateTime> started = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
         static Obs For(LogLine l, string source, string id)
         {
@@ -560,6 +565,20 @@ namespace TrackVice
             return Txt.Short(RxSpace.Replace(s ?? "", " ").Trim(), max);
         }
 
+        // Error text with only lines that start with WARNING: is not a failure.
+        public static bool OnlyWarnings(string text)
+        {
+            bool any = false;
+            foreach (string raw in (text ?? "").Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0) continue;
+                if (!line.StartsWith("WARNING:", StringComparison.OrdinalIgnoreCase)) return false;
+                any = true;
+            }
+            return any;
+        }
+
         // True when the line was about a platform script.
         public bool Read(LogLine l, string source, List<Obs> output)
         {
@@ -575,6 +594,7 @@ namespace TrackVice
                 o.Text = "Script started";
                 o.AddInfo("Context", m.Groups["u"].Value.StartsWith("00000000") ? "Device" : "User");
                 output.Add(o);
+                if (l.Utc.HasValue) started[m.Groups["id"].Value] = l.Utc.Value;
                 return true;
             }
             m = RxResult.Match(t);
@@ -585,6 +605,9 @@ namespace TrackVice
                 o.State = ok ? State.Succeeded : State.Failed;
                 if (!ok) o.Severity = 2;
                 o.Text = "Script finished: " + m.Groups["r"].Value;
+                // The result never comes before the start of its own run, also when the clock of the log moved in between.
+                DateTime st;
+                if (l.Utc.HasValue && started.TryGetValue(m.Groups["id"].Value, out st) && st > l.Utc.Value) o.TimeUtc = st;
                 output.Add(o);
                 return true;
             }
@@ -598,12 +621,20 @@ namespace TrackVice
             {
                 current = f.Groups["id"].Value;
                 host = null;
+                exit = null;
+                error = null;
                 return true;
             }
             if (current == null) return false;
             if (t.StartsWith("PowerShell path is", StringComparison.OrdinalIgnoreCase))
             {
                 host = t.IndexOf("SysWOW64", StringComparison.OrdinalIgnoreCase) >= 0 ? "32-bit" : "64-bit";
+                // The same run as the one the IME log started, or a new one when that start was not seen.
+                Obs o = For(l, source, current);
+                o.State = State.Installing;
+                o.NewAttempt = true;
+                o.Text = "PowerShell started, " + host;
+                output.Add(o);
                 return true;
             }
             Match e = RxExit.Match(t);
@@ -611,20 +642,29 @@ namespace TrackVice
             {
                 Obs o = For(l, source, current);
                 o.ExitCode = Errors.Parse(e.Groups["c"].Value);
+                exit = o.ExitCode;
                 o.Text = "PowerShell exited with exit code " + e.Groups["c"].Value;
                 o.AddInfo("PowerShell exit code", e.Groups["c"].Value).AddInfo("PowerShell host", host);
-                if (o.ExitCode.HasValue && o.ExitCode.Value != 0) o.Severity = 1;
+                if (o.ExitCode.HasValue && o.ExitCode.Value != 0)
+                {
+                    // The agent reports a run that ends with another exit code than 0 as failed.
+                    o.Severity = 2;
+                    o.State = State.Failed;
+                }
                 output.Add(o);
                 return true;
             }
             if (t.StartsWith("error from script =", StringComparison.OrdinalIgnoreCase))
             {
-                string err = Flat(t.Substring(19), 600);
+                string raw = t.Substring(19);
+                string err = Flat(raw, 600);
                 if (err.Length > 0)
                 {
+                    bool warn = OnlyWarnings(raw);
+                    if (!warn) error = err;
                     Obs o = For(l, source, current);
-                    o.Severity = 2;
-                    o.Text = "Script error: " + err;
+                    o.Severity = warn ? 1 : 2;
+                    o.Text = (warn ? "Script warning: " : "Script error: ") + err;
                     output.Add(o);
                 }
                 return true;
@@ -645,7 +685,18 @@ namespace TrackVice
             }
             if (t.StartsWith("Agent executor completed", StringComparison.OrdinalIgnoreCase))
             {
+                // A run that exited with 0 is done; error text other than warnings makes the agent report it as failed.
+                if (exit.HasValue && exit.Value == 0)
+                {
+                    Obs o = For(l, source, current);
+                    o.State = error == null ? State.Succeeded : State.Failed;
+                    if (error != null) o.Severity = 2;
+                    o.Text = error == null ? "Script ended with exit code 0" : "Script ended with exit code 0 and error text";
+                    output.Add(o);
+                }
                 current = null;
+                exit = null;
+                error = null;
                 return true;
             }
             return true;

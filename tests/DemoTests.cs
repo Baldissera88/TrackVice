@@ -42,7 +42,7 @@ namespace TrackVice.Tests
         public static void Run()
         {
             Session a = Play("autopilot");
-            T.Eq(13, a.Items.Count, "Autopilot demo items");
+            T.Eq(26, a.Items.Count, "Autopilot demo items: 13 apps, policies and restarts, 8 ESP steps and 5 apps the ESP does not wait for");
             T.Eq("Autopilot", a.Kind, "Autopilot demo kind");
             T.Eq(1, a.Count(State.Failed), "Autopilot demo failed items");
             Item vpn = ByName(a, "Contoso VPN Client 5.2");

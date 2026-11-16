@@ -126,7 +126,7 @@ namespace TrackVice
 
         public static string StateText(Item i)
         {
-            string s = States.Label(i.State);
+            string s = AppGroups.StateLabel(i);
             if (States.IsActive(i.State) && i.Percent.HasValue && i.Percent.Value > 0 && i.Percent.Value < 100) s += "  " + i.Percent.Value.ToString(CultureInfo.InvariantCulture) + " %";
             else if (i.State == State.Failed && i.ExitCode.HasValue) s += " · " + Errors.Short(i.ExitCode);
             return s;
@@ -310,6 +310,9 @@ namespace TrackVice
         {
             public Phase Phase;
             public Item Item;
+            // A sub-header inside a phase, such as the groups of the Apps phase. Item is null.
+            public string Group;
+            public int GroupCount;
         }
 
         readonly List<Row> rows = new List<Row>();
@@ -388,8 +391,10 @@ namespace TrackVice
                 h.Phase = p;
                 rows.Add(h);
                 if (collapsed.Contains(p.Key)) continue;
+                if (p.Key == Phases.IntuneApps) items = Grouped(p, items);
                 foreach (Item i in items)
                 {
+                    if (i == null) continue;
                     Row r = new Row();
                     r.Phase = p;
                     r.Item = i;
@@ -400,10 +405,56 @@ namespace TrackVice
             for (int k = 0; k < rows.Count; k++)
             {
                 if (keepItem != null && rows[k].Item != null && rows[k].Item.Key == keepItem) selected = k;
-                if (keepPhase != null && rows[k].Item == null && rows[k].Phase.Key == keepPhase) selected = k;
+                if (keepPhase != null && IsPhaseRow(k) && rows[k].Phase.Key == keepPhase) selected = k;
             }
             ClampTop();
             Invalidate();
+        }
+
+        // The apps of the Apps phase in their groups, each after a sub-header row. Null entries in the list stand for the headers.
+        List<Item> Grouped(Phase p, List<Item> items)
+        {
+            Dictionary<string, List<Item>> by = new Dictionary<string, List<Item>>();
+            List<Item> rest = new List<Item>();
+            foreach (Item i in items)
+            {
+                string g = AppGroups.Group(i);
+                if (g == null) { rest.Add(i); continue; }
+                List<Item> l;
+                if (!by.TryGetValue(g, out l)) { l = new List<Item>(); by[g] = l; }
+                l.Add(i);
+            }
+            if (by.Count == 0) return items;
+            foreach (Item i in rest)
+            {
+                Row r = new Row();
+                r.Phase = p;
+                r.Item = i;
+                rows.Add(r);
+            }
+            foreach (string g in AppGroups.Order)
+            {
+                List<Item> l;
+                if (!by.TryGetValue(g, out l)) continue;
+                Row h = new Row();
+                h.Phase = p;
+                h.Group = g;
+                h.GroupCount = l.Count;
+                rows.Add(h);
+                foreach (Item i in l)
+                {
+                    Row r = new Row();
+                    r.Phase = p;
+                    r.Item = i;
+                    rows.Add(r);
+                }
+            }
+            return new List<Item>();
+        }
+
+        bool IsPhaseRow(int k)
+        {
+            return k >= 0 && k < rows.Count && rows[k].Item == null && rows[k].Group == null;
         }
 
         public Item SelectedItem
@@ -446,7 +497,7 @@ namespace TrackVice
             Rebuild();
             for (int k = 0; k < rows.Count; k++)
             {
-                if (rows[k].Item == null && rows[k].Phase.Key == key)
+                if (IsPhaseRow(k) && rows[k].Phase.Key == key)
                 {
                     Select(k);
                     top = Math.Max(0, Y(k));
@@ -480,9 +531,11 @@ namespace TrackVice
             if (SelectionChanged != null) SelectionChanged(this, EventArgs.Empty);
         }
 
+        int GroupH { get { return Dpi.S(28); } }
+
         int H(int k)
         {
-            return rows[k].Item == null ? PhaseH : ItemH;
+            return rows[k].Group != null ? GroupH : rows[k].Item == null ? PhaseH : ItemH;
         }
 
         int Y(int k)
@@ -563,8 +616,9 @@ namespace TrackVice
                 if (y + h > 0 && y < Height)
                 {
                     Rectangle r = new Rectangle(0, y, w, h);
-                    if (rows[k].Item == null) PaintPhase(g, rows[k].Phase, r, k == selected, k == hot, nowUtc);
-                    else PaintItem(g, rows[k].Item, r, k == selected, k == hot, nowUtc);
+                    if (rows[k].Group != null) PaintGroup(g, rows[k], r);
+                    else if (rows[k].Item == null) PaintPhase(g, rows[k].Phase, r, k == selected, k == hot, nowUtc);
+                    else PaintItem(g, rows[k].Item, rows[k].Phase, r, k == selected, k == hot, nowUtc);
                 }
                 y += h;
                 if (y > Height) break;
@@ -611,7 +665,18 @@ namespace TrackVice
             StateLook.Bar(g, new RectangleF(r.Right - Dpi.S(16) - bw, cy - Dpi.S(2), bw, Dpi.S(4)), p.Progress, StateLook.Color(st, T), T.Divider);
         }
 
-        void PaintItem(Graphics g, Item i, Rectangle r, bool sel, bool hover, DateTime nowUtc)
+        void PaintGroup(Graphics g, Row row, Rectangle r)
+        {
+            int x = r.X + Dpi.S(56);
+            string count = row.GroupCount.ToString(CultureInfo.InvariantCulture);
+            int nw = TextRenderer.MeasureText(row.Group, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width;
+            Rectangle tr = new Rectangle(x, r.Y + Dpi.S(8), Math.Max(0, Math.Min(nw + 2, r.Width - x - Dpi.S(60))), r.Height - Dpi.S(8));
+            TextRenderer.DrawText(g, row.Group, Fonts.SmallSemibold, tr, T.Text2, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+            TextRenderer.DrawText(g, count, Fonts.Small, new Rectangle(tr.Right + Dpi.S(8), tr.Y, Dpi.S(50), tr.Height), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+            using (Pen pen = new Pen(Theme.Mix(T.Card, T.Divider, 0.6f))) g.DrawLine(pen, x, r.Bottom - 1, r.Right - Dpi.S(8), r.Bottom - 1);
+        }
+
+        void PaintItem(Graphics g, Item i, Phase p, Rectangle r, bool sel, bool hover, DateTime nowUtc)
         {
             if (sel || hover)
             {
@@ -626,7 +691,7 @@ namespace TrackVice
             int tw = Math.Max(Dpi.S(80), r.Width - x - rightW - Dpi.S(12));
             Color nameC = i.State == State.Skipped || i.State == State.NotApplicable ? T.Text3 : T.Text;
             TextRenderer.DrawText(g, i.DisplayName, Fonts.Ui, new Rectangle(x, r.Y + Dpi.S(7), tw, Fonts.Ui.Height + 2), nameC, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
-            string sub = Sub(i);
+            string sub = Sub(i, p);
             TextRenderer.DrawText(g, sub, Fonts.Small, new Rectangle(x, r.Y + Dpi.S(27), tw, Fonts.Small.Height + 2), T.Text3, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
 
             // Right side: state (with a bar while running), tries, duration.
@@ -667,10 +732,18 @@ namespace TrackVice
             if (x1 - x0 > 1) Shapes.Fill(g, new RectangleF(x0, r.Y, x1 - x0, r.Height), r.Height / 2, c);
         }
 
-        static string Sub(Item i)
+        static string Sub(Item i, Phase p)
         {
             List<string> parts = new List<string>();
             if (!string.IsNullOrEmpty(i.Kind)) parts.Add(i.Kind);
+            parts.AddRange(AppGroups.Tags(i));
+            // The ESP step Apps says which apps it waits for.
+            string apps = AppGroups.IsAppsStep(i) ? AppGroups.StepText(p, i) : null;
+            if (apps != null)
+            {
+                parts.Add(apps);
+                return string.Join("  ·  ", parts.ToArray());
+            }
             // A log line says more than a registry or WMI state, so the newest log line wins.
             string last = null, any = null;
             for (int k = i.Events.Count - 1; k >= 0 && last == null; k--)
@@ -758,8 +831,8 @@ namespace TrackVice
             int k = RowAt(e.Y);
             if (k >= 0)
             {
-                if (e.Button == MouseButtons.Left && rows[k].Item == null && e.X < Dpi.S(34) + TextRenderer.MeasureText(rows[k].Phase.Name, Fonts.UiSemibold).Width) Toggle(k);
-                else Select(k);
+                if (e.Button == MouseButtons.Left && IsPhaseRow(k) && e.X < Dpi.S(34) + TextRenderer.MeasureText(rows[k].Phase.Name, Fonts.UiSemibold).Width) Toggle(k);
+                else if (rows[k].Group == null) Select(k);
             }
             base.OnMouseDown(e);
         }
@@ -778,7 +851,7 @@ namespace TrackVice
         protected override void OnMouseDoubleClick(MouseEventArgs e)
         {
             int k = RowAt(e.Y);
-            if (k >= 0 && rows[k].Item == null) Toggle(k);
+            if (IsPhaseRow(k)) Toggle(k);
             base.OnMouseDoubleClick(e);
         }
 
@@ -787,7 +860,7 @@ namespace TrackVice
             Phase p = rows[k].Phase;
             if (!collapsed.Remove(p.Key)) collapsed.Add(p.Key);
             Rebuild();
-            for (int i = 0; i < rows.Count; i++) if (rows[i].Item == null && rows[i].Phase == p) Select(i);
+            for (int i = 0; i < rows.Count; i++) if (IsPhaseRow(i) && rows[i].Phase == p) Select(i);
         }
 
         protected override bool IsInputKey(Keys keyData)
@@ -811,12 +884,12 @@ namespace TrackVice
                 case Keys.PageDown: Select(Math.Min(rows.Count - 1, selected + page)); break;
                 case Keys.PageUp: Select(Math.Max(0, selected - page)); break;
                 case Keys.Left:
-                    if (selected >= 0 && rows[selected].Item == null && !collapsed.Contains(rows[selected].Phase.Key)) Toggle(selected);
-                    else if (selected >= 0 && rows[selected].Item != null) { for (int k = selected; k >= 0; k--) if (rows[k].Item == null) { Select(k); break; } }
+                    if (IsPhaseRow(selected) && !collapsed.Contains(rows[selected].Phase.Key)) Toggle(selected);
+                    else if (selected >= 0 && !IsPhaseRow(selected)) { for (int k = selected; k >= 0; k--) if (IsPhaseRow(k)) { Select(k); break; } }
                     break;
                 case Keys.Right:
                 case Keys.Enter:
-                    if (selected >= 0 && rows[selected].Item == null && collapsed.Contains(rows[selected].Phase.Key)) Toggle(selected);
+                    if (IsPhaseRow(selected) && collapsed.Contains(rows[selected].Phase.Key)) Toggle(selected);
                     break;
             }
             base.OnKeyDown(e);

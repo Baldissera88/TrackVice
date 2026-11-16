@@ -26,6 +26,8 @@ namespace TrackVice
         // Seconds from the start of the enrollment to the start of the item, and how long it ran.
         [DataMember(Order = 10, EmitDefaultValue = false)] public double? Offset;
         [DataMember(Order = 11, EmitDefaultValue = false)] public double? Seconds;
+        // Required, Available, Dependency or Uninstall, for apps. An app offered in Company Portal is never missing.
+        [DataMember(Order = 12, EmitDefaultValue = false)] public string Assignment;
     }
 
     [DataContract(Name = "Reference", Namespace = "")]
@@ -73,6 +75,7 @@ namespace TrackVice
                 }
                 x.State = i.StateName;
                 x.ExitCode = i.ExitCode;
+                x.Assignment = AppGroups.Assignment(i);
                 if (i.StartUtc.HasValue) x.Offset = Math.Max(0, (i.StartUtc.Value - start).TotalSeconds);
                 TimeSpan? d = i.Duration(nowUtc);
                 if (d.HasValue) x.Seconds = d.Value.TotalSeconds;
@@ -100,7 +103,7 @@ namespace TrackVice
                 {
                     Phase p = new Phase();
                     p.Key = pk;
-                    p.Name = x.PhaseName ?? Phases.Name(pk);
+                    p.Name = pk == Phases.IntuneApps ? Phases.Name(pk) : x.PhaseName ?? Phases.Name(pk);
                     p.Order = x.PhaseOrder != 0 ? x.PhaseOrder : Phases.Order(pk);
                     phases[pk] = p;
                     s.Phases.Add(p);
@@ -113,6 +116,7 @@ namespace TrackVice
                 i.PhaseKey = pk;
                 i.StateName = x.State;
                 i.ExitCode = x.ExitCode;
+                if (x.Assignment != null) i.Set(AppGroups.AssignmentKey, x.Assignment);
                 i.Order = order++;
                 DateTime from = StartUtc.AddSeconds(x.Offset ?? 0);
                 i.FirstUtc = from;
@@ -324,7 +328,7 @@ namespace TrackVice
 
         static bool Skipped(Item i)
         {
-            return i.State == State.Skipped || i.State == State.NotApplicable;
+            return i.State == State.Skipped || i.State == State.NotApplicable || AppGroups.IsAvailable(i);
         }
 
         // Items that may still change. After the technician phase of pre-provisioning, account setup waits for the user,

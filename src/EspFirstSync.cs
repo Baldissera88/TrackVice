@@ -67,11 +67,27 @@ namespace TrackVice
                         list.Add(o);
                     }
                     foreach (string sub in reg.SubKeys(fs))
-                        if (AccountSetup.IsSid(sub)) Phase(reg, fs + "\\" + sub, Phases.AccountSetup, "user:" + sub, nowUtc, list);
+                    {
+                        if (!AccountSetup.IsSid(sub)) continue;
+                        Phase(reg, fs + "\\" + sub, Phases.AccountSetup, "user:" + sub, nowUtc, list);
+                        AccountDone(reg, sub, list);
+                    }
                 }
             }
             catch (Exception) { }
             return list;
+        }
+
+        // HasProvisioningCompleted under the user's ESP tracking key: account setup is over.
+        void AccountDone(IRegSource reg, string sid, List<Obs> list)
+        {
+            string path = EspWatch.Root + "\\" + sid + "\\Setup";
+            long? done = Num(reg, path, "HasProvisioningCompleted");
+            if (!done.HasValue || done.Value == 0 || !seen.Add("accountdone|" + sid)) return;
+            Obs o = new Obs();
+            o.Source = "ESP";
+            o.AddSessionInfo(EspSteps.AccountDoneInfo, EspSteps.AccountDoneText);
+            list.Add(o);
         }
 
         static DateTime When(IRegSource reg, string path, DateTime nowUtc)
@@ -127,6 +143,13 @@ namespace TrackVice
                     prev = "running";
                 }
                 if (!sec.HasValue || sec.Value < 0) continue;
+                if (seen.Add("counted|" + key))
+                {
+                    // Windows wrote the step's time, so the step ends from it and not from other evidence (EspSteps).
+                    Obs c = Make(path, key, s[2], s[3], phase, null, start.Value, null, s[0]);
+                    c.AddInfo(EspSteps.CountedKey, "Yes");
+                    list.Add(c);
+                }
                 bool running = Running(start.Value, sec.Value, written, nowUtc);
                 if (running && prev != "running")
                 {
