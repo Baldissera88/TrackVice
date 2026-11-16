@@ -86,7 +86,7 @@ Your storage does not have to be in the customer's tenant. The devices only use 
 
 1. **Sign in to Azure**, with a code in the browser. Leave Azure tenant empty for the tenant of your account. Signing in and listing change nothing.
 2. **Pick the subscription.**
-3. **Pick the account**: a new account just for TrackVice, with a resource group (pick one or type a new name), a name and a region, or an existing account.
+3. **Pick the account**. When customers you set up with links already upload to an account, TrackVice finds it in the subscriptions and selects it, with the names of those customers. You can also pick another existing account, or make a new one just for TrackVice with a resource group (pick one or type a new name), a name and a region.
 4. **Set up.** TrackVice shows what it will make and asks before it starts.
 
 **What it makes and keeps**
@@ -100,7 +100,22 @@ Your storage does not have to be in the customer's tenant. The devices only use 
 | The update key | Made when this PC has none. The private key stays in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted for your Windows account. It is the same key as for [Agent updates](#agent-updates) |
 | First version | When `trackvice-agent` has no `agent/latest.json`, the running TrackVice.exe is published to it, signed with the update key |
 
-The account key is kept so Add customer can make a container for each customer and sign its links without a new sign-in. Treat this PC and your Windows account like the key.
+The account key is kept so Add customer can make a container for each customer and sign its links without a new sign-in. Treat this PC and your Windows account like the key. If you would rather not keep it, turn on **Ask for Azure sign-in when adding a customer**: the key is then not kept, and Add customer and Publish sign in to Azure and read the key only for that run.
+
+### Check security
+
+**Settings > Your storage > Check security** reads the account through Azure and shows each setting with a plain line. Reading changes nothing. A setting that is not in order has a button that changes only that setting, after you confirm it with the account name and the change. The account may be used for other things too, so TrackVice never changes network rules or keys.
+
+| Setting | In order when |
+|---|---|
+| Anonymous blob access | Off (`allowBlobPublicAccess` false) |
+| HTTPS only | On |
+| Minimum TLS | 1.2 or later |
+| Container soft delete | On, 7 days, so a deleted customer container can be brought back |
+| Delete old uploads | The lifecycle rule `trackvice-customers` is there: block blobs whose path starts with `tv-`, which is every customer container, are deleted 30 days after they last changed. Other rules on the account are kept as they are |
+| Blob soft delete | Shown only. It is not needed: the agents overwrite their session every few seconds, and soft delete would keep every overwritten copy |
+
+After you add the rule, check in the portal under **Lifecycle management** that it is there. A rule can take up to a day before it first runs.
 
 Settings shows the account, the date the links expire, and the version published for the devices. **Publish** publishes the running TrackVice when it is newer. **Set up again** signs new links, for example before they expire. **Remove** forgets the key and the links on this PC only. Nothing in Azure is deleted, and devices keep working.
 
@@ -283,6 +298,11 @@ The customer code, the script and the Intune part are the same as for your stora
 | Customer code | Masked, with **Copy** |
 | Alert link | Change or clear it, then **Save the alert link**. That makes a new customer code and saves the script again in `Documents\TrackVice\Scripts` |
 | Update the script in Intune | Sign in to the customer's tenant, then **Update**. It puts the script for the code in the platform script **TrackVice agent**, after you confirm. Its assignments are kept |
+
+| New links | Replaces the customer's two access policies and makes new links. Every old upload and viewer link of the customer stops working at once; then update the script in Intune |
+| Remove customer | Removes the customer's access policies, so every link of the customer stops working at once, and removes the customer from TrackVice. Deleting the container with all its data is a separate choice you tick |
+
+Each customer container has two stored access policies, `upload` (Create and Write) and `viewer` (Read and List). The customer's links refer to them, so one customer's links can be stopped without touching anyone else. A new policy can take up to 30 seconds before Azure uses it.
 
 Devices that run the script from then on get the new code. Editing a script in Intune makes it run again on the devices that already ran it, but on a device enrolled more than 24 hours ago it installs nothing. Agents already installed keep the alert link they were installed with.
 
@@ -648,7 +668,7 @@ Enroll or reset the test device and keep the list open on your PC, as in [Follow
 | Links of a setup with links expire | Run **New customer with links** again with the same customer name and the existing account, or make new links by hand. Then update `$Download`, `$Upload` and `$UpdateLink` in `agent/Install-TrackViceAgent-Links.ps1` in Intune, the task sequence steps and the upload location in TrackVice |
 | A new PC or Windows user | The update key cannot move, and the account key and customer codes are kept for one Windows user. Set up Your storage there, which makes a new key. Publish, then make every customer code again with Add customer and update the scripts in Intune: devices only trust the key in their code. With links, put the new key in `$UpdateKey` and update the script in Intune |
 | A link or customer code got out | Rotate the storage account key the links were signed with (Security + networking > Access keys). That cancels every link signed with that key: in your storage, every customer's links and the links to `trackvice-agent`. Then **Set up again** in Your storage and make the customer codes again |
-| The containers grow | In the customer's own Azure and with links, the lifecycle rule deletes uploads after 30 days. Your storage has no such rule: add a lifecycle management rule on the account that deletes blobs under `tv-<customer>/sessions/` and `tv-<customer>/logs/` after 30 days |
+| The containers grow | Your storage: add the rule in **Check security**. In the customer's own Azure and with links, the rule `trackvice-cleanup` deletes uploads after 30 days |
 | Stop using it | Remove the assignment in Intune. Agents already installed remove themselves when their time is up |
 
 To remove the agent from one device now:

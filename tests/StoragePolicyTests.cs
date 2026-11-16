@@ -273,7 +273,7 @@ namespace TrackVice.Tests
             Dictionary<string, SecurityItem> items = new Dictionary<string, SecurityItem>();
             foreach (SecurityItem i in c.Items(30)) items[i.Id] = i;
             T.Check(!items["public"].Ok && !items["https"].Ok && !items["tls"].Ok, "security: public access, http and TLS 1.0 are not in order");
-            T.Check(items["blobsoft"].Ok && items["blobsoft"].Line.Contains("14 days"), "security: blob soft delete on");
+            T.Check(items["blobsoft"].Ok && items["blobsoft"].Line.Contains("14 days"), "security: blob soft delete on is shown, and is not asked for");
             T.Check(!items["containersoft"].Ok && !items["rule"].Ok, "security: container soft delete off, no rule");
             T.Check(items["key"].Info && items["key"].Ok, "security: account key access is shown, on when not set");
             T.Eq("swedencentral", a.Location, "security: the region is read");

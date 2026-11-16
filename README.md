@@ -408,7 +408,7 @@ What the agent sends:
 - References are kept per Windows user on one PC. `/ship-report` on another PC, such as the device itself, has no reference and judges only the device.
 - PackVice opens only .msi installers, and only while the IME cache or ccmcache still has them. NotifyVice takes no device or message on its command line, so the text goes on the clipboard.
 - Only an installed agent updates itself, not one in a task sequence or started with `/agent`. The signing key cannot be moved to another PC or Windows user; a new key means new customer codes, or a new `$UpdateKey` in a script with links.
-- Your storage has no lifecycle rule, so uploads stay until you add one. Add customer has no fields for the 24, 48 and 30 in the customer code.
+- Add customer has no fields for the 24, 48 and 30 in the customer code.
 
 ## Build from source
 

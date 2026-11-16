@@ -60,8 +60,12 @@ namespace TrackVice
             t.Change = "set the minimum TLS version to 1.2 (minimumTlsVersion TLS1_2)";
             t.Button = "Set TLS 1.2";
             l.Add(t);
-            SecurityItem b = Item(StorageSecurity.BlobSoftId, "Blob soft delete", BlobSoftDelete);
-            b.Line = BlobSoftDelete ? "On, " + BlobSoftDays + " days. A deleted or overwritten blob can be brought back in that time." : "Off. A deleted blob is gone at once. Turning it on keeps deleted blobs for " + StorageSecurity.SoftDeleteDays + " days.";
+            // Not asked for: the agent overwrites its session blob every few seconds while a deployment runs, and blob soft
+            // delete keeps every overwritten copy for its days, so it costs storage without protecting anything TrackVice needs.
+            SecurityItem b = Item(StorageSecurity.BlobSoftId, "Blob soft delete", true);
+            b.Line = BlobSoftDelete
+                ? "On, " + BlobSoftDays + " days. Every upload of an agent overwrites its session, and each overwritten copy is kept that long, so the account holds more. Not needed for TrackVice."
+                : "Off. Not needed for TrackVice: the agents overwrite their session every few seconds, and soft delete would keep every copy.";
             b.Change = "turn on blob soft delete for " + StorageSecurity.SoftDeleteDays + " days";
             b.Button = "Turn on";
             l.Add(b);
