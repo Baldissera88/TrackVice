@@ -190,6 +190,9 @@ namespace TrackVice
             return null;
         }
 
+        // Create (c) is only for blobs in an account SAS; a container is made with Write on the container resource type.
+        public const string ContainerPerms = "w";
+
         // Makes a private container with the Blob service. False when it was there already.
         public static bool Create(IWeb web, OwnStorage own, string name, DateTime nowUtc)
         {
@@ -197,7 +200,7 @@ namespace TrackVice
             if (problem != null) throw new SetupException(problem);
             WebCall c = new WebCall();
             c.Method = "PUT";
-            c.Url = own.BlobEndpoint.TrimEnd('/') + "/" + name + "?restype=container&" + AccountSas.Query(own.Account, own.Key, "c", "b", "c", nowUtc.AddMinutes(-15), nowUtc.AddHours(1));
+            c.Url = own.BlobEndpoint.TrimEnd('/') + "/" + name + "?restype=container&" + AccountSas.Query(own.Account, own.Key, ContainerPerms, "b", "c", nowUtc.AddMinutes(-15), nowUtc.AddHours(1));
             c.Headers["x-ms-version"] = SasLinks.Version;
             WebReply r = web.Send(c);
             if (r.Status == 201) return true;
@@ -300,6 +303,20 @@ namespace TrackVice
             return SemVer.Compare(published, running) < 0;
         }
 
+        // Why versions and customer codes made with this PC's update key would be refused, or null. The devices trust the key
+        // that signed agent/latest.json, so a PC with another key must not publish over it or make codes with its own key.
+        public static string KeyProblem(IWeb web, OwnStorage own, string publicKey)
+        {
+            if (string.IsNullOrEmpty(publicKey)) return "This PC has no update key. Set up Your storage again to make one.";
+            byte[] b = new WebContainer(web, own.AgentRead).Find(UpdateManifest.Name);
+            if (b == null) return null;
+            bool signed;
+            try { signed = UpdateManifest.Parse(b).Verify(publicKey); }
+            catch (Exception) { signed = false; }
+            if (signed) return null;
+            return UpdateManifest.Name + " in " + own.Account + " is signed with another update key than the one on this PC, so devices would refuse what this PC makes. Publish and add customers on the PC that has that key.";
+        }
+
         public static string Prompt(string running)
         {
             return "TrackVice " + running + " is not published to your storage.";
@@ -358,7 +375,12 @@ namespace TrackVice
                     PublishedNow = true;
                     Done.Add("Published TrackVice " + exeVersion + " to " + Arm.AgentFiles);
                 }
-                else Result.PublishedVersion = have ?? "";
+                else
+                {
+                    Result.PublishedVersion = have ?? "";
+                    string problem = have != null ? OwnPublish.KeyProblem(web, Result, UpdateKeys.PublicKey(key)) : null;
+                    if (problem != null) Done.Add(problem);
+                }
             }
             Result.Save(secrets);
         }
@@ -593,6 +615,10 @@ namespace TrackVice
             }
             string a = (Alert ?? "").Trim();
             if (a.Length > 0 && AlertSender.Problem(a) != null) return AlertSender.Problem(a);
+            if (!OwnAzure)
+                foreach (Customer c in book.All)
+                    if (!string.Equals(c.Name, n, StringComparison.OrdinalIgnoreCase) && BlobContainers.NameFor(c.Name) == ContainerName)
+                        return "The customer " + c.Name + " would use the same container " + ContainerName + ". Give this customer a name that differs in letters or digits.";
             return null;
         }
 

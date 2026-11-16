@@ -406,6 +406,8 @@ namespace TrackVice
             Work("Creating...", delegate
             {
                 DateTime now = DateTime.UtcNow;
+                string keyProblem = OwnPublish.KeyProblem(web, own, key);
+                if (keyProblem != null) throw new SetupException(keyProblem);
                 if (run.OwnAzure)
                 {
                     NewCustomerRun st = run.Storage;
@@ -415,7 +417,7 @@ namespace TrackVice
                     run.Done.AddRange(st.Done.GetRange(from, st.Done.Count - from));
                     run.UseLinks(st.Links);
                 }
-                else if (run.Upload.Length == 0) run.MakeStorage(web, own, now);
+                else if (run.Upload.Length == 0 || run.Container != run.ContainerName) run.MakeStorage(web, own, now);
                 run.MakeCode(own, key);
                 if (api != null)
                 {
@@ -671,7 +673,9 @@ namespace TrackVice
                 case "addcustomer": return AddCustomerDialog.ForDemo(theme, start.Tab, start.Select);
                 case "yourstorage": return YourStorageDialog.ForDemo(theme, start.Tab);
                 case "yourstorage-settings":
-                    YourStorageUi.UseDemo();
+                    // --select empty shows the section as it is before Your storage is set up.
+                    if (start.Select == "empty") YourStorageUi.Secrets = new MemorySecrets();
+                    else YourStorageUi.UseDemo();
                     SettingsDialog sd = new SettingsDialog(theme);
                     // Scrolled to the Your storage section.
                     sd.Shown += delegate { sd.BeginInvoke((MethodInvoker)delegate { foreach (Control c in sd.Controls) { Panel p = c as Panel; if (p != null && p.AutoScroll) p.AutoScrollPosition = new Point(0, Dpi.S(start.Tab >= 0 ? start.Tab : 1500)); } }); };

@@ -152,7 +152,7 @@ namespace TrackVice.Tests
             string json = Encoding.UTF8.GetString(m.ToJson());
             string script = AgentScriptTemplate.Text;
 
-            Match pub = Regex.Match(script, @"^\$published = \[regex\]::Match\(\$raw, '([^']*)'\)\.Groups\[1\]\.Value", RegexOptions.Multiline);
+            Match pub = Regex.Match(script, @"^\s*\$published = \[regex\]::Match\(\$raw, '([^']*)'\)\.Groups\[1\]\.Value", RegexOptions.Multiline);
             T.Check(pub.Success, "Payload: the script reads published from the text");
             string published = pub.Success ? Regex.Match(json, pub.Groups[1].Value).Groups[1].Value : "";
             T.Eq("2026-11-16T09:30:05Z", published, "Payload: published as the text in the json");
@@ -164,7 +164,7 @@ namespace TrackVice.Tests
             values["blob"] = m.Blob;
             values["published"] = published;
 
-            Match line = Regex.Match(script, @"^\$payload = (.*)$", RegexOptions.Multiline);
+            Match line = Regex.Match(script, @"^\s*\$payload = (.*)$", RegexOptions.Multiline);
             T.Check(line.Success, "Payload: the script has a $payload line");
             T.Check(script.Contains("$bytes = [Text.Encoding]::UTF8.GetBytes($payload -join \"`n\")"), "Payload: joined with a line feed and UTF-8");
             List<string> parts = new List<string>();

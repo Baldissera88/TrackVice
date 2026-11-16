@@ -572,6 +572,11 @@ namespace TrackVice
             HookWheel(scroll);
         }
 
+        public Theme CurrentTheme
+        {
+            get { return theme; }
+        }
+
         public void Retheme(Theme t)
         {
             theme = t;

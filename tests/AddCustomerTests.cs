@@ -214,6 +214,7 @@ namespace TrackVice.Tests
             T.Check(put != null && put.Url.StartsWith("https://contosotrackvice.blob.core.windows.net/tv-contoso?restype=container&sv="), "add customer: the container is made with the Blob service");
             T.Eq(SasLinks.Version, put.Headers["x-ms-version"], "add customer: x-ms-version");
             T.Eq("c", QueryOf(put.Url)["srt"], "add customer: with an account SAS");
+            T.Eq("w", QueryOf(put.Url)["sp"], "add customer: the account SAS can only write containers");
             T.Eq("cw", QueryOf(r.Upload)["sp"], "add customer: upload link has Create and Write");
             T.Eq("c", QueryOf(r.Upload)["sr"], "add customer: upload link is for the container");
             T.Eq("rl", QueryOf(r.Viewer)["sp"], "add customer: viewer link has Read and List");
