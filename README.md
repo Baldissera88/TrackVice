@@ -26,11 +26,13 @@ Get `TrackVice.msi` or the portable `TrackVice.exe` from the [latest release](ht
 | Task sequence | Command support (F8) on the boot image. The Windows PE part also needs WinPE-NetFx, and shows smsts.log only |
 | Autopilot in Intune | A sign-in to the customer's tenant with `DeviceManagementManagedDevices.Read.All`, delegated. [Names from Intune](#names-from-intune) and [Check devices before enrollment](#check-devices-before-enrollment) need more read permissions, listed there |
 | Task sequences in SCCM | Network access and remote WMI to the SMS Provider, and a role that can read deployment status, such as Read-only Analyst |
-| The agent | A storage account in Azure, the right to add a platform script in Intune, and outbound HTTPS (port 443) from the devices to `<account>.blob.core.windows.net`. See [docs/AGENT.md](docs/AGENT.md#what-you-need) |
-| New customer | Contributor on the subscription for a new storage account, or Storage Account Contributor on an existing one. Adding the platform script to Intune also needs a role that can add scripts, and consent to `DeviceManagementScripts.ReadWrite.All` and `Group.ReadBasic.All`. `New-TrackViceCustomer.ps1` needs PowerShell 5.1 with Az.Accounts and Az.Storage |
+| The agent | One storage account in your own Azure for all customers, and outbound HTTPS (port 443) from the devices to `<account>.blob.core.windows.net`. See [docs/AGENT.md](docs/AGENT.md#what-you-need) |
+| Your storage | Once: Contributor on the subscription for a new storage account, or Storage Account Contributor on an existing one |
+| Add customer | No Azure role. For the Intune part: in the customer's tenant, a role that can add and assign platform scripts and one that can make groups, and consent to `DeviceManagementScripts.ReadWrite.All` and `Group.ReadWrite.All`. See [docs/AGENT.md](docs/AGENT.md#who-signs-in-and-what-they-need) |
+| Setup with links | For existing setups: the roles above in the customer's subscription, and `Group.ReadBasic.All` instead of `Group.ReadWrite.All`. `New-TrackViceCustomer.ps1` needs PowerShell 5.1 with Az.Accounts and Az.Storage |
 | LogVice, PackVice, NotifyVice | Optional. When one is not found, its button asks you to locate the exe and keeps your choice. Nothing else needs them |
 
-TrackVice reads only. The exceptions are the agent's own folder, task and registry key on the devices, and what New customer creates in Azure and Intune when you confirm it.
+TrackVice reads only. The exceptions are the agent's own folder, task and registry key on the devices, and what Your storage, Add customer and New customer with links create in Azure and Intune when you confirm it.
 
 ## What it shows
 
@@ -168,15 +170,16 @@ Intune and SCCM only know what a device has reported. With the agent, the device
 
 | | |
 |---|---|
-| Install | An Intune platform script (`agent/Install-TrackViceAgent.ps1`) or a Win32 app that runs `TrackVice.exe /agent-install /upload "<location>"` |
+| Set up | **Settings > Your storage** once: one storage account in your Azure, where TrackVice versions are published. Then **Devices > Add customer** in three steps: a private container per customer, a customer code, and in Intune a dynamic group of Autopilot devices with the platform script assigned to it |
+| Install | The platform script `agent/Install-TrackViceAgent.ps1` holds one line, the customer code. On the device it downloads the newest signed TrackVice from your storage, checks it and runs `TrackVice.exe /agent-install /customer "<code>"`. A Win32 app can run the same command |
 | On the device | A startup task that runs as SYSTEM, survives restarts and a pre-provisioning reseal, and removes itself 48 hours after the deployment is done, and at most 30 days after it was installed |
-| Location | A container SAS link: Create and Write for the devices, Read and List for the viewer. Or a folder |
+| Location | A container SAS link: Create and Write for the devices, Read and List for the viewer. Or a folder. Setups made with links per customer keep working with `agent/Install-TrackViceAgent-Links.ps1` |
 | The list | Device, progress with the current item, deployment, profile, start, duration and last upload. Refreshed every 15 seconds |
 | One device | Everything the device itself shows. Read every 5 seconds |
 
-The agent can also run in an **SCCM task sequence**, from Windows PE to the end, as one session. It can send **alerts** to a Teams channel when something fails, and it uploads the **device's logs** beside the session. An installed agent can **update itself** to a version you publish, signed with a key only your PC has.
+The agent can also run in an **SCCM task sequence**, from Windows PE to the end, as one session. It can send **alerts** to a Teams channel when something fails, and it uploads the **device's logs** beside the session. An installed agent **updates itself** to the version you publish once to your storage, signed with a key only your PC has.
 
-**[docs/AGENT.md](docs/AGENT.md) is the guide**: the quick setup with New customer, the storage container, the three links, the platform script in Intune, testing each part first, alerts, task sequences, agent updates, maintenance and troubleshooting.
+**[docs/AGENT.md](docs/AGENT.md) is the guide**: Your storage, Add customer, the customer code, testing on one device, new versions, alerts, task sequences, the setup with links for existing customers, maintenance and troubleshooting.
 
 All three have a demo with made-up devices under **Devices**, so you can see them without signing in.
 
@@ -203,7 +206,7 @@ It needs `DeviceManagementServiceConfig.Read.All`. Two switches add more: the na
 
 If you work for several customers, TrackVice keeps the connection details of each: the Intune tenant and client ID, the agent upload location and the SCCM site. Choose a customer at the top of any device list to connect to it. **Settings > Customers** adds, edits and removes them, and imports and exports them as a JSON file to move them to another PC. The storage links are encrypted for your Windows account, and an export only has them when you tick **Include the storage links**. A device list that connects with details you type in saves them as the customer Default.
 
-**Devices > New customer** is a guide for the agent of a new customer: it signs in to Azure, makes the storage account, containers, lifecycle rule and links, uploads TrackVice.exe, fills in the platform script and can add it to Intune. Nothing is made until you press the button of a step. `agent/New-TrackViceCustomer.ps1` does the same without Intune. See [The quick way: New customer](docs/AGENT.md#the-quick-way-new-customer).
+**Devices > Add customer** adds the agent for a new customer in three steps: the customer, a sign-in to its tenant, and Create. It makes a container in your storage, the customer code and the platform script, and can add the group and the script in Intune. Nothing is made until you press Create. **Customer code…** on a customer's row shows the code, changes the alert link and updates the script in Intune. See [Add a customer in three steps](docs/AGENT.md#add-a-customer-in-three-steps). **Devices > New customer with links** is the earlier guide, with a storage account and links per customer, and `agent/New-TrackViceCustomer.ps1` does its Azure part.
 
 ### Statistics
 
@@ -266,7 +269,7 @@ ESP and Win32 app states come from the registry, and always carry the time their
 
 ## Settings
 
-**Settings** (Ctrl+,) holds the customers, the theme, how far back to read (6 hours to 30 days, or everything since Windows was installed), whether to read ConfigMgr client WMI and the event logs, whether to start watching when TrackVice opens, how often to read while watching, how long to wait before an item gets a **No progress** finding, and where LogVice, PackVice and NotifyVice are. They are kept in `HKCU\Software\TrackVice`. **Agent updates > Publish agent update** publishes a new agent version, see [docs/AGENT.md](docs/AGENT.md#agent-updates).
+**Settings** (Ctrl+,) holds the customers, the theme, how far back to read (6 hours to 30 days, or everything since Windows was installed), whether to read ConfigMgr client WMI and the event logs, whether to start watching when TrackVice opens, how often to read while watching, how long to wait before an item gets a **No progress** finding, and where LogVice, PackVice and NotifyVice are. They are kept in `HKCU\Software\TrackVice`. **Your storage** sets up the storage for all customers and publishes new versions to it, see [docs/AGENT.md](docs/AGENT.md#set-up-once-your-storage). **Agent updates > Publish agent update** publishes a new agent version for setups with links, see [docs/AGENT.md](docs/AGENT.md#agent-updates).
 
 **Save > Save the session** writes everything as one JSON file that opens on any PC. **Save > Collect the session and its logs in a zip** adds every log file the session has a line from, so a supporter can send the evidence instead of the device. **Open > Open a folder of logs** reads a CCM Logs folder, an IME Logs folder or an unpacked bundle; it reads every log TrackVice knows in it and its subfolders, including rolled-over copies.
 
@@ -316,6 +319,9 @@ TrackVice.exe /export-data <folder> /upload <location>
                                        Save every enrollment the agents uploaded there as CSV tables for Power BI
   /hours <n>                           The uploads of the last n hours (default 24, 0 for all)
 
+TrackVice.exe /agent-install /customer <code>
+                                       Install the agent with the customer code from Add customer: the upload link,
+                                       the alert link, the settings, and self-update from your storage
 TrackVice.exe /agent-install /upload <location>
                                        Install the agent. The location is a storage container SAS link or a folder
   /keep <hours>                        Hours the agent stays after the deployment is done (default 48)
@@ -324,7 +330,8 @@ TrackVice.exe /agent-install /upload <location>
                                        is a SAS link with Read, or a folder
 TrackVice.exe /agent-remove            Remove the agent
 TrackVice.exe /agent-start /upload <location>
-                                       In a task sequence: start the agent in the background and return at once
+                                       In a task sequence: start the agent in the background and return at once.
+                                       /customer <code> works here too, instead of /upload
   /id <id>                             The session ID, kept across restarts (default: from the device's hardware)
   /keep <hours>                        How long it runs at most (default 48)
 TrackVice.exe /agent-stop              Make the last upload and stop the agent started with /agent-start
@@ -369,9 +376,9 @@ The exit code is 0 when done, 1 on an error and 2 when failed items were found (
 
 ## Privacy and safety
 
-TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open something under **Devices**, or **Publish agent update**: then it talks to Microsoft Graph, to the SMS Provider you name, to the upload location you enter, and in **New customer** to Azure, and nothing else. The upload locations of your customers and the Intune sign-in are encrypted for your Windows account.
+TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. It makes no network connections unless you open something under **Devices**, **Your storage** or **Publish agent update**: then it talks to Microsoft Graph, to the SMS Provider you name, to the upload location you enter, and in **Your storage**, **Add customer** and **New customer with links** to Azure, and nothing else. The upload locations of your customers and the Intune sign-in are encrypted for your Windows account. Once Your storage is set up, TrackVice also reads `agent/latest.json` from it at start, to offer a newer version for publishing.
 
-Two things change something outside your PC, and only when you press their button: **New customer** creates the storage in Azure, and, if you choose, adds and assigns the platform script in Intune. **Publish agent update** writes a new version to the location you give. Check devices before enrollment only reads. The signing key for agent updates is kept in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted for your Windows account. When TrackVice runs as administrator, it uses a PackVice or NotifyVice path you chose, or one on PATH, only when it is under Program Files.
+These change something outside your PC, and only when you press their button: **Your storage** creates the storage account and container in your Azure. **Add customer** and **New customer with links** create the customer's storage, and, if you choose, the group and the platform script in Intune. **Customer code…** replaces the content of the platform script after you confirm. **Publish** and **Publish agent update** write a new version to your storage or the location you give. The account key of your storage and the customer codes are kept encrypted for your Windows account. Check devices before enrollment only reads. The signing key for agent updates is kept in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted for your Windows account. When TrackVice runs as administrator, it uses a PackVice or NotifyVice path you chose, or one on PATH, only when it is under Program Files.
 
 The agent is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes its task and key when its time is up. With an update key it replaces its own TrackVice.exe in its folder with a version signed with that key, and keeps the one before as `TrackVice.exe.old`. In a task sequence it installs nothing; it keeps its log and a small state file under `%WINDIR%\Temp\TrackVice`.
 
@@ -400,7 +407,8 @@ What the agent sends:
 - Check devices before enrollment reads beta Graph APIs, and shows what Intune has at that time. Without `Device.Read.All` it cannot tell which group-targeted ESP applies, and an ESP for users is only known for a device with an assigned user. The prediction matches apps by name, over at most 300 enrollments.
 - References are kept per Windows user on one PC. `/ship-report` on another PC, such as the device itself, has no reference and judges only the device.
 - PackVice opens only .msi installers, and only while the IME cache or ccmcache still has them. NotifyVice takes no device or message on its command line, so the text goes on the clipboard.
-- Only an installed agent updates itself, not one in a task sequence or started with `/agent`. The signing key cannot be moved to another PC or Windows user; a new key means a new `$UpdateKey` in the script.
+- Only an installed agent updates itself, not one in a task sequence or started with `/agent`. The signing key cannot be moved to another PC or Windows user; a new key means new customer codes, or a new `$UpdateKey` in a script with links.
+- Your storage has no lifecycle rule, so uploads stay until you add one. Add customer has no fields for the 24, 48 and 30 in the customer code.
 
 ## Build from source
 
@@ -440,11 +448,12 @@ TrackVice is plain C# 5 and Windows Forms on .NET Framework 4.5, with no NuGet p
 | `src/Insights.cs`, `src/Compare.cs` | Masking, statistics, alerts, log bundles, and the comparison of two enrollments |
 | `src/Customers.cs`, `src/IntuneLookup.cs`, `src/DeviceLogs.cs` | Customers, names from Intune, and the logs a device uploaded |
 | `src/Report.cs`, `src/ReportFleet.cs` | HTML report, fleet report, CSV and the zip bundle |
-| `src/WallModel.cs`, `src/AgentUpdate.cs`, `src/Readiness.cs`, `src/Restarts.cs`, `src/Downloads.cs`, `src/Reference.cs`, `src/ViceTools.cs`, `src/DataExport.cs`, `src/CustomerSetup*.cs` | Wall view, agent updates, check before enrollment, restarts, downloads, the reference and ready to ship report, PackVice and NotifyVice, the Power BI export and New customer |
+| `src/WallModel.cs`, `src/AgentUpdate.cs`, `src/Readiness.cs`, `src/Restarts.cs`, `src/Downloads.cs`, `src/Reference.cs`, `src/ViceTools.cs`, `src/DataExport.cs`, `src/CustomerSetup*.cs` | Wall view, agent updates, check before enrollment, restarts, downloads, the reference and ready to ship report, PackVice and NotifyVice, the Power BI export and New customer with links |
+| `src/CustomerCode.cs`, `src/CustomerInstall.cs`, `src/CustomerScript.cs`, `src/AddCustomer.cs` | The customer code, `/customer`, the platform script for a code, Your storage and Add customer |
 | `src/Demo.cs` | The two demos, written as real log lines and registry values |
 | `src/Ui.*.cs` | The window, the phase rail, the progress list, the Gantt tab, the device lists, statistics, compare, customers, the compact view and the themes |
 | `tests/` | Log parsing and tailing, every parser, the tracker, findings, save and load, and both demos end to end |
-| `agent/` | The platform script that installs the agent, and `New-TrackViceCustomer.ps1` |
+| `agent/` | The platform script that installs the agent with a customer code, the one with links for existing setups, and `New-TrackViceCustomer.ps1` |
 | `art/` | The icon, drawn in the same style as the other Vice icons |
 | `release.ps1`, `bump.ps1`, `bump.sh`, `winget/` | Release tooling, see [docs/RELEASE.md](docs/RELEASE.md) |
 
