@@ -14,6 +14,8 @@ namespace TrackVice
 $Customer = ''   # The customer code from TrackVice > Devices > Add customer
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 downloads much more slowly while it draws a progress bar.
+$ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Customer = $Customer.Trim()
@@ -58,62 +60,73 @@ function Get-BlobLink {
     return $link
 }
 
-$json = Join-Path $env:TEMP 'TrackVice-latest.json'
-$exe = Join-Path $env:TEMP 'TrackVice.exe'
-$out = Join-Path $env:TEMP 'TrackVice-install.out'
-$err = Join-Path $env:TEMP 'TrackVice-install.err'
-
-Invoke-WebRequest -Uri (Get-BlobLink -Container $code.a -Blob 'agent/latest.json') -OutFile $json -UseBasicParsing
-$raw = [IO.File]::ReadAllText($json, [Text.Encoding]::UTF8)
-Remove-Item -Path $json -Force
-$manifest = $raw | ConvertFrom-Json
-
-# The published time is taken as the text in the file, since PowerShell 7 turns it into a date.
-$version = [string]$manifest.version
-$sha256 = ([string]$manifest.sha256).ToUpperInvariant()
-$size = [long]$manifest.size
-$blob = [string]$manifest.blob
-$published = [regex]::Match($raw, '""published""\s*:\s*""([^""]*)""').Groups[1].Value
-
-if ($version -notmatch '^\d{1,9}(\.\d{1,9}){0,3}(-[0-9A-Za-z][0-9A-Za-z.]*)?$' -or $blob -ne ('agent/TrackVice-' + $version + '.exe')) {
-    throw ""agent/latest.json names $blob for version $version. It is refused.""
+# Downloads go to a new folder that only SYSTEM and administrators can change, so the file that is checked is the one that runs.
+$work = Join-Path $env:TEMP ('TrackVice-' + [guid]::NewGuid().ToString('N'))
+$acl = New-Object -TypeName System.Security.AccessControl.DirectorySecurity
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+    $account = New-Object -TypeName System.Security.Principal.SecurityIdentifier -ArgumentList $sid
+    $acl.AddAccessRule((New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $account, 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow'))
 }
-if ($sha256 -notmatch '^[0-9A-F]{64}$' -or $size -le 0 -or $size -gt 200MB) {
-    throw 'agent/latest.json has no valid SHA-256 or size. It is refused.'
-}
+$null = [IO.Directory]::CreateDirectory($work, $acl)
 
-# The same text TrackVice signs when it publishes a version.
-$payload = 'TrackVice agent update', ('version=' + $version), ('sha256=' + $sha256), ('size=' + $size.ToString([Globalization.CultureInfo]::InvariantCulture)), ('blob=' + $blob), ('published=' + $published), ''
-$bytes = [Text.Encoding]::UTF8.GetBytes($payload -join ""`n"")
+$json = Join-Path $work 'latest.json'
+$exe = Join-Path $work 'TrackVice.exe'
+$out = Join-Path $work 'install.out'
+$err = Join-Path $work 'install.err'
 
-$valid = $false
 try {
-    $rsa = New-Object -TypeName System.Security.Cryptography.RSACryptoServiceProvider
-    $rsa.ImportCspBlob([Convert]::FromBase64String($code.k))
-    $valid = $rsa.VerifyData($bytes, 'SHA256', [Convert]::FromBase64String([string]$manifest.signature))
-    $rsa.Dispose()
-}
-catch {
+    Invoke-WebRequest -Uri (Get-BlobLink -Container $code.a -Blob 'agent/latest.json') -OutFile $json -UseBasicParsing
+    $raw = [IO.File]::ReadAllText($json, [Text.Encoding]::UTF8)
+    $manifest = $raw | ConvertFrom-Json
+
+    # The published time is taken as the text in the file, since PowerShell 7 turns it into a date.
+    $version = [string]$manifest.version
+    $sha256 = ([string]$manifest.sha256).ToUpperInvariant()
+    $size = [long]$manifest.size
+    $blob = [string]$manifest.blob
+    $published = [regex]::Match($raw, '""published""\s*:\s*""([^""]*)""').Groups[1].Value
+
+    if ($version -notmatch '^\d{1,9}(\.\d{1,9}){0,3}(-[0-9A-Za-z][0-9A-Za-z.]*)?$' -or $blob -ne ('agent/TrackVice-' + $version + '.exe')) {
+        throw ""agent/latest.json names $blob for version $version. It is refused.""
+    }
+    if ($sha256 -notmatch '^[0-9A-F]{64}$' -or $size -le 0 -or $size -gt 200MB) {
+        throw 'agent/latest.json has no valid SHA-256 or size. It is refused.'
+    }
+
+    # The same text TrackVice signs when it publishes a version.
+    $payload = 'TrackVice agent update', ('version=' + $version), ('sha256=' + $sha256), ('size=' + $size.ToString([Globalization.CultureInfo]::InvariantCulture)), ('blob=' + $blob), ('published=' + $published), ''
+    $bytes = [Text.Encoding]::UTF8.GetBytes($payload -join ""`n"")
+
     $valid = $false
+    $rsa = New-Object -TypeName System.Security.Cryptography.RSACryptoServiceProvider
+    try {
+        $rsa.ImportCspBlob([Convert]::FromBase64String($code.k))
+        $valid = $rsa.VerifyData($bytes, 'SHA256', [Convert]::FromBase64String([string]$manifest.signature))
+    }
+    catch {
+        $valid = $false
+    }
+    $rsa.Clear()
+    if (-not $valid) {
+        throw 'agent/latest.json is not signed with the update key in the customer code. It is refused.'
+    }
+
+    Invoke-WebRequest -Uri (Get-BlobLink -Container $code.a -Blob $blob) -OutFile $exe -UseBasicParsing
+
+    $length = (Get-Item -Path $exe).Length
+    $hash = (Get-FileHash -Path $exe -Algorithm SHA256).Hash
+    if ($length -ne $size -or $hash -ne $sha256) {
+        throw ""$blob has $length bytes and SHA-256 $hash, expected $size bytes and $sha256. It is refused.""
+    }
+
+    $arguments = '/agent-install', '/customer', ""`""$Customer`""""
+    $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+    $message = (Get-Content -Path $out, $err -ErrorAction SilentlyContinue | Where-Object { $_.Trim() }) -join ' '
 }
-if (-not $valid) {
-    throw 'agent/latest.json is not signed with the update key in the customer code. It is refused.'
+finally {
+    Remove-Item -Path $work -Recurse -Force -ErrorAction SilentlyContinue
 }
-
-Invoke-WebRequest -Uri (Get-BlobLink -Container $code.a -Blob $blob) -OutFile $exe -UseBasicParsing
-
-$length = (Get-Item -Path $exe).Length
-$hash = (Get-FileHash -Path $exe -Algorithm SHA256).Hash
-if ($length -ne $size -or $hash -ne $sha256) {
-    Remove-Item -Path $exe -Force
-    throw ""$blob has $length bytes and SHA-256 $hash, expected $size bytes and $sha256. It is refused.""
-}
-
-$arguments = '/agent-install', '/customer', ""`""$Customer`""""
-$process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-
-$message = (Get-Content -Path $out, $err -ErrorAction SilentlyContinue | Where-Object { $_.Trim() }) -join ' '
-Remove-Item -Path $exe, $out, $err -Force -ErrorAction SilentlyContinue
 
 if ($process.ExitCode -ne 0) {
     throw ""TrackVice.exe /agent-install returned $($process.ExitCode). $message""
