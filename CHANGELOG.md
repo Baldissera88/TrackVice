@@ -1,5 +1,16 @@
 # Changelog
 
+## TrackVice 1.2.1
+
+16 November 2026.
+
+- Your storage finds the account your customers already upload to and selects it.
+- Each customer container has two stored access policies, upload and viewer, and the customer's links refer to them. **New links** and **Remove customer** stop one customer's links at once; deleting the container is a separate choice.
+- **Check security** for Your storage: anonymous blob access, HTTPS only, TLS 1.2, container soft delete and the lifecycle rule `trackvice-customers` that deletes uploads in every `tv-` container after 30 days. Each setting is changed only after you confirm it.
+- Optional: do not keep the account key on this PC; Add customer and Publish then sign in to Azure.
+- Add customer explains the two choices, Your storage and the customer's own Azure, and lists what is uploaded.
+- Fixed: with the customer's own Azure, an unused container trackvice-agent was made in their account.
+
 ## TrackVice 1.2.0
 
 16 November 2026.
