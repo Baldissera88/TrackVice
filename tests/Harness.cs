@@ -55,6 +55,7 @@ namespace TrackVice.Tests
             ReferenceTests.Run();
             RestartDownloadTests.Run();
             ZoneHistoryTests.Run();
+            CustomerCodeTests.Run();
             ViceToolTests.Run();
             CustomerSetupTests.Run();
             AgentLifetimeTests.Run();
