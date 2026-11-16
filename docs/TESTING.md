@@ -97,17 +97,63 @@ reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking es
 
 ## 9. The agent
 
-Start with a folder on one PC, then a storage container, then a real Autopilot deployment. [docs/AGENT.md](AGENT.md) has the setup.
+Use a test subscription, a test tenant and a test device or virtual machine. [docs/AGENT.md](AGENT.md) has the setup.
 
-- [ ] `TrackVice.exe /agent /upload C:\Temp\TrackVice /once` as administrator writes one session, and Devices > Devices with the TrackVice agent lists it from that folder.
-- [ ] The same with the upload link of a storage container, and the viewer link in the list. Note any error text.
-- [ ] `/agent-install /upload "<upload link>"` as administrator returns at once, the task TrackVice Agent runs as SYSTEM, and the device shows in the list within a minute.
-- [ ] `C:\Program Files\TrackVice Agent\agent.log` says it started and uploaded.
-- [ ] A standard user cannot read `HKLM\SOFTWARE\TrackVice\Agent`.
-- [ ] After a restart the device continues as the same row in the list.
-- [ ] The platform script on an Autopilot device: when the device first shows in the list compared with the ESP, and whether device preparation is in the session.
-- [ ] Watching the device shows the same items as TrackVice run on it.
+**Your storage**
+
+- [ ] **Settings > Your storage** says it is not set up. **Devices > Add customer** opens the Your storage guide first.
+- [ ] Sign in to Azure, pick a subscription, and set up a new account. Before anything is made, TrackVice shows what it will make and asks. The Azure portal then has the account (StorageV2, Standard_LRS, HTTPS only, TLS 1.2, no anonymous access) and the private container `trackvice-agent`.
+- [ ] `trackvice-agent` has `agent/latest.json` and `agent/TrackVice-<version>.exe` of the running version. Settings shows the account, when the links expire and the published version.
+- [ ] Set up again with **Existing account**: the account keeps its settings, and nothing is published again.
+- [ ] `HKCU\Software\TrackVice` holds no account key or link in plain text.
+- [ ] **Remove** asks first, forgets the setup on this PC, and leaves the account in Azure as it was.
+
+**Add customer, in your storage**
+
+- [ ] **Devices > Demo: add customer** goes through Customer, Sign in and Create with made-up data.
+- [ ] **Devices > Add customer**: enter a name such as Contoso and an alert link. A link that does not start with `https://` is refused.
+- [ ] Sign in to the test tenant. Before Create, nothing is in Azure or Intune.
+- [ ] Create: the container `tv-contoso` is in your storage, private. The group **TrackVice - Autopilot devices** is dynamic with the ZTDId rule. The platform script **TrackVice agent** runs in system context, 64-bit, without a signature check, and is assigned to the group.
+- [ ] The result page copies the customer code and the script, and **Open** opens `Documents\TrackVice\Scripts\Install-TrackViceAgent-Contoso.ps1`. Its only filled line is `$Customer`.
+- [ ] Add a second customer in the same tenant: the group is used as it is, and TrackVice asks before it replaces the script's content. No keeps the content.
+- [ ] Add a customer with **Skip: I add the script to Intune myself**: Intune is not changed, and the result page says so.
+- [ ] An account without consent for `Group.ReadWrite.All`: the storage, code and script are made, and the result page says what was not done in Intune.
+- [ ] **Devices with the TrackVice agent** connects to the new customer without a link to paste.
+
+**Add customer, in the customer's own Azure**
+
+- [ ] Tick **Store this customer's data in their own Azure**. Step 2 asks for the Azure sign-in, subscription and account as well.
+- [ ] Create: the customer's account has the containers `trackvice` and `trackvice-agent` and the lifecycle rule `trackvice-cleanup`. Your storage has no new container.
+- [ ] The device of that customer uploads to the customer's `trackvice`, and downloads TrackVice from your `trackvice-agent`.
+
+**The one-line script on a new Autopilot device**
+
+- [ ] `TrackVice.exe /agent-install /customer "<code>"` as administrator on a test PC returns at once, the task TrackVice Agent runs as SYSTEM, and the PC shows in the list within a minute.
+- [ ] `C:\Program Files\TrackVice Agent\agent.log` says it started, uploaded and that self-update is on.
+- [ ] `HKLM\SOFTWARE\TrackVice\Agent` has the upload link, the alert link, the update key, the update link and the customer name. A standard user cannot read it.
 - [ ] `/agent-remove` removes the task and the key.
+- [ ] Reset an Autopilot device of the test tenant. The script runs during device setup, and the device shows in the list. Note when, compared with the ESP, and whether device preparation is in the session.
+- [ ] The script's output in Intune, or `IntuneManagementExtension.log`, says the TrackVice version and that the agent is installed.
+- [ ] After a restart the device continues as the same row in the list. Watching it shows the same items as TrackVice run on it.
+- [ ] A device enrolled long ago that is in the group: the script says "Not a new enrollment" and installs nothing.
+- [ ] Put a cut code in `$Customer`, and one that does not start with `tv1:`: the script stops with "could not be read" and "not a TrackVice customer code".
+- [ ] Publish from another Windows user with a new key, then run the script: it says `agent/latest.json` is not signed with the update key in the customer code. Publish again from your own Windows user afterwards.
+
+**A new version**
+
+- [ ] Start a newer TrackVice. The status bar says it is not published to your storage, with **Publish**. Nothing is published before the click.
+- [ ] Click **Publish**: `agent/latest.json` names the new version, and the status bar line goes away. **Settings > Your storage** shows the new published version.
+- [ ] An installed agent takes the new version after a restart, or within 6 hours, and stays the same row in the list.
+- [ ] A new device gets the new version directly from the script.
+- [ ] An older TrackVice does not offer to publish.
+
+**Customer code…**
+
+- [ ] **Settings > Customers**: the customer made with Add customer has **Customer code…**, and one made otherwise has not.
+- [ ] The code is masked, and **Copy** copies the whole code.
+- [ ] Change the alert link and save: the code changes, and the saved script has the new code.
+- [ ] Sign in and **Update the script in Intune**: it asks first, the platform script **TrackVice agent** has the new content, and its assignment is kept.
+- [ ] A device that runs the new script sends its alerts to the new link.
 
 ## 10. Scripts, Office, MSI apps and policies
 
@@ -189,7 +235,7 @@ TrackVice opens the unpacked folder directly.
 
 - [ ] Make the Teams workflow as in [docs/AGENT.md](AGENT.md#alerts-in-teams). `/agent /alert "<link>" /alert-test` posts a test card.
 - [ ] A link that does not start with `https://` is refused with a clear message.
-- [ ] With `$Alert` in the script, a failed app gives one card in the channel, with the device, the deployment and what to do. A restart of the device does not send it again.
+- [ ] With an alert link in the customer code, or `$Alert` in a script with links, a failed app gives one card in the channel, with the device, the deployment and what to do. A restart of the device does not send it again.
 - [ ] When the deployment is finished and nothing runs for 30 minutes, a finished card arrives.
 - [ ] Give an app an install command with `/password=Secret123` or a script that prints `token=...`: the uploaded session shows `***`. With `/no-mask` it shows the value.
 - [ ] After a failure, `logs/<id>.zip` appears in the container. **LogVice > Logs from the device** downloads and opens it, and **Open in LogVice** opens the device's copy of a log.
@@ -219,7 +265,7 @@ Set up the steps as in [docs/AGENT.md](AGENT.md#sccm-task-sequences), on a boot 
 
 ## 20. Agent updates
 
-Set up as in [docs/AGENT.md](AGENT.md#agent-updates), with a test device or a virtual machine.
+For a setup with links, as in [docs/AGENT.md](AGENT.md#agent-updates), with a test device or a virtual machine. A setup with a customer code is checked in section 9.
 
 - [ ] **Settings > Agent updates > Publish agent update > Create key** shows a fingerprint, and **Copy** copies the public key.
 - [ ] Install the agent with `$UpdateKey` and `$UpdateLink`. `agent.log` says "Self-update is on".
@@ -271,16 +317,16 @@ Set up as in [docs/AGENT.md](AGENT.md#agent-updates), with a test device or a vi
 - [ ] Statistics > **Export for Power BI** writes `Enrollments.csv`, `Items.csv`, `Findings.csv` and `README.txt`. Load the folder in Power BI as the README says, and relate the tables on SessionId.
 - [ ] `TrackVice.exe /export-data C:\Temp\export /upload "<viewer link>" /hours 168` writes the same files.
 
-## 25. New customer
+## 25. New customer with links
 
-Use a test subscription and a test tenant.
+For existing setups. Use a test subscription and a test tenant.
 
 - [ ] **Devices > Demo: new customer** goes through every step with made-up data.
-- [ ] **Devices > New customer** with a new storage account: the resource group, the account, both containers and the lifecycle rule are in the Azure portal as the guide said.
+- [ ] **Devices > New customer with links** with a new storage account: the resource group, the account, both containers and the lifecycle rule are in the Azure portal as the guide said.
 - [ ] Again with the same customer and the existing account: the account keeps its settings and other lifecycle rules are kept.
-- [ ] The five links have the permissions in [docs/AGENT.md](AGENT.md#the-quick-way-new-customer), and the account key is not saved anywhere on the PC.
+- [ ] The five links have the permissions in [docs/AGENT.md](AGENT.md#new-customer-with-links), and the account key is not saved anywhere on the PC.
 - [ ] Upload says the download link reads TrackVice.exe. The test alert arrives in Teams.
-- [ ] The saved script has the links, the SHA-256 and `$MaxAgeHours`, and installs the agent on a test device.
+- [ ] The saved script is a copy of `agent/Install-TrackViceAgent-Links.ps1` with the links, the SHA-256 and `$MaxAgeHours`, and installs the agent on a test device.
 - [ ] The Intune part adds the platform script **TrackVice agent**, 64-bit, system context, assigned to the chosen group.
 - [ ] After Finish, the customer is in Settings > Customers and **Devices with the TrackVice agent** connects without a new link.
 - [ ] `agent/New-TrackViceCustomer.ps1` with the same values makes the same storage, links and script.
