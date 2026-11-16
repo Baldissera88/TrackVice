@@ -210,14 +210,16 @@ namespace TrackVice.Tests
             AddCustomerRun r = NewRun();
             T.Eq(0, w.Calls.Count, "add customer: nothing is sent before Create");
             r.MakeStorage(w, own, Now);
-            WebCall put = w.Last("PUT", "restype=container");
+            WebCall put = w.Last("PUT", "?restype=container&sv=");
             T.Check(put != null && put.Url.StartsWith("https://contosotrackvice.blob.core.windows.net/tv-contoso?restype=container&sv="), "add customer: the container is made with the Blob service");
             T.Eq(SasLinks.Version, put.Headers["x-ms-version"], "add customer: x-ms-version");
             T.Eq("c", QueryOf(put.Url)["srt"], "add customer: with an account SAS");
             T.Eq("w", QueryOf(put.Url)["sp"], "add customer: the account SAS can only write containers");
-            T.Eq("cw", QueryOf(r.Upload)["sp"], "add customer: upload link has Create and Write");
+            T.Eq("upload", QueryOf(r.Upload)["si"], "add customer: upload link uses the upload policy");
             T.Eq("c", QueryOf(r.Upload)["sr"], "add customer: upload link is for the container");
-            T.Eq("rl", QueryOf(r.Viewer)["sp"], "add customer: viewer link has Read and List");
+            T.Eq("viewer", QueryOf(r.Viewer)["si"], "add customer: viewer link uses the viewer policy");
+            WebCall acl = w.Last("PUT", "comp=acl");
+            T.Check(acl != null && acl.Text.Contains("<Id>upload</Id>") && acl.Text.Contains("<Permission>cw</Permission>") && acl.Text.Contains("<Permission>rl</Permission>"), "add customer: the policies are set on the container");
             T.Check(r.Upload.StartsWith("https://contosotrackvice.blob.core.windows.net/tv-contoso?"), "add customer: links to the customer's container");
             T.Eq(Now.AddDays(730).ToString("yyyy-MM-dd"), r.LinksExpireUtc.ToString("yyyy-MM-dd"), "add customer: links valid 2 years");
 
@@ -304,7 +306,8 @@ namespace TrackVice.Tests
             T.Eq(0, w2.Count("POST", "/assign"), "existing: no assign when the group is assigned already");
 
             FakeWeb w3 = Intune(false, false);
-            w3.Handlers.Insert(0, delegate (WebCall c) { return c.Url.Contains("restype=container") ? new WebReply(409, "") : null; });
+            w3.Handlers.Insert(0, delegate (WebCall c) { return c.Url.Contains("restype=container") && !c.Url.Contains("comp=acl") ? new WebReply(409, "") : null; });
+            w3.Handlers.Insert(0, delegate (WebCall c) { return c.Url.Contains("comp=acl") ? new WebReply(200, "<?xml version=\"1.0\" encoding=\"utf-8\"?><SignedIdentifiers />") : null; });
             AddCustomerRun r3 = NewRun();
             r3.MakeStorage(w3, Own(), Now);
             T.Check(r3.Done[0].Contains("there already"), "existing: a container that is there is used");

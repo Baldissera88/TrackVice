@@ -350,6 +350,12 @@ namespace TrackVice
             return web.Send(WebCall.Json(method, url, token(), body == null ? null : SetupJson.Write(body)));
         }
 
+        // Any other request to Azure Resource Manager, with the sign-in of this instance.
+        public WebReply Send(string method, string path, object body)
+        {
+            return Call(method, path, body);
+        }
+
         static SetupException Fail(WebReply r, string doing)
         {
             Dictionary<string, object> e = ImeJson.Get(r.Json, "error") as Dictionary<string, object>;
