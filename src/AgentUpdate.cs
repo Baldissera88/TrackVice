@@ -227,7 +227,13 @@ namespace TrackVice
             catch (FormatException) { throw new ArgumentException("The update key is not base64. Copy it again from TrackVice."); }
             RSACryptoServiceProvider rsa = NewProvider(0);
             try { rsa.ImportCspBlob(blob); }
-            catch (CryptographicException) { rsa.Dispose(); throw new ArgumentException("The update key is not an RSA public key. Copy it again from TrackVice."); }
+            // A damaged blob can also throw other exceptions, depending on the runtime.
+            catch (Exception) { rsa.Dispose(); throw new ArgumentException("The update key is not an RSA public key. Copy it again from TrackVice."); }
+            if (!rsa.PublicOnly)
+            {
+                rsa.Dispose();
+                throw new ArgumentException("The update key holds the private key. Use the public key only.");
+            }
             if (rsa.KeySize < UpdateManifest.KeyBits)
             {
                 rsa.Dispose();

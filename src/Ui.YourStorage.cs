@@ -295,7 +295,11 @@ namespace TrackVice
                     string v = RunningVersion;
                     bool created;
                     using (RSACryptoServiceProvider key = UpdateKeys.LoadOrCreate(keys, out created))
+                    {
+                        string problem = OwnPublish.KeyProblem(w, own, UpdateKeys.PublicKey(key));
+                        if (problem != null) throw new SetupException(problem);
                         OwnPublish.Publish(w, own, exe, v, key, DateTime.UtcNow);
+                    }
                     own.Save(s);
                     ok = true;
                     msg = "Published TrackVice " + v + " to your storage." + (created ? " A new update key was made: customer codes made before have the old key, so make them again." : " Agents install it within 6 hours.");
@@ -324,6 +328,7 @@ namespace TrackVice
         {
             List<Control> l = new List<Control>();
             SettingRow main = null, version = null, remove = null;
+            Collapsible versionBox = null, removeBox = null;
             FlatButton bSetUp = null, bPublish = null, bRemove = null;
             ButtonStrip strip = null;
             MethodInvoker show = null;
@@ -338,7 +343,7 @@ namespace TrackVice
                 main.Desc = o == null
                     ? "Not set up. One storage account in your Azure for all customers: TrackVice versions for the devices in " + Arm.AgentFiles + ", and a private container for each customer's uploads. Devices > Add customer uses it."
                     : o.Account + (o.Subscription.Length > 0 ? " in " + o.Subscription : "") + ". The links to " + Arm.AgentFiles + " are valid until " + Expires(o) + ". The account key and the links are kept on this PC, encrypted for your Windows account.";
-                version.Visible = remove.Visible = o != null;
+                versionBox.Shown = removeBox.Shown = o != null;
                 if (o != null)
                 {
                     bool need = OwnPublish.Needed(o, o.PublishedVersion, running);
@@ -353,7 +358,9 @@ namespace TrackVice
             bSetUp = Small(theme, "Set up", delegate
             {
                 Form f = bSetUp.FindForm();
-                using (YourStorageDialog d = YourStorageDialog.ForLive(theme)) d.ShowDialog(f);
+                // The theme may have been changed in Settings since these rows were made.
+                PageForm page = f as PageForm;
+                using (YourStorageDialog d = YourStorageDialog.ForLive(page != null ? page.CurrentTheme : theme)) d.ShowDialog(f);
                 show();
             });
             bPublish = Small(theme, "Publish", delegate
@@ -375,11 +382,44 @@ namespace TrackVice
             version = new SettingRow(Glyphs2.Sync, "TrackVice for the devices", "", bPublish);
             remove = new SettingRow(Glyphs.Shield, "Remove", "Forgets the account key and the links on this PC. Nothing in Azure is deleted.", bRemove);
             l.Add(new SectionTitle("Your storage"));
+            versionBox = new Collapsible(version);
+            removeBox = new Collapsible(remove);
             l.Add(main);
-            l.Add(version);
-            l.Add(remove);
+            l.Add(versionBox);
+            l.Add(removeBox);
             show();
             return l;
+        }
+    }
+
+    // A setting row that takes no room in a page while it is not shown. The page lays out every item, hidden or not.
+    sealed class Collapsible : Panel, IThemed, IMeasured
+    {
+        readonly SettingRow row;
+        bool shown = true;
+
+        public Collapsible(SettingRow row)
+        {
+            this.row = row;
+            row.Dock = DockStyle.Fill;
+            Controls.Add(row);
+        }
+
+        public bool Shown
+        {
+            get { return shown; }
+            set { shown = value; row.Visible = value; }
+        }
+
+        public int Measure(int width)
+        {
+            return shown ? row.Measure(width) : 0;
+        }
+
+        public void ApplyTheme(Theme t)
+        {
+            BackColor = t.Bg;
+            row.ApplyTheme(t);
         }
     }
 
