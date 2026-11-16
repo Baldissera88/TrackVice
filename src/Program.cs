@@ -244,6 +244,7 @@ namespace TrackVice
                         case "export-data": exportData = Next(args, ref i); break;
                         case "update": ao.UpdateLink = Next(args, ref i); break;
                         case "update-key": ao.UpdateKey = Next(args, ref i); break;
+                        case "customer": CustomerInstall.Apply(ao, Next(args, ref i)); break;
                         case "agent-update-apply": agent = "update-apply"; applyExe = Next(args, ref i); break;
                         case "sha256": applySha = Next(args, ref i); break;
                         case "publish-agent": publish = true; break;

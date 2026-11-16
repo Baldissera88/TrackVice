@@ -33,7 +33,7 @@ namespace TrackVice.Tests
         {
             ScriptValues v = new ScriptValues();
             v.MaxDays = 21;
-            string s = AgentScript.Fill(AgentScriptTemplate.Text, v);
+            string s = AgentScript.Fill(AgentScriptTemplate.Links, v);
             T.Check(s.Contains("$MaxDays   = 21   # The agent removes itself"), "Lifetime: the script gets MaxDays");
             T.Check(s.Contains("$arguments += '/max-days', $MaxDays"), "Lifetime: the script passes /max-days");
         }

@@ -590,6 +590,8 @@ namespace TrackVice
         // Self-update: the administrator's public key and where the signed release is read from.
         public string UpdateKey;
         public string UpdateLink;
+        // The customer name from /customer, saved with the installed agent.
+        public string CustomerName;
     }
 
     // Runs on the device while it deploys: reads it like the window does, and uploads the session as it changes.
@@ -840,6 +842,8 @@ namespace TrackVice
                 else k.DeleteValue("UpdateKey", false);
                 if (!string.IsNullOrWhiteSpace(o.UpdateLink)) k.SetValue("UpdateLink", o.UpdateLink.Trim());
                 else k.DeleteValue("UpdateLink", false);
+                if (!string.IsNullOrWhiteSpace(o.CustomerName)) k.SetValue("CustomerName", o.CustomerName.Trim());
+                else k.DeleteValue("CustomerName", false);
             }
             string xml = Path.Combine(dir, "task.xml");
             File.WriteAllText(xml, TaskXml(target), Encoding.Unicode);
