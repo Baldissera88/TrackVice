@@ -929,6 +929,7 @@ namespace TrackVice
             new string[] { "/folder <path>", "With /report, /csv or /session: read a folder of logs instead of this device" },
             new string[] { "/ship-report <file.html> [/from <session.json>]", "Save a one-page ready to ship report of this device, or of a saved session, checked against the reference of the customer in use, and exit. Exits with 2 when the device is not ready" },
             new string[] { "/hours <n>", "Hours of history to read (default 24, 0 for everything since Windows was installed)" },
+            new string[] { "/agent-install /customer <code>", "Install the agent with the customer code from Devices > Add customer: where to upload, where to get new versions, alerts and the settings" },
             new string[] { "/agent-install /upload <location>", "Install the agent: it uploads this device's session while it deploys. The location is a storage container SAS link or a folder" },
             new string[] { "/agent-remove", "Remove the agent" },
             new string[] { "/agent-start /upload <location>", "In a task sequence: start the agent in the background and return at once. It ends with the task sequence. /id <id> keeps one session across restarts" },

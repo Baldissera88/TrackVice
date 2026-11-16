@@ -76,7 +76,12 @@ $out = Join-Path $work 'install.out'
 $err = Join-Path $work 'install.err'
 
 try {
-    Invoke-WebRequest -Uri (Get-BlobLink -Container $code.a -Blob 'agent/latest.json') -OutFile $json -UseBasicParsing
+    try {
+        Invoke-WebRequest -Uri (Get-BlobLink -Container $code.a -Blob 'agent/latest.json') -OutFile $json -UseBasicParsing
+    }
+    catch {
+        throw ""agent/latest.json could not be downloaded: $($_.Exception.Message) Publish TrackVice from TrackVice > Settings > Your storage, and check that the device can reach the storage account.""
+    }
     $raw = [IO.File]::ReadAllText($json, [Text.Encoding]::UTF8)
     $manifest = $raw | ConvertFrom-Json
 
@@ -153,6 +158,7 @@ $UpdateKey = ''   # Optional: the public key from TrackVice > Settings > Publish
 $UpdateLink = ''  # Optional, with $UpdateKey: where the agent reads published versions: a container SAS link with Read, or a folder
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 if (-not $Download -or -not $Sha256 -or -not $Upload) {
@@ -168,15 +174,25 @@ if ($MaxAgeHours -gt 0) {
     }
 }
 
-$exe = Join-Path $env:TEMP 'TrackVice.exe'
-$out = Join-Path $env:TEMP 'TrackVice-install.out'
-$err = Join-Path $env:TEMP 'TrackVice-install.err'
+# Downloads go to a new folder that only SYSTEM and administrators can change, so the file that is checked is the one that runs.
+$work = Join-Path $env:TEMP ('TrackVice-' + [guid]::NewGuid().ToString('N'))
+$acl = New-Object -TypeName System.Security.AccessControl.DirectorySecurity
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+    $account = New-Object -TypeName System.Security.Principal.SecurityIdentifier -ArgumentList $sid
+    $acl.AddAccessRule((New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $account, 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow'))
+}
+$null = [IO.Directory]::CreateDirectory($work, $acl)
+
+$exe = Join-Path $work 'TrackVice.exe'
+$out = Join-Path $work 'install.out'
+$err = Join-Path $work 'install.err'
 
 Invoke-WebRequest -Uri $Download -OutFile $exe -UseBasicParsing
 
 $hash = (Get-FileHash -Path $exe -Algorithm SHA256).Hash
 if ($hash -ne $Sha256) {
-    Remove-Item -Path $exe -Force
+    Remove-Item -Path $work -Recurse -Force
     throw ""TrackVice.exe has SHA-256 $hash, expected $Sha256. Update `$Sha256 after uploading a new TrackVice.exe.""
 }
 
@@ -196,7 +212,7 @@ if ($UpdateLink) {
 $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
 
 $message = (Get-Content -Path $out, $err -ErrorAction SilentlyContinue | Where-Object { $_.Trim() }) -join ' '
-Remove-Item -Path $exe, $out, $err -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $work -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($process.ExitCode -ne 0) {
     throw ""TrackVice.exe /agent-install returned $($process.ExitCode). $message""

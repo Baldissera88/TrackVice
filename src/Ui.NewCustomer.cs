@@ -904,7 +904,7 @@ namespace TrackVice
             if (UpdateKey != null && run.UpdateKey.Length == 0) run.UpdateKey = UpdateKey() ?? "";
             run.MaxAgeHours = (int)nMaxAge.Value;
             l.Add(new SectionTitle("6. The platform script"));
-            l.Add(Row(Glyphs.Info, "What this does", "Fills in Install-TrackViceAgent.ps1: the download link, the SHA-256, the upload link, the alert link and $MaxAgeHours. The script installs the agent on a device during enrollment.", null));
+            l.Add(Row(Glyphs.Info, "What this does", "Fills in Install-TrackViceAgent-Links.ps1: the download link, the SHA-256, the upload link, the alert link and $MaxAgeHours. The script installs the agent on a device during enrollment.", null));
             l.Add(Row(Glyphs2.Clock, "$MaxAgeHours", "Only devices enrolled within this many hours install the agent, so assigning the script to older devices does nothing. 0 installs on every device.", nMaxAge));
             l.Add(Row(Glyphs.Shield, "Agent updates", HasUpdateKey
                 ? "The update key of this PC goes in as $UpdateKey and the read link of " + Arm.AgentFiles + " as $UpdateLink. The agents install versions you publish."

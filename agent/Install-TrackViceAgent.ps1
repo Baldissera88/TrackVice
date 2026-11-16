@@ -69,7 +69,12 @@ $out = Join-Path $work 'install.out'
 $err = Join-Path $work 'install.err'
 
 try {
-    Invoke-WebRequest -Uri (Get-BlobLink -Container $code.a -Blob 'agent/latest.json') -OutFile $json -UseBasicParsing
+    try {
+        Invoke-WebRequest -Uri (Get-BlobLink -Container $code.a -Blob 'agent/latest.json') -OutFile $json -UseBasicParsing
+    }
+    catch {
+        throw "agent/latest.json could not be downloaded: $($_.Exception.Message) Publish TrackVice from TrackVice > Settings > Your storage, and check that the device can reach the storage account."
+    }
     $raw = [IO.File]::ReadAllText($json, [Text.Encoding]::UTF8)
     $manifest = $raw | ConvertFrom-Json
 

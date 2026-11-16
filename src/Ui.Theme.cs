@@ -120,11 +120,11 @@ namespace TrackVice
 
         public static Theme Named(string name)
         {
-            switch (name)
+            switch ((name ?? "").ToLowerInvariant())
             {
-                case "Light": return Light();
-                case "Dark": return Dark();
-                case "Vice": return Vice();
+                case "light": return Light();
+                case "dark": return Dark();
+                case "vice": return Vice();
                 default: return SystemPrefersDark() ? Dark() : Light();
             }
         }
