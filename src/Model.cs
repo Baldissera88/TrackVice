@@ -127,7 +127,7 @@ namespace TrackVice
                 case SccmPackages: return "Packages";
                 case SccmUpdates: return "Software updates";
                 case Content: return "Content downloads";
-                case IntuneApps: return "Intune apps";
+                case IntuneApps: return "Apps";
                 case Scripts: return "Platform scripts";
                 case Policies: return "Policies";
                 case Restarts: return "Restarts";
@@ -688,11 +688,15 @@ namespace TrackVice
             {
                 p.Items.Clear();
                 phaseByKey[p.Key] = p;
+                // Sessions saved before the phase was renamed.
+                if (p.Key == TrackVice.Phases.IntuneApps) p.Name = TrackVice.Phases.Name(p.Key);
             }
             foreach (Item i in Items)
             {
                 i.Events.Clear();
                 byKey[i.Key] = i;
+                // Sessions saved, or uploaded by agents, from before apps offered in Company Portal stopped counting as waiting.
+                if ((i.State == State.Pending || i.State == State.Unknown) && AppGroups.IsAvailable(i)) i.State = State.Skipped;
                 Phase p = FindPhase(i.PhaseKey);
                 if (p != null) p.Items.Add(i);
             }

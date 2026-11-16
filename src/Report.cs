@@ -432,7 +432,7 @@ namespace TrackVice
                 foreach (Item i in p.Items)
                 {
                     State st = i.State;
-                    b.Append("<tr><td>").Append(H(i.DisplayName)).Append("</td><td class=\"t3\">").Append(H(i.Kind)).Append("</td><td class=\"").Append(Css(st)).Append("\">").Append(H(States.Label(st)));
+                    b.Append("<tr><td>").Append(H(i.DisplayName)).Append("</td><td class=\"t3\">").Append(H(AppGroups.KindText(i))).Append("</td><td class=\"").Append(Css(st)).Append("\">").Append(H(AppGroups.StateLabel(i)));
                     if (States.IsActive(st) && i.Percent.HasValue) b.Append(" ").Append(Int(Math.Max(0, Math.Min(100, i.Percent.Value)))).Append(" %");
                     b.Append("</td><td class=\"nw\">").Append(i.StartUtc.HasValue ? H(Txt.LocalTime(i.StartUtc.Value)) : "").Append("</td><td class=\"nw\">").Append(H(Txt.Duration(i.Duration(nowUtc))))
                      .Append("</td><td>").Append(i.Attempts.Count > 0 ? Int(i.Attempts.Count) : "").Append("</td><td><span class=\"mono\">").Append(H(Errors.Short(i.ExitCode))).Append("</span>");
