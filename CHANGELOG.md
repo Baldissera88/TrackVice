@@ -1,5 +1,18 @@
 # Changelog
 
+## TrackVice 1.2.0
+
+16 November 2026.
+
+- **Add a customer in three steps.** Devices > Add customer: name, sign in to the customer's tenant, Create. TrackVice makes a private container for the customer, the dynamic group TrackVice - Autopilot devices, the platform script TrackVice agent assigned to it, and adds the customer to the device list. The customer's data can also be kept in their own Azure.
+- **Your storage, set up once.** Settings > Your storage: one storage account in your Azure for all customers, where TrackVice versions are published, signed with your key.
+- **The platform script has one line**, `$Customer`, the customer code. Devices download the newest TrackVice you published and check its signature, size and SHA-256 before they run it, so the script needs no SHA-256 and no change when you release a new version.
+- When TrackVice is newer than the version in your storage, the status bar offers to publish it.
+- Customers > Customer code… copies the code, changes the alert link and updates the script in Intune.
+- The script with links is now `agent/Install-TrackViceAgent-Links.ps1`. Existing setups keep working.
+- Fixed: the install scripts downloaded TrackVice.exe to a fixed name in the Windows Temp folder, where another local account could replace it between the check and the start. They now use a new folder only SYSTEM and administrators can change.
+- `/agent-install /customer <code>`.
+
 ## TrackVice 1.1.3
 
 16 November 2026.
