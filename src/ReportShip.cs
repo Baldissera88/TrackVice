@@ -140,7 +140,7 @@ namespace TrackVice
                     Item i = l[k];
                     if (k > 0) b.Append(", ");
                     if (i.State == State.Succeeded) { b.Append(H(i.DisplayName)); continue; }
-                    b.Append("<span class=\"").Append(Css(i.State)).Append("\">").Append(H(i.DisplayName)).Append(" (").Append(H(States.Label(i.State).ToLowerInvariant())).Append(")</span>");
+                    b.Append("<span class=\"").Append(Css(i.State)).Append("\">").Append(H(i.DisplayName)).Append(" (").Append(H(AppGroups.StateLabel(i).ToLowerInvariant())).Append(")</span>");
                 }
                 b.Append("</p></div>");
             }

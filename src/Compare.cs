@@ -158,8 +158,8 @@ namespace TrackVice
             Item named = i != null && !string.IsNullOrEmpty(i.Name) ? i : j != null && !string.IsNullOrEmpty(j.Name) ? j : i ?? j;
             r.Name = named.DisplayName;
             r.Kind = named.Kind;
-            r.StateA = i != null ? States.Label(i.State) : "";
-            r.StateB = j != null ? States.Label(j.State) : "";
+            r.StateA = i != null ? AppGroups.StateLabel(i) : "";
+            r.StateB = j != null ? AppGroups.StateLabel(j) : "";
             r.SecondsA = Seconds(i, nowA);
             r.SecondsB = Seconds(j, nowB);
             List<string> notes = new List<string>();

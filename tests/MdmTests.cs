@@ -185,7 +185,7 @@ namespace TrackVice.Tests
             if (a != null) foreach (TEvent e in a.Events) { if (e.Text.StartsWith("Script error:") && e.Text.Contains("[SETUP_FAILED]")) error = true; if (e.Text == "Script output: Transcript started") output = true; }
             T.Check(error, "the script's error text is an event");
             T.Check(output, "the script's output is an event, without the error part");
-            T.Eq(3, b != null ? b.Events.Count : 0, "an empty output and error add no events");
+            T.Eq(4, b != null ? b.Events.Count : 0, "an empty output and error add no events: started, PowerShell started, exit code, result");
         }
 
         static void Registry()
