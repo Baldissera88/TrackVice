@@ -148,6 +148,14 @@ namespace TrackVice
             List<Session> sessions = new List<Session>();
             List<string> keys = new List<string>();
             Load(c, hours == 0 ? DateTime.MinValue : now.AddHours(-hours), 5000, sessions, keys);
+            if (DeviceSides.CliFilter != null && DeviceSides.CliFilter != DeviceSides.Both)
+            {
+                List<Session> fs = new List<Session>();
+                List<string> fk = new List<string>();
+                DeviceSides.Filter(sessions, keys, DeviceSides.CliFilter, fs, fk);
+                sessions = fs;
+                keys = fk;
+            }
             Result r = Write(folder, sessions, keys, now, hours == 0 ? "every upload" : "the uploads of the last " + hours + " hours");
             Console.WriteLine(Int(r.Enrollments) + " enrollments, " + Int(r.Items) + " items and " + Int(r.Findings) + " findings written to " + Path.GetFullPath(folder));
             return 0;
