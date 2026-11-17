@@ -198,10 +198,10 @@ namespace TrackVice
                 float ix = r.X + Dpi.S(12);
                 StateLook.Icon(g, st, new RectangleF(ix, r.Y + Dpi.S(11), Dpi.S(16), Dpi.S(16)), T, spin);
                 string dur = Txt.DurationShort(p.Duration(now()));
-                int dw = string.IsNullOrEmpty(dur) ? 0 : TextRenderer.MeasureText(dur, Fonts.Small).Width;
+                int dw = string.IsNullOrEmpty(dur) ? 0 : TextRenderer.MeasureText(dur, T.Num(Fonts.Small)).Width;
                 Rectangle nameR = new Rectangle((int)(ix + Dpi.S(24)), (int)r.Y + Dpi.S(8), (int)(r.Width - Dpi.S(48) - dw - Dpi.S(8)), Fonts.UiSemibold.Height + 2);
                 TextRenderer.DrawText(g, p.Name, Fonts.UiSemibold, nameR, T.Text, TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
-                if (dw > 0) TextRenderer.DrawText(g, dur, Fonts.Small, new Rectangle((int)(r.Right - Dpi.S(12) - dw), (int)r.Y + Dpi.S(10), dw + 2, Fonts.Small.Height + 2), T.Text3, TextFormatFlags.Left | TextFormatFlags.NoPadding);
+                if (dw > 0) TextRenderer.DrawText(g, dur, T.Num(Fonts.Small), new Rectangle((int)(r.Right - Dpi.S(12) - dw), (int)r.Y + Dpi.S(10), dw + 2, Fonts.Small.Height + 2), T.Text3, TextFormatFlags.Left | TextFormatFlags.NoPadding);
                 int done = p.Done, failed = p.FailedCount;
                 string sub = done + " of " + p.Items.Count + " done";
                 int sx = (int)(ix + Dpi.S(24)), sy = (int)r.Y + Dpi.S(30);
@@ -294,8 +294,8 @@ namespace TrackVice
             Shapes.Stroke(g, r, Dpi.S(7), T.Divider, 1f);
             int pad = Dpi.S(12);
             string pct = ((int)Math.Round(Progress * 100)).ToString(CultureInfo.InvariantCulture) + " %";
-            TextRenderer.DrawText(g, pct, Fonts.Title, new Rectangle(pad, Dpi.S(6), Width - pad, Dpi.S(28)), T.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            int pw = TextRenderer.MeasureText(pct, Fonts.Title, Size.Empty, TextFormatFlags.NoPadding).Width;
+            TextRenderer.DrawText(g, pct, T.Num(Fonts.Title), new Rectangle(pad, Dpi.S(6), Width - pad, Dpi.S(28)), T.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            int pw = TextRenderer.MeasureText(pct, T.Num(Fonts.Title), Size.Empty, TextFormatFlags.NoPadding).Width;
             string st = State == State.Unknown ? "" : States.Label(State);
             if (st.Length > 0) TextRenderer.DrawText(g, st, Fonts.SmallSemibold, new Rectangle(pad + pw + Dpi.S(10), Dpi.S(12), Width - pw - pad * 2, Dpi.S(18)), StateLook.Color(State, T), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(g, Label + (Elapsed.Length > 0 ? " · " + Elapsed : ""), Fonts.Small, new Rectangle(pad, Dpi.S(34), Width - pad * 2, Dpi.S(14)), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
@@ -753,7 +753,7 @@ namespace TrackVice
                 TextRenderer.DrawText(g, tries, Fonts.SmallSemibold, Rectangle.Round(tr), tc, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
             string dur = Txt.Duration(i.Duration(nowUtc));
-            TextRenderer.DrawText(g, dur, Fonts.Small, new Rectangle(r.Right - durW - Dpi.S(8), r.Y, durW, r.Height), T.Text2, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+            TextRenderer.DrawText(g, dur, T.Num(Fonts.Small), new Rectangle(r.Right - durW - Dpi.S(8), r.Y, durW, r.Height), T.Text2, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             using (Pen pen = new Pen(Theme.Mix(T.Card, T.Divider, 0.6f))) g.DrawLine(pen, x, r.Bottom - 1, r.Right - Dpi.S(8), r.Bottom - 1);
         }
 
