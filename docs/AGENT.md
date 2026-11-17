@@ -127,7 +127,7 @@ Settings shows the account, the date the links expire, and the version published
 
 | Field | What it does |
 |---|---|
-| Customer name | Shown at the top of the device lists. When a customer with this name exists, its tenant and upload location are replaced |
+| Customer name | Shown at the top of the device lists. When a customer with this name exists, Next asks first: **Update <name>** makes new links, the old ones stop, and the script in Intune must be updated too. **Choose another name** goes back to the name |
 | Store this customer's data in their own Azure | Off by default: the uploads go to your storage. On: see [Data in the customer's own Azure](#data-in-the-customers-own-azure) |
 | Alert link (optional) | A Teams workflow link, see [Alerts in Teams](#alerts-in-teams). It must be an https address |
 
@@ -139,10 +139,13 @@ Sign in to the customer's tenant for Intune, with a code in the browser. Tenant 
 
 **3. Create**
 
-The page lists exactly what will be made, with two checkboxes, both on:
+The page lists exactly what will be made. **Add the platform script TrackVice agent** is on: system context, no signature check, 64-bit PowerShell. When the tenant has a script with that name, TrackVice asks before it replaces its content. Under it, where the script is assigned:
 
-- **Create the group TrackVice - Autopilot devices**: a dynamic device group with the rule `(device.devicePhysicalIds -any (_ -contains "[ZTDId]"))`, which holds every device registered with Windows Autopilot. A group with that name is used when it is there.
-- **Add the platform script TrackVice agent and assign it to that group**: system context, no signature check, 64-bit PowerShell. When the tenant has a script with that name, TrackVice asks before it replaces its content. Either way it is assigned to the group, and the assignments it has are kept.
+- **Create the group TrackVice - Autopilot devices** (default): a dynamic device group with the rule `(device.devicePhysicalIds -any (_ -contains "[ZTDId]"))`, which holds every device registered with Windows Autopilot. Only new enrollments install the agent. A group with that name is used when it is there.
+- **Assign to a group I choose**: search the security groups of the tenant by a word of their name. The list shows at most 50, with their members, dynamic or assigned. No group is made.
+- **Do not assign: I assign it in Intune myself**: the script is added without an assignment.
+
+When the script is assigned, the assignments it has are kept. In a production tenant, start with a small test group, then change the assignment to all Autopilot devices.
 
 Press **Create**. The result page lists what was made, with **Copy** for the customer code and the script, and **Open** for the saved script.
 
@@ -154,7 +157,7 @@ Press **Create**. The result page lists what was made, with **Copy** for the cus
 | Links | An upload link with Create and Write, for the devices, and a viewer link with Read and List, for you. Both on that container, valid 2 years |
 | The customer code | See [The customer code](#the-customer-code) |
 | The script | `Install-TrackViceAgent-<customer>.ps1` in `Documents\TrackVice\Scripts`: `agent/Install-TrackViceAgent.ps1` with `$Customer` filled in |
-| Intune, if signed in | The group and the platform script, as ticked |
+| Intune, if signed in | The platform script, and the group or the assignment you chose |
 | TrackVice on this PC | The customer with its tenant and the viewer link, and the customer code. Both encrypted for your Windows account |
 
 ### Who signs in, and what they need
@@ -162,7 +165,7 @@ Press **Create**. The result page lists what was made, with **Copy** for the cus
 | Sign-in | What the account needs |
 |---|---|
 | Azure, for Your storage | Contributor (or Owner) on the subscription for a new account, since the name is checked and the resource group is made there. Storage Account Contributor on an existing account. It signs in with the public client of Azure PowerShell |
-| Intune, in Add customer | An Intune role that can add and assign platform scripts, such as Intune Administrator, and a role that can make security groups, such as Groups Administrator, in the customer's tenant. Consent there for the delegated permissions `DeviceManagementScripts.ReadWrite.All` and `Group.ReadWrite.All`. Dynamic groups need Microsoft Entra ID P1 in the tenant. It uses the client ID saved for the customer, or Microsoft Graph Command Line Tools |
+| Intune, in Add customer | An Intune role that can add and assign platform scripts, such as Intune Administrator, and a role that can make security groups, such as Groups Administrator, in the customer's tenant. Consent there for the delegated permissions `DeviceManagementScripts.ReadWrite.All` and `Group.ReadWrite.All`, which also lets Assign to a group I choose list the groups. Dynamic groups need Microsoft Entra ID P1 in the tenant. It uses the client ID saved for the customer, or Microsoft Graph Command Line Tools |
 | Intune, in Customer code… | The same Intune role, and consent for `DeviceManagementScripts.ReadWrite.All` |
 | Azure, for the customer's own Azure | As for Your storage, in the customer's subscription |
 
@@ -684,6 +687,7 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 |---|---|
 | The script stops with "cannot be run because it contains a #requires statement" | PowerShell is not running as administrator |
 | "Fill in $Customer at the top of the script" | The script has no customer code. Copy the script from Add customer, or put the code from **Customer code…** in `$Customer` |
+| "$Customer holds '...', which looks like a customer name" | `$Customer` holds the customer's name instead of its code. Paste the code from **Settings > Customers > Customer code…** |
 | "This is not a TrackVice customer code. It starts with tv1:" | `$Customer` holds something else, such as a link. Copy the code again |
 | "The customer code could not be read" | The code was cut off or changed when copied. Copy it again with **Copy** in **Customer code…** |
 | "The customer code has no upload link, download link or update key" | The code is not one Add customer made. Make it again |

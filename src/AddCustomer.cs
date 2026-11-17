@@ -513,7 +513,7 @@ namespace TrackVice
             this.token = token;
         }
 
-        static SetupException Fail(WebReply r, string doing)
+        internal static SetupException Fail(WebReply r, string doing)
         {
             Dictionary<string, object> e = ImeJson.Get(r.Json, "error") as Dictionary<string, object>;
             string msg = GraphClient.Clean(Http.Str(e, "message"));
@@ -646,7 +646,10 @@ namespace TrackVice
         public string Customer = "", Tenant = "", Alert = "";
         // Store the data in the customer's own Azure instead of your storage.
         public bool OwnAzure;
-        public bool MakeGroup = true, AddScript = true;
+        public bool AddScript = true;
+        // Where the platform script is assigned. Chosen is the group picked for ScriptTarget.ChosenGroup.
+        public ScriptTarget Target = ScriptTarget.NewGroup;
+        public TenantGroup Chosen;
         // With OwnAzure: the storage steps of the New customer guide, run against the customer's subscription.
         public NewCustomerRun Storage;
 
@@ -673,6 +676,20 @@ namespace TrackVice
                 return Http.Str(ImeJson.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(p))) as Dictionary<string, object>, "tid");
             }
             catch (Exception) { return null; }
+        }
+
+        // Make the group TrackVice - Autopilot devices and assign the script to it. Off leaves the script not assigned.
+        public bool MakeGroup
+        {
+            get { return Target == ScriptTarget.NewGroup; }
+            set { Target = value ? ScriptTarget.NewGroup : ScriptTarget.None; }
+        }
+
+        // What keeps Create from starting in step 3, or null.
+        public string CreateProblem(bool intune)
+        {
+            if (intune && AddScript && Target == ScriptTarget.ChosenGroup && Chosen == null) return "Search for the group and pick it, or choose another assignment.";
+            return null;
         }
 
         public string ContainerName
@@ -712,10 +729,17 @@ namespace TrackVice
                 l.Add("Two stored access policies on it, " + CustomerAccess.Upload + " (Create, Write) and " + CustomerAccess.Viewer + " (Read, List), valid for 2 years, and a link signed with each: one that can only upload, for the devices, and one that can read, for you. Remove customer removes the policies, and both links stop.");
             }
             l.Add("The customer code and the platform script, saved on this PC. Devices download TrackVice from your storage.");
-            if (intune)
+            if (intune && AddScript)
             {
-                if (MakeGroup) l.Add("In Intune: the dynamic device group " + GroupName + ", or the one with that name.");
-                if (AddScript) l.Add("In Intune: the platform script " + ScriptName + " (system context, no signature check, 64-bit)" + (MakeGroup ? ", assigned to that group." : ", not assigned."));
+                string script = "In Intune: the platform script " + ScriptName + " (system context, no signature check, 64-bit)";
+                if (Target == ScriptTarget.NewGroup)
+                {
+                    l.Add("In Intune: the dynamic device group " + GroupName + ", or the one with that name.");
+                    l.Add(script + ", assigned to that group.");
+                }
+                else if (Target == ScriptTarget.ChosenGroup)
+                    l.Add(script + (Chosen != null ? ", assigned to the group " + Chosen.Name + "." : ", assigned to the group you pick below.") + " No group is made.");
+                else l.Add(script + ", not assigned. You assign it in Intune.");
             }
             else l.Add("Nothing in Intune. Add the saved script as a platform script yourself.");
             return l;
@@ -778,12 +802,17 @@ namespace TrackVice
         // The group and the script. A script that is there gets new content only when replace says yes.
         public void ToIntune(IntuneSetup api, Func<bool> replace)
         {
-            if (MakeGroup)
+            if (AddScript && Target == ScriptTarget.NewGroup)
             {
                 Group = api.FindGroup(GroupName);
                 GroupReused = Group != null;
                 if (Group == null) Group = api.CreateGroup(GroupName, GroupRule);
                 Done.Add("Group " + GroupName + (GroupReused ? ", there already" : ", dynamic"));
+            }
+            else if (AddScript && Target == ScriptTarget.ChosenGroup)
+            {
+                if (Chosen == null || string.IsNullOrEmpty(Chosen.Id)) throw new SetupException("No group was picked for the platform script.");
+                Group = Chosen.ToDirectoryGroup();
             }
             if (AddScript)
             {
@@ -813,6 +842,7 @@ namespace TrackVice
                     }
                     else Done.Add("Assigned to " + Group.Name + " already");
                 }
+                else Done.Add("Not assigned. Assign it in Intune");
             }
             IntuneDone = true;
         }
@@ -834,6 +864,45 @@ namespace TrackVice
             ScriptPath = Path.Combine(folder, AgentScript.FileName(Customer));
             File.WriteAllText(ScriptPath, Script, new UTF8Encoding(false));
             return ScriptPath;
+        }
+    }
+
+    // Step 1 asks before it takes the name of a customer that exists, since Create then makes new links and the old ones stop.
+    public static class ExistingName
+    {
+        public const string ChooseAnother = "Choose another name";
+
+        // The customer with this name, ignoring case, or null.
+        public static Customer Find(CustomerBook book, string name)
+        {
+            return book == null ? null : book.Find((name ?? "").Trim());
+        }
+
+        // True when the name is of a customer that exists, and the update was not confirmed for this name.
+        public static bool MustAsk(CustomerBook book, string name, string confirmed)
+        {
+            Customer c = Find(book, name);
+            return c != null && !string.Equals(c.Name, (confirmed ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static string Question(string name)
+        {
+            return Title(name) + ". " + Detail(name);
+        }
+
+        public static string Title(string name)
+        {
+            return name + " already exists";
+        }
+
+        public static string Detail(string name)
+        {
+            return "Update " + name + ": new links are made and the old ones stop, so update the script in Intune too.";
+        }
+
+        public static string UpdateButton(string name)
+        {
+            return "Update " + name;
         }
     }
 
@@ -877,6 +946,7 @@ namespace TrackVice
             string u = c.Url;
             if (u.Contains("restype=container")) return new WebReply(201, "");
             if (c.Method == "GET" && u.Contains("/" + Arm.AgentFiles + "/agent/latest.json")) return new WebReply(404, "");
+            if (c.Headers.ContainsKey("ConsistencyLevel") && u.StartsWith(IntuneSetup.GroupsUrl + "?")) return new WebReply(200, GroupSearch.DemoJson);
             if (u.StartsWith(IntuneSetup.GroupsUrl + "?$filter=")) return new WebReply(200, "{\"value\":[]}");
             if (u == IntuneSetup.GroupsUrl && c.Method == "POST") return new WebReply(201, "{\"id\":\"" + GroupId + "\"}");
             if (u.StartsWith(IntuneScripts.ScriptsUrl + "?$select")) return new WebReply(200, "{\"value\":[]}");
