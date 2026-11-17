@@ -151,6 +151,12 @@ namespace TrackVice
     {
         public static GraphicsPath Round(RectangleF r, float rad)
         {
+            return Fixed(r, rad * Theme.CornerScale);
+        }
+
+        // A rounded rectangle whatever the theme, such as the TrackVice mark.
+        public static GraphicsPath Fixed(RectangleF r, float rad)
+        {
             GraphicsPath p = new GraphicsPath();
             float d = rad * 2;
             if (d <= 0 || r.Width < d || r.Height < d)
@@ -195,6 +201,7 @@ namespace TrackVice
         public virtual void ApplyTheme(Theme t)
         {
             T = t;
+            Theme.CornerScale = t.Corners;
             Invalidate();
         }
 
@@ -312,7 +319,7 @@ namespace TrackVice
             if (Count > 0 && Tone == 2) num = T.ErrFg;
             if (Count > 0 && Tone == 1) num = T.WarnFg;
             int pad = Dpi.S(12);
-            TextRenderer.DrawText(g, Count.ToString(), Fonts.Title, new Rectangle(pad, Dpi.S(6), Width - pad, Dpi.S(28)), num, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, Count.ToString(), T.Num(Fonts.Title), new Rectangle(pad, Dpi.S(6), Width - pad, Dpi.S(28)), num, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(g, Label, Fonts.Small, new Rectangle(pad, Dpi.S(34), Width - pad, Dpi.S(18)), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
         }
     }
