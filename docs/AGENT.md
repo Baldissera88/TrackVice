@@ -2,7 +2,7 @@
 
 Intune and SCCM only know what a device has reported. The agent is TrackVice itself, running on the device without a window while it deploys. It reads the device the way the window does and uploads the whole session as it changes: every app, policy and task sequence step, with the log lines, registry values and events behind them.
 
-On your own PC, **Devices > Devices with the TrackVice agent** lists every device that has uploaded and follows one live, and **Devices > Wall view** shows them all on one screen.
+On your own PC, **Devices > Intune / cloud > Devices with the TrackVice agent** lists every device that has uploaded and follows one live, and **Devices > Wall view** shows them all on one screen. For task sequences, **Devices > SCCM / on-premises** has the same list for devices with the agent in a task sequence. The switch at the top of the Devices menu chooses the side.
 
 Setting up takes two parts. You set up [Your storage](#set-up-once-your-storage) once: one storage account in your own Azure for all customers. Then you [add each customer in three steps](#add-a-customer-in-three-steps). The platform script for a customer holds one line, the customer code, and never needs a new hash when TrackVice changes.
 
@@ -121,7 +121,7 @@ Settings shows the account, the date the links expire, and the version published
 
 ## Add a customer in three steps
 
-**Devices > Add customer…** Nothing is created until you press **Create** in step 3. **Devices > Demo: add customer** shows it with made-up data.
+**Devices > Intune / cloud > Add customer…** Nothing is created until you press **Create** in step 3. **Devices > Demos > Add customer** shows it with made-up data. **Getting started** on the welcome page leads to the same steps.
 
 **1. Customer**
 
@@ -145,7 +145,9 @@ The page lists exactly what will be made. **Add the platform script TrackVice ag
 - **Assign to a group I choose**: search the security groups of the tenant by a word of their name. The list shows at most 50, with their members, dynamic or assigned. No group is made.
 - **Do not assign: I assign it in Intune myself**: the script is added without an assignment.
 
-When the script is assigned, the assignments it has are kept. In a production tenant, start with a small test group, then change the assignment to all Autopilot devices.
+When the script is assigned, the assignments it has are kept.
+
+**In a production tenant, start with a small test group**, then change the assignment to all Autopilot devices. A platform script runs on every device it is assigned to, so a group you choose lets you check the agent on a few devices first.
 
 Press **Create**. The result page lists what was made, with **Copy** for the customer code and the script, and **Open** for the saved script.
 
@@ -214,7 +216,7 @@ This skips the 24-hour check of the script, so it also works on a PC enrolled lo
 
 - Task Scheduler has the task **TrackVice Agent**, running.
 - `C:\Program Files\TrackVice Agent\agent.log` says the agent started, made its first upload, and that self-update is on.
-- **Devices > Devices with the TrackVice agent**, with the customer chosen at the top, has a row for the PC.
+- **Devices > Intune / cloud > Devices with the TrackVice agent**, with the customer chosen at the top, has a row for the PC.
 
 Remove it again:
 
@@ -236,7 +238,7 @@ Keep the list open on your PC. The device appears during device setup. The list 
 
 Add customer saves the viewer link with the customer, encrypted for your Windows account, so there is nothing to paste.
 
-**Demo: devices with the agent** in the same menu shows the view with made-up devices.
+**Devices > Demos > Devices with the agent** shows the view with made-up devices.
 
 ## New TrackVice versions
 
@@ -374,11 +376,11 @@ Besides its session, the agent uploads the device's logs as one zip, `logs/<id>.
 
 On your PC, watch the device from the list, then choose **LogVice > Logs from the device**. TrackVice downloads the zip, unpacks it under `%LOCALAPPDATA%\TrackVice\Logs\<device>-<id>` and opens the folder. **Open in LogVice** on an item or an event then opens the device's copy of that log. A new download replaces the older copy of that device, and copies older than 30 days are removed.
 
-The demo devices under **Demo: devices with the agent** have logs too, made up like the rest.
+The demo devices under **Devices > Demos > Devices with the agent** have logs too, made up like the rest.
 
 ## Statistics and Compare
 
-The uploads also feed two views on your PC. Both read the location you connected to in **Devices with the TrackVice agent**, or ask for it.
+The uploads also feed two views on your PC. Both read the location you connected to in **Devices with the TrackVice agent**, or ask for it. Both are in the Devices menu on either side, and Statistics has a filter for Intune, SCCM or both.
 
 - **Devices > Statistics for devices with the agent** goes over every session uploaded in the last 24 hours, 7, 30 or 90 days: how long enrollments take, and which apps, scripts and steps are slow or fail. Double-click an enrollment to watch it. See [Statistics](../README.md#statistics) in the README.
 - **Devices > Compare with another enrollment > A device with the agent** puts the session you watch beside one from the uploads. See [Compare](../README.md#compare) in the README.
@@ -399,6 +401,8 @@ The agent can also follow an SCCM task sequence, from Windows PE to the end, as 
 - A network path from Windows PE and Windows to the storage account, or to the share.
 - A package with `TrackVice.exe` in it, distributed to your distribution points. No program is needed.
 - The customer code, or an upload link from [step 3](#step-3-the-three-links) of the setup with links.
+
+**Devices > SCCM / on-premises > Add the agent to a task sequence** shows the command with the customer code of the customer in use, with **Copy**, and where the steps go. **Devices with the agent in a task sequence** on the same side lists these devices.
 
 **The steps.** Add a **Run Command Line** step at each of these places, all with the same command line and the TrackVice package:
 
@@ -501,7 +505,7 @@ Before customer codes, each customer had its own storage account, and the platfo
 
 ### New customer with links
 
-**Devices > New customer with links…** does the work of steps 1 to 6 below. It goes through Customer, Storage, Links, Upload, Alerts and Script, and nothing is created until you press a step's button. **Devices > Demo: new customer** shows it with made-up data.
+**Devices > Intune / cloud > New customer with links…** does the work of steps 1 to 6 below. It goes through Customer, Storage, Links, Upload, Alerts and Script, and nothing is created until you press a step's button. **Devices > Demos > New customer** shows it with made-up data.
 
 | | |
 |---|---|
@@ -666,7 +670,7 @@ Enroll or reset the test device and keep the list open on your PC, as in [Follow
 | When | Do this |
 |---|---|
 | A new TrackVice version | Publish it to your storage: click **Publish** in the status bar, or **Settings > Your storage > Publish**. New devices get it at once, and installed agents within 6 hours. With links, publish it with **Publish agent update** to each customer's `trackvice-agent`, or upload the new `TrackVice.exe` over the old one and update `$Sha256` in `agent/Install-TrackViceAgent-Links.ps1` in Intune. Until the hash is updated that script fails on purpose |
-| The customer's links expire | Upload and viewer links from Add customer are valid 2 years. Run **Add customer** again with the same name: it uses the container that is there, signs new links, and replaces the upload location of the customer. Put the new script in Intune (it asks before it replaces the content) |
+| The customer's links expire | Upload and viewer links from Add customer are valid 2 years. Run **Add customer** again with the same name and choose **Update <name>**: it uses the container that is there, signs new links, and replaces the upload location of the customer. Put the new script in Intune (it asks before it replaces the content) |
 | The links to `trackvice-agent` expire | They are valid 5 years. **Settings > Your storage > Set up again** signs new ones. Codes made before keep the old Read link, so make them again as above before it expires |
 | Links of a setup with links expire | Run **New customer with links** again with the same customer name and the existing account, or make new links by hand. Then update `$Download`, `$Upload` and `$UpdateLink` in `agent/Install-TrackViceAgent-Links.ps1` in Intune, the task sequence steps and the upload location in TrackVice |
 | A new PC or Windows user | The update key cannot move, and the account key and customer codes are kept for one Windows user. Set up Your storage there, which makes a new key. Publish, then make every customer code again with Add customer and update the scripts in Intune: devices only trust the key in their code. With links, put the new key in `$UpdateKey` and update the script in Intune |
@@ -687,7 +691,7 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 |---|---|
 | The script stops with "cannot be run because it contains a #requires statement" | PowerShell is not running as administrator |
 | "Fill in $Customer at the top of the script" | The script has no customer code. Copy the script from Add customer, or put the code from **Customer code…** in `$Customer` |
-| "$Customer holds '...', which looks like a customer name" | `$Customer` holds the customer's name instead of its code. Paste the code from **Settings > Customers > Customer code…** |
+| "$Customer holds '...', which looks like a customer name. Paste the customer code from TrackVice > Settings > Customers > Customer code..., which starts with tv1:" | `$Customer` holds the customer's name instead of its code. Paste the code from **Settings > Customers > Customer code…**, or copy the script again from the result page of Add customer |
 | "This is not a TrackVice customer code. It starts with tv1:" | `$Customer` holds something else, such as a link. Copy the code again |
 | "The customer code could not be read" | The code was cut off or changed when copied. Copy it again with **Copy** in **Customer code…** |
 | "The customer code has no upload link, download link or update key" | The code is not one Add customer made. Make it again |

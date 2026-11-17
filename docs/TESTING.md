@@ -78,7 +78,7 @@ reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking es
 
 ## 7. Other devices: Autopilot in Intune
 
-- [ ] Devices > Autopilot in Intune > Sign in gives a code, and signing in at microsoft.com/devicelogin works. If consent is needed, note the message.
+- [ ] Devices > Intune / cloud > Autopilot in Intune > Sign in gives a code, and signing in at microsoft.com/devicelogin works. If consent is needed, note the message.
 - [ ] The list matches Devices > Monitor > Windows Autopilot deployments in the Intune admin center: devices, states and start times.
 - [ ] Start an Autopilot deployment. It shows as In progress, and how long after the device it changes.
 - [ ] Watch one device: device setup and account setup states and durations match the report.
@@ -88,7 +88,7 @@ reg export HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking es
 
 ## 8. Other devices: task sequences in SCCM
 
-- [ ] Devices > Task sequences in SCCM connects with only the SMS Provider name, and finds the site code.
+- [ ] Devices > SCCM / on-premises > Task sequences in SCCM connects with only the SMS Provider name, and finds the site code.
 - [ ] The list matches Monitoring > Deployments for the task sequence. Check the Started time against the console: a shift of whole hours means the time zone handling is wrong.
 - [ ] Watch a running task sequence: steps appear in order under their groups, a little after they finish on the device.
 - [ ] Note the exact status message names for a completed, failed and skipped step, and for the task sequence ending. TrackVice reads the state from these names.
@@ -110,7 +110,7 @@ Use a test subscription, a test tenant and a test device or virtual machine. [do
 
 **Add customer, in your storage**
 
-- [ ] **Devices > Demo: add customer** goes through Customer, Sign in and Create with made-up data.
+- [ ] **Devices > Demos > Add customer** goes through Customer, Sign in and Create with made-up data.
 - [ ] **Devices > Add customer**: enter a name such as Contoso and an alert link. A link that does not start with `https://` is refused.
 - [ ] Sign in to the test tenant. Before Create, nothing is in Azure or Intune.
 - [ ] Create: the container `tv-contoso` is in your storage, private. The group **TrackVice - Autopilot devices** is dynamic with the ZTDId rule. The platform script **TrackVice agent** runs in system context, 64-bit, without a signature check, and is assigned to the group.
@@ -136,7 +136,7 @@ Use a test subscription, a test tenant and a test device or virtual machine. [do
 - [ ] The script's output in Intune, or `IntuneManagementExtension.log`, says the TrackVice version and that the agent is installed.
 - [ ] After a restart the device continues as the same row in the list. Watching it shows the same items as TrackVice run on it.
 - [ ] A device enrolled long ago that is in the group: the script says "Not a new enrollment" and installs nothing.
-- [ ] Put a cut code in `$Customer`, and one that does not start with `tv1:`: the script stops with "could not be read" and "not a TrackVice customer code".
+- [ ] Put a cut code in `$Customer`, and a link: the script stops with "could not be read" and "not a TrackVice customer code".
 - [ ] Publish from another Windows user with a new key, then run the script: it says `agent/latest.json` is not signed with the update key in the customer code. Publish again from your own Windows user afterwards.
 
 **A new version**
@@ -321,7 +321,7 @@ For a setup with links, as in [docs/AGENT.md](AGENT.md#agent-updates), with a te
 
 For existing setups. Use a test subscription and a test tenant.
 
-- [ ] **Devices > Demo: new customer** goes through every step with made-up data.
+- [ ] **Devices > Demos > New customer** goes through every step with made-up data.
 - [ ] **Devices > New customer with links** with a new storage account: the resource group, the account, both containers and the lifecycle rule are in the Azure portal as the guide said.
 - [ ] Again with the same customer and the existing account: the account keeps its settings and other lifecycle rules are kept.
 - [ ] The five links have the permissions in [docs/AGENT.md](AGENT.md#new-customer-with-links), and the account key is not saved anywhere on the PC.
@@ -331,6 +331,56 @@ For existing setups. Use a test subscription and a test tenant.
 - [ ] After Finish, the customer is in Settings > Customers and **Devices with the TrackVice agent** connects without a new link.
 - [ ] `agent/New-TrackViceCustomer.ps1` with the same values makes the same storage, links and script.
 - [ ] An account without a role on the subscription gets a message that says what it may not do.
+
+## 26. Welcome and Getting started
+
+Use a Windows user that has not started TrackVice before, or remove `WelcomeSeen` from `HKCU\Software\TrackVice`.
+
+1. Start TrackVice. The welcome page shows the four choices, and nothing is read from Intune or Azure before a click.
+2. **Follow this device** watches this PC. **Open logs or a session** offers both. **Look around** plays the Autopilot demo.
+3. **Follow devices from my PC** asks for your own organization or for customers, and Getting started uses the words of the choice.
+4. Each step opens its guide. After Your storage and Add customer, those steps are ticked. After a test device uploads and the list is opened, the last two are ticked, and the line under the toolbar goes away.
+5. **Don't show again**: the next start opens without the welcome. **Help > Welcome** and **Help > Getting started** show them again.
+6. At Shift+F10 during the ESP, in a task sequence and as SYSTEM: no welcome, TrackVice follows the device at once.
+
+## 27. Devices: Intune / cloud and SCCM / on-premises
+
+1. The switch at the top of the Devices menu changes the entries to the other side. A restart of TrackVice keeps the side.
+2. With nothing set up, Intune / cloud says what it needs and offers **Add customer**, and SCCM / on-premises offers **Enter the SMS Provider**.
+3. **SMS Provider connection** saves the server with the customer in use. Switching customers switches the site.
+4. **Add the agent to a task sequence** copies the command with the customer code of the customer in use.
+5. **Devices > Demos** has the demos of the side in use and those for both.
+6. Statistics with Intune, SCCM and Both: the counts match the enrollments of each kind. A task sequence followed by Autopilot counts under both.
+7. `TrackVice.exe /fleet-report fleet.html /upload "<viewer link>" /side sccm` lists only task sequences. `/side x` stops with a message.
+
+## 28. Updates from GitHub
+
+Use a PC where the previous release is installed with the MSI, and a copy of the exe in a folder.
+
+1. **Settings > Updates > Check now** says the newer version, and when it last checked.
+2. The status bar says "TrackVice <version> is out" at the next start, at most once a day.
+3. **Install** with the MSI: Windows asks for administrator rights, TrackVice closes, installs and opens again in the new version.
+4. **Install** with the copy in a folder: the exe in that folder is replaced and opens again.
+5. After the update, the status bar offers to publish the new version to Your storage.
+6. Set `DisableUpdateCheck` = 1 (DWORD) under `HKLM\SOFTWARE\Policies\TrackVice`: Settings > Updates says it is turned off by your organization, and no connection to `api.github.com` is made.
+7. As the agent, at Shift+F10 during the ESP and in a task sequence: no connection to `api.github.com`.
+8. The release has `SHA256SUMS.txt`, and its hashes match `Get-FileHash` of the MSI, the exe and the three scripts.
+
+## 29. Task sequences in SCCM: one row per run
+
+1. Run the same task sequence deployment twice on one test device. The list has one row for the newest run, with its own Started and Duration, as the console shows them.
+2. **Show earlier runs** adds the first run as a row of its own, and the status line counts the runs left out when it is off.
+3. Open each run: it shows only the steps of that run.
+4. A run that restarts into Windows stays one run.
+5. Status messages the device sends after Windows PE show in the run with the time of their step, after a Refresh.
+
+## 30. Add customer: an existing name, the assignment and the script message
+
+1. Add customer with the name of a customer that exists: Next asks first. **Choose another name** goes back to the name with it selected. **Update** goes on.
+2. Step 3 offers the three assignments. **Create the group TrackVice - Autopilot devices** is the default.
+3. **Assign to a group I choose**: searching a word of a group's name lists security groups, each marked dynamic or assigned. Create assigns the script to that group and makes no group.
+4. **Do not assign**: the script is in Intune without an assignment, and no group is made. The result page says to assign it.
+5. Put the customer's name in `$Customer` and run the script: it says the value looks like a customer name and where to copy the code.
 
 ## What to send back
 

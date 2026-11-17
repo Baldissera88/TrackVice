@@ -1,5 +1,21 @@
 # Changelog
 
+## TrackVice 1.3.0
+
+17 November 2026.
+
+- **Welcome.** On first start TrackVice offers four choices: Follow this device, Follow devices from my PC, Open logs or a session, and Look around with the demo. It does not show on a device that deploys, in Windows PE, as SYSTEM or when started with an option. Help > Welcome shows it again.
+- **Getting started**, for your own organization or for customers: Your storage, the first customer, a test on one VM, and the device list. Each step opens its guide and ticks itself off. Help > Getting started.
+- **Devices in two parts.** A switch at the top of the Devices menu chooses Intune / cloud or SCCM / on-premises, and the menu shows only that side. Each side says what it needs when nothing is set up. SCCM / on-premises has the SMS Provider connection and Add the agent to a task sequence. The demos are in Devices > Demos.
+- Statistics and the list of devices with the agent filter by Intune, SCCM or both. `/side intune|sccm|both` does the same for `/fleet-report` and `/export-data`.
+- **TrackVice updates itself** from its GitHub releases. Once a day at start it asks GitHub for the latest release and shows a line in the status bar when there is a newer one. Install checks the download against `SHA256SUMS.txt`, installs it and opens TrackVice again. Settings > Updates turns it off; the policy value `DisableUpdateCheck` under `HKLM\SOFTWARE\Policies\TrackVice` turns it off for everyone.
+- Every release now has `SHA256SUMS.txt`, with the hashes of the MSI, the exe and the three agent scripts.
+- **Task sequences in SCCM: one row per run.** A run begins at the task sequence start message (11140), so Started and Duration are those of the run. Show earlier runs lists the runs before the newest.
+- Status messages a device sends late, such as those it kept during Windows PE, now show in the run they belong to.
+- **Add customer** asks before it updates a customer that exists: Update makes new links and the old ones stop, Choose another name goes back to the name.
+- Step 3 of Add customer has three choices for the assignment: create the group TrackVice - Autopilot devices, a group you choose from a search of the tenant's groups, or no assignment. In a production tenant, start with a small test group.
+- The install script says when `$Customer` holds a customer name instead of the code, and where to copy the code.
+
 ## TrackVice 1.2.1
 
 16 November 2026.
