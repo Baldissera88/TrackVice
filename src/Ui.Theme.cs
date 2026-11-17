@@ -19,114 +19,79 @@ namespace TrackVice
     // The same palettes as LogVice and PolicyVice, so the tools look like one family.
     public sealed class Theme
     {
-        public bool IsDark;
+        public bool IsDark, MonoNumbers;
+        public float Corners = 1f;
         public string Name = "";
         public Color Bg, Card, CardAlt, Stroke, Divider, Text, Text2, Text3;
         public Color Accent, AccentHover, OnAccent, AccentSoft;
         public Color Hover, Pressed, Field, FieldStroke;
         public Color ErrBg, ErrFg, WarnBg, WarnFg, OkFg, Zebra, Header;
 
-        public static Theme Light()
+        public static Theme Light() { return From(Palettes.Light()); }
+        public static Theme Dark() { return From(Palettes.Dark()); }
+        public static Theme Vice() { return From(Palettes.Vice()); }
+        public static Theme Terminal() { return From(Palettes.Terminal()); }
+        public static Theme Amber() { return From(Palettes.Amber()); }
+        public static Theme Synthwave() { return From(Palettes.Synthwave()); }
+
+        public static Theme From(Palette p)
         {
             Theme t = new Theme();
-            t.Name = "Light";
-            t.Bg = Hex(0xEEF1F6);
-            t.Card = Hex(0xFFFFFF);
-            t.CardAlt = Hex(0xF5F7FA);
-            t.Stroke = Hex(0xDCE1E8);
-            t.Divider = Hex(0xE6E9EF);
-            t.Text = Hex(0x111418);
-            t.Text2 = Hex(0x454B54);
-            t.Text3 = Hex(0x6E7580);
-            t.Accent = Hex(0x005FB8);
-            t.AccentHover = Mix(t.Accent, Color.White, 0.12f);
-            t.OnAccent = Color.White;
-            t.AccentSoft = Mix(t.Card, t.Accent, 0.14f);
-            t.Hover = Mix(t.Card, Color.Black, 0.055f);
-            t.Pressed = Mix(t.Card, Color.Black, 0.03f);
-            t.Field = Hex(0xFFFFFF);
-            t.FieldStroke = Hex(0xD0D5DD);
-            t.ErrBg = Hex(0xFDE3E5);
-            t.ErrFg = Hex(0xC42B1C);
-            t.WarnBg = Hex(0xFFF1C7);
-            t.WarnFg = Hex(0x9D5D00);
-            t.OkFg = Hex(0x0F7B0F);
-            t.Zebra = Hex(0xF7F9FC);
-            t.Header = Hex(0xF7F9FC);
+            t.Name = p.Name;
+            t.IsDark = p.IsDark;
+            t.Corners = p.Corners;
+            t.MonoNumbers = p.MonoNumbers;
+            t.Bg = Hex(p.Bg);
+            t.Card = Hex(p.Card);
+            t.CardAlt = Hex(p.CardAlt);
+            t.Stroke = Hex(p.Stroke);
+            t.Divider = Hex(p.Divider);
+            t.Text = Hex(p.Text);
+            t.Text2 = Hex(p.Text2);
+            t.Text3 = Hex(p.Text3);
+            t.Accent = Hex(p.Accent);
+            t.AccentHover = Hex(p.AccentHover);
+            t.OnAccent = Hex(p.OnAccent);
+            t.AccentSoft = Hex(p.AccentSoft);
+            t.Hover = Hex(p.Hover);
+            t.Pressed = Hex(p.Pressed);
+            t.Field = Hex(p.Field);
+            t.FieldStroke = Hex(p.FieldStroke);
+            t.ErrBg = Hex(p.ErrBg);
+            t.ErrFg = Hex(p.ErrFg);
+            t.WarnBg = Hex(p.WarnBg);
+            t.WarnFg = Hex(p.WarnFg);
+            t.OkFg = Hex(p.OkFg);
+            t.Zebra = Hex(p.Zebra);
+            t.Header = Hex(p.Header);
             return t;
         }
 
-        public static Theme Dark()
-        {
-            Theme t = new Theme();
-            t.Name = "Dark";
-            t.IsDark = true;
-            t.Bg = Hex(0x191B20);
-            t.Card = Hex(0x24272D);
-            t.CardAlt = Hex(0x2C3037);
-            t.Stroke = Hex(0x131519);
-            t.Divider = Hex(0x363A42);
-            t.Text = Hex(0xF5F7FA);
-            t.Text2 = Hex(0xD3D7DE);
-            t.Text3 = Hex(0xA2A8B2);
-            t.Accent = Hex(0x60CDFF);
-            t.AccentHover = Mix(t.Accent, Color.Black, 0.1f);
-            t.OnAccent = Hex(0x000000);
-            t.AccentSoft = Mix(t.Card, t.Accent, 0.2f);
-            t.Hover = Mix(t.Card, Color.White, 0.06f);
-            t.Pressed = Mix(t.Card, Color.White, 0.035f);
-            t.Field = Hex(0x2A2E35);
-            t.FieldStroke = Hex(0x3A3F48);
-            t.ErrBg = Hex(0x47292B);
-            t.ErrFg = Hex(0xFF99A4);
-            t.WarnBg = Hex(0x45391D);
-            t.WarnFg = Hex(0xFCE100);
-            t.OkFg = Hex(0x6CCB5F);
-            t.Zebra = Hex(0x282B32);
-            t.Header = Hex(0x292C33);
-            return t;
-        }
-
-        public static Theme Vice()
-        {
-            Theme t = new Theme();
-            t.Name = "Vice";
-            t.IsDark = true;
-            t.Bg = Hex(0x120D26);
-            t.Card = Hex(0x1C1535);
-            t.CardAlt = Hex(0x251C45);
-            t.Stroke = Hex(0x0B0819);
-            t.Divider = Hex(0x352A60);
-            t.Text = Hex(0xFFF5FD);
-            t.Text2 = Hex(0xE6D5F7);
-            t.Text3 = Hex(0xB39CD6);
-            t.Accent = Hex(0xFF4FB4);
-            t.AccentHover = Mix(t.Accent, Color.White, 0.12f);
-            t.OnAccent = Hex(0x1A0718);
-            t.AccentSoft = Mix(t.Card, t.Accent, 0.24f);
-            t.Hover = Mix(t.Card, Hex(0xFF78DC), 0.09f);
-            t.Pressed = Mix(t.Card, Hex(0xFF78DC), 0.05f);
-            t.Field = Hex(0x211A3F);
-            t.FieldStroke = Hex(0x3D3070);
-            t.ErrBg = Hex(0x4A1638);
-            t.ErrFg = Hex(0xFF6FA8);
-            t.WarnBg = Hex(0x4A2C1F);
-            t.WarnFg = Hex(0xFFB36B);
-            t.OkFg = Hex(0x2EE6D6);
-            t.Zebra = Hex(0x20183D);
-            t.Header = Hex(0x221A42);
-            return t;
-        }
-
+        // System, or a name that is not known, follows the Windows app mode.
         public static Theme Named(string name)
         {
-            switch ((name ?? "").ToLowerInvariant())
-            {
-                case "light": return Light();
-                case "dark": return Dark();
-                case "vice": return Vice();
-                default: return SystemPrefersDark() ? Dark() : Light();
-            }
+            Palette p = Palettes.Find(name);
+            if (p != null) return From(p);
+            return SystemPrefersDark() ? Dark() : Light();
+        }
+
+        // The theme name saved in Settings, or Vice when none is saved yet.
+        public static string SavedName()
+        {
+            return Palettes.SavedName(Prefs.Get("Theme", null));
+        }
+
+        // How round the corners of the theme in use are. Set when a control takes a theme, read by Shapes.
+        public static float CornerScale = 1f;
+
+        // A number, time or duration in the theme's font for numbers: the monospace font in Terminal and Amber.
+        public Font Num(Font normal)
+        {
+            if (!MonoNumbers || normal == null) return normal;
+            if (normal == Fonts.Title) return Fonts.MonoTitle;
+            if (normal == Fonts.Small || normal == Fonts.SmallSemibold) return Fonts.MonoSmall;
+            if (normal == Fonts.UiSemibold) return Fonts.MonoSemibold;
+            return Fonts.Mono;
         }
 
         public static Color Hex(int rgb)
@@ -158,7 +123,7 @@ namespace TrackVice
 
     public static class Fonts
     {
-        public static Font Ui, UiSemibold, Small, SmallSemibold, Title, Mono, MonoSmall, Icons, IconsSmall;
+        public static Font Ui, UiSemibold, Small, SmallSemibold, Title, Mono, MonoSmall, MonoSemibold, MonoTitle, Icons, IconsSmall;
         public static string UiName = "", MonoName = "";
 
         public static void Init()
@@ -184,6 +149,8 @@ namespace TrackVice
             Title = disp != null ? new Font(disp, 14f) : new Font(ui, 14f, FontStyle.Bold);
             Mono = mono != null ? new Font(mono, 9.25f) : new Font(FontFamily.GenericMonospace, 9.25f);
             MonoSmall = mono != null ? new Font(mono, 8.25f) : new Font(FontFamily.GenericMonospace, 8.25f);
+            MonoSemibold = new Font(Mono.FontFamily, 9.25f, FontStyle.Bold);
+            MonoTitle = new Font(Mono.FontFamily, 13f, FontStyle.Bold);
             Icons = icons != null ? new Font(icons, 10.5f) : null;
             IconsSmall = icons != null ? new Font(icons, 7.5f) : null;
             UiName = Ui.Name;

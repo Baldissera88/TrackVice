@@ -172,7 +172,7 @@ namespace TrackVice
             }
             catch (Exception) { }
             Fonts.Init();
-            using (UpdaterForm f = new UpdaterForm(job.Version, Theme.Named(Prefs.Get("Theme", "System"))))
+            using (UpdaterForm f = new UpdaterForm(job.Version, Theme.Named(Theme.SavedName())))
             {
                 f.Shown += delegate { ThreadPool.QueueUserWorkItem(delegate { job.Run(f); }); };
                 Application.Run(f);

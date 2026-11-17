@@ -59,7 +59,7 @@ namespace TrackVice
             g.TranslateTransform(r.X, r.Y);
             g.ScaleTransform(k, k);
             float w = 40f;
-            using (GraphicsPath tile = Shapes.Round(new RectangleF(20, 20, 984, 984), 150))
+            using (GraphicsPath tile = Shapes.Fixed(new RectangleF(20, 20, 984, 984), 150))
             using (SolidBrush navy = new SolidBrush(Theme.Hex(0x011133)))
                 g.FillPath(navy, tile);
             using (Pen cyan = new Pen(Theme.Hex(0x00EEFE), w))
@@ -734,14 +734,12 @@ namespace TrackVice
 
         public SettingsDialog(Theme t) : base("TrackVice settings", t)
         {
-            string[] themes = { "System", "Light", "Dark", "Vice" };
-            Segmented segTheme = new Segmented(themes);
-            int ti = Array.IndexOf(themes, Prefs.Get("Theme", "System"));
-            segTheme.Selected = ti < 0 ? 0 : ti;
+            ThemePicker segTheme = new ThemePicker(Palettes.Choices);
+            segTheme.SelectedName = Theme.SavedName();
             segTheme.Changed += Safe.Wrap(delegate
             {
-                Prefs.Set("Theme", themes[segTheme.Selected]);
-                Retheme(Theme.Named(themes[segTheme.Selected]));
+                Prefs.Set("Theme", segTheme.SelectedName);
+                Retheme(Theme.Named(segTheme.SelectedName));
                 if (ThemeChanged != null) ThemeChanged(this, EventArgs.Empty);
             });
 
@@ -790,7 +788,7 @@ namespace TrackVice
             logViceRow = new SettingRow(Glyphs2.Folder, "LogVice", "", new ButtonStrip(bBrowse, bClear));
 
             Add(new SectionTitle("Appearance"));
-            Add(new SettingRow(Glyphs2.Palette, "Theme", "Light, Dark or Vice, or follow the Windows app mode. The same themes as LogVice and PolicyVice.", segTheme));
+            Add(new SettingRow(Glyphs2.Palette, "Theme", "System follows the Windows app mode. Terminal and Amber look like old green and amber screens, with numbers and times in a monospace font.", segTheme));
 
             Add(new SectionTitle("Reading this device"));
             Add(new SettingRow(Glyphs2.Calendar, "History to read", "How far back to read logs and event logs. Since install reads everything since Windows was installed. ESP and Win32 app states are always read, with the time they were saved.", segHistory));
