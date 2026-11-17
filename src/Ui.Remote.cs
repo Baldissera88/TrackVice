@@ -115,6 +115,7 @@ namespace TrackVice
             bar.Controls.Add(since);
             bar.Controls.Add(bRefresh);
             if (kind == Sccm) BuildEarlierRuns();
+            if (kind == Agents) BuildSideFilter();
 
             table.Col("Device", 150, delegate (RemoteDeployment d) { return d.Device; });
             table.Col("State", 200, delegate (RemoteDeployment d) { return d.StateText; }).Fill = true;
@@ -633,6 +634,7 @@ namespace TrackVice
             foreach (RemoteDeployment d in all)
             {
                 if (q.Length > 0 && !Has(d.Device, q) && !Has(d.User, q) && !Has(d.Profile, q) && !Has(d.Serial, q) && !Has(d.StateText, q)) continue;
+                if (!SideShows(d)) continue;
                 rows.Add(d);
             }
             table.SetRows(rows);

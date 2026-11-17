@@ -243,6 +243,10 @@ namespace TrackVice
                         case "ship-report": ship = Next(args, ref i); break;
                         case "from": from = Next(args, ref i); break;
                         case "export-data": exportData = Next(args, ref i); break;
+                        case "side":
+                            DeviceSides.CliFilter = DeviceSides.Parse(Next(args, ref i));
+                            if (DeviceSides.CliFilter == null) throw new ArgumentException("/side takes intune, sccm or both.");
+                            break;
                         case "update": ao.UpdateLink = Next(args, ref i); break;
                         case "update-key": ao.UpdateKey = Next(args, ref i); break;
                         case "customer": CustomerInstall.Apply(ao, Next(args, ref i)); break;

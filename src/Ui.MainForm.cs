@@ -132,7 +132,11 @@ namespace TrackVice
                 if (start.Demo != null) Begin(Engine.ForDemo(start.Demo), true);
                 else if (start.File != null) Begin(Engine.ForFile(start.File), false);
                 else if (start.Folder != null) Begin(Engine.ForFolder(start.Folder), false);
-                else Begin(Settings.NewLive(), true);
+                else
+                {
+                    Begin(Settings.NewLive(), true);
+                    MaybeWelcome();
+                }
             });
         }
 
@@ -162,30 +166,30 @@ namespace TrackVice
 
             bWatch = Button("Watch", Glyphs.Watch, delegate { ToggleWatch(); });
             bOpen = Button("Open", Glyphs2.Folder, delegate { OpenMenu().Show(bOpen, new Point(0, bOpen.Height)); });
-            bDevices = Button("Devices", Glyphs2.Apps, delegate { DevicesMenu().Show(bDevices, new Point(0, bDevices.Height)); });
+            bDevices = Button("Devices", Glyphs2.Apps, delegate { ShowDevicesMenu(); });
             bSave = Button("Save", Glyphs.Save, delegate { SaveMenu().Show(bSave, new Point(0, bSave.Height)); });
             bExport = Button("Export", Glyphs.Export, delegate { ExportMenu().Show(bExport, new Point(0, bExport.Height)); });
             bLogVice = Button("LogVice", Glyphs.Log, delegate { LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); });
             bCompact = Button("Compact", Glyphs2.Device, delegate { ToggleCompact(); });
             bTheme = Button("", Glyphs.Theme, delegate { CycleTheme(); });
             bSettings = Button("", Glyphs2.Settings, delegate { OpenSettings(); });
-            bAbout = Button("", Glyphs.Info, delegate { About(); });
+            bAbout = Button("", Glyphs2.Help, delegate { HelpMenu().Show(bAbout, new Point(bAbout.Width, bAbout.Height), ToolStripDropDownDirection.BelowLeft); });
             if (Fonts.Icons == null)
             {
                 bTheme.Text = "Theme";
                 bSettings.Text = "Settings";
-                bAbout.Text = "About";
+                bAbout.Text = "Help";
             }
             Tip(bWatch, "Follow the device live, or pause (Ctrl+W)");
             Tip(bOpen, "Watch this device, open a saved session or a folder of logs, or play a demo (Ctrl+O)");
-            Tip(bDevices, "Follow other devices: Autopilot deployments from Intune, devices with the TrackVice agent, or task sequences from your SCCM site (Ctrl+D)");
+            Tip(bDevices, "Follow other devices: Intune / cloud for Autopilot and devices with the TrackVice agent, SCCM / on-premises for task sequences from your site (Ctrl+D)");
             Tip(bSave, "Save the session, or collect it with its logs in a zip (Ctrl+S)");
             Tip(bExport, "Export an HTML report or every event as CSV (Ctrl+E)");
             Tip(bLogVice, "Open the deployment logs in LogVice");
             Tip(bCompact, "A small window that stays on top, for OOBE and for watching over a shoulder (Ctrl+M)");
             Tip(bTheme, "Change the theme");
             Tip(bSettings, "Settings: history to read, how often to read, sources, LogVice (Ctrl+,)");
-            Tip(bAbout, "About TrackVice and the command line (F1)");
+            Tip(bAbout, "Help: getting started, the welcome page, the guide, and About TrackVice with the command line (F1)");
             foreach (FlatButton b in new FlatButton[] { bWatch, bOpen, bDevices, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout })
             {
                 b.Margin = new Padding(Dpi.S(2), 0, 0, 0);
@@ -560,6 +564,7 @@ namespace TrackVice
 
         void Begin(Engine e, bool watch)
         {
+            HideWelcome();
             pollTimer.Stop();
             if (engine != null) engine.Dispose();
             engine = e;
@@ -633,6 +638,7 @@ namespace TrackVice
                 if (e.StartedBeforeHistory.HasValue)
                     Status("This deployment started " + Txt.Local(e.StartedBeforeHistory.Value) + ", before the history TrackVice reads, so older items show only their saved state. Settings > History to read > Since install reads everything.");
                 SelectInteresting();
+                WelcomeAfterLoad(e);
                 if (start.Shot != null) Shot();
                 else if (start.Compact) ToggleCompact();
             }
@@ -1230,38 +1236,6 @@ namespace TrackVice
             return m;
         }
 
-        ContextMenuStrip DevicesMenu()
-        {
-            ContextMenuStrip m = Menus.New(theme);
-            Menus.Add(m, "Add customer\u2026", delegate { OpenAddCustomer(false); });
-            Menus.Separator(m);
-            Menus.Add(m, "Autopilot in Intune\u2026", delegate { OpenRemote(RemoteDialog.Intune); });
-            Menus.Add(m, "Devices with the TrackVice agent\u2026", delegate { OpenRemote(RemoteDialog.Agents); });
-            Menus.Add(m, "Task sequences in SCCM\u2026", delegate { OpenRemote(RemoteDialog.Sccm); });
-            Menus.Separator(m);
-            Menus.Add(m, "Statistics for devices with the agent\u2026", delegate { OpenStats(false); });
-            Menus.Add(m, "Wall view\u2026", delegate { OpenWall(null, false); });
-            CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
-            ReferenceMenu(m);
-            Menus.Add(m, "Names from Intune\u2026", delegate { NamesFromIntune(); });
-            Menus.Add(m, "Check devices before enrollment\u2026", delegate { OpenReadiness(false); });
-            Menus.Add(m, "New customer with links\u2026", delegate { OpenNewCustomer(false); });
-            AddNotifyViceMenu(m);
-            Menus.Separator(m);
-            Menus.Add(m, "Watch this device", delegate { Begin(Settings.NewLive(), true); });
-            Menus.Separator(m);
-            Menus.Add(m, "Demo: Autopilot in Intune", delegate { OpenRemote(RemoteDialog.Intune, true); });
-            Menus.Add(m, "Demo: devices with the agent", delegate { OpenRemote(RemoteDialog.Agents, true); });
-            Menus.Add(m, "Demo: task sequences in SCCM", delegate { OpenRemote(RemoteDialog.Sccm, true); });
-            Menus.Add(m, "Demo: statistics", delegate { OpenStats(true); });
-            Menus.Add(m, "Demo: wall view", delegate { OpenWall(null, true); });
-            Menus.Add(m, "Demo: compare two enrollments", delegate { using (CompareDialog d = CompareDialog.ForDemo(theme)) d.ShowDialog(this); });
-            Menus.Add(m, "Demo: check before enrollment", delegate { OpenReadiness(true); });
-            Menus.Add(m, "Demo: new customer", delegate { OpenNewCustomer(true); });
-            Menus.Add(m, "Demo: add customer", delegate { OpenAddCustomer(true); });
-            return m;
-        }
-
         ContextMenuStrip SaveMenu()
         {
             ContextMenuStrip m = Menus.New(theme);
@@ -1548,10 +1522,23 @@ namespace TrackVice
         // Lists deployments on other devices and watches the one picked. A demo list is never kept.
         void OpenRemote(string kind, bool demo)
         {
+            OpenRemote(kind, demo, DeviceSides.Both);
+        }
+
+        // The list of devices with the agent, filtered to a side at first.
+        void OpenAgents(string side)
+        {
+            OpenRemote(RemoteDialog.Agents, false, side);
+        }
+
+        void OpenRemote(string kind, bool demo, string side)
+        {
             IRemoteCatalog existing = demo ? null : kind == RemoteDialog.Intune ? intuneCatalog : kind == RemoteDialog.Agents ? agentCatalog : sccmCatalog;
             using (RemoteDialog d = new RemoteDialog(kind, theme, existing, graph, demo))
             {
+                d.Side = side;
                 d.ShowDialog(this);
+                if (!demo && kind == RemoteDialog.Agents && d.Catalog != null) SetupSawList(d.Listed);
                 if (!demo)
                 {
                     if (kind == RemoteDialog.Intune) { intuneCatalog = d.Catalog; graph = d.Graph; KeepSignIn(graph); if (intuneNames == null) LoadIntuneNames(false); }
@@ -1594,6 +1581,7 @@ namespace TrackVice
             }
             using (StatsDialog d = new StatsDialog(theme, c, demo))
             {
+                d.Side = StatsSide;
                 d.ShowDialog(this);
                 if (d.Picked == null) return;
                 watchedCustomer = demo ? null : CustomerUi.CurrentName;
@@ -1691,11 +1679,13 @@ namespace TrackVice
             Form page = null;
             if (start.Page == "settings") page = new SettingsDialog(theme);
             else if (start.Page == "about") page = new AboutDialog(theme);
-            else if (start.Page == "notifyvice") { ViceLinks.Preview = start.Select == "ready"; DevicesMenu().Show(bDevices, new Point(0, bDevices.Height)); }
+            else if (start.Page == "notifyvice") { ViceLinks.Preview = start.Select == "ready"; shotSide = DeviceSides.Intune; ShowDevicesMenu(); }
+            else if (Array.IndexOf(WelcomePages, start.Page) >= 0) page = ShotWelcome();
+            else if (Array.IndexOf(DevicePages, start.Page) >= 0) page = ShotDevices();
             else if (start.Page == "devicelogs") { FetchDeviceLogs(null, 0); LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); }
             else if (start.Page == "customers") page = new CustomersPage(theme, CustomerBook.Demo());
             else if (start.Page == "customer") { CustomerBook cb = CustomerBook.Demo(); page = new CustomerEditor(theme, cb, cb.Find("Contoso")); }
-            else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; page = sd; }
+            else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; if (DeviceSides.Parse(start.Select) != null) sd.Side = DeviceSides.Parse(start.Select); page = sd; }
             else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
             else if (start.Page == "refcompare") page = ReferenceUi.DemoCompareDialog(theme);
             else if (start.Page == "wall") { WallView wv = new WallView(theme, new AgentCatalog(new WallDemoStore()), true); wv.FiltersAtStart = start.Select == "filters"; if (start.Tab >= 0) wv.FilterIndex = start.Tab; page = wv; }
@@ -1765,7 +1755,7 @@ namespace TrackVice
                     case Keys.Control | Keys.E: ExportHtml(); return true;
                     case Keys.Control | Keys.L: OpenItemLog(list.SelectedItem); return true;
                     case Keys.Control | Keys.M: ToggleCompact(); return true;
-                    case Keys.Control | Keys.D: DevicesMenu().Show(bDevices, new Point(0, bDevices.Height)); return true;
+                    case Keys.Control | Keys.D: ShowDevicesMenu(); return true;
                     case Keys.Escape:
                         if (search.Focused && search.Text.Length > 0) { search.Text = ""; return true; }
                         if (tlSearch.Focused && tlSearch.Text.Length > 0) { tlSearch.Text = ""; return true; }
