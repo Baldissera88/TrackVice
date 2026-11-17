@@ -248,7 +248,7 @@ namespace TrackVice.Tests
             {
                 calls++;
                 T.Eq(AppUpdate.ApiUrl, url, "the check asks releases/latest");
-                return Reply("1.3.0", false, "TrackVice.msi", "TrackVice.exe", "SHA256SUMS.txt");
+                return Reply("99.0.0", false, "TrackVice.msi", "TrackVice.exe", "SHA256SUMS.txt");
             };
 
             AppUpdate.Gate = delegate { return UpdateGate.NoWindow; };
@@ -257,7 +257,7 @@ namespace TrackVice.Tests
             T.Eq(UpdateGate.NoWindow, blocked.Error, "a blocked check says why");
             T.Check(prefs.Get("UpdateChecked") == null, "a blocked check is not counted as a check");
             bool threw = false;
-            try { AppUpdate.Prepare(Parse(Reply("1.3.0", false, "TrackVice.msi", "TrackVice.exe", "SHA256SUMS.txt"), "1.2.1"), null); }
+            try { AppUpdate.Prepare(Parse(Reply("99.0.0", false, "TrackVice.msi", "TrackVice.exe", "SHA256SUMS.txt"), "1.2.1"), null); }
             catch (InvalidOperationException) { threw = true; }
             T.Check(threw && calls == 0, "a blocked install downloads nothing");
             AppUpdate.Gate = null;
@@ -267,7 +267,7 @@ namespace TrackVice.Tests
             T.Check(AppUpdate.DueAt(DateTime.UtcNow), "never checked means due");
             AppUpdateInfo r = AppUpdate.Check();
             T.Eq(1, calls, "an allowed check asks GitHub once");
-            T.Check(r.Error == null && r.Newer && r.Latest == "1.3.0", "an allowed check finds the newer version");
+            T.Check(r.Error == null && r.Newer && r.Latest == "99.0.0", "an allowed check finds the newer version");
             T.Check(AppUpdate.LastChecked.HasValue, "the time of the check is kept");
             T.Check(!AppUpdate.DueAt(DateTime.UtcNow.AddHours(1)), "not again the same day");
             T.Check(AppUpdate.DueAt(DateTime.UtcNow.AddHours(21)), "due again the next day");
