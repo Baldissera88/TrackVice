@@ -109,6 +109,7 @@ namespace TrackVice
         public static int Main(string[] args)
         {
             args = args ?? new string[0];
+            if (args.Length > 0 && args[0] == "--apply-update") return UpdatesUi.Apply(args);
             if (args.Length > 0 && (args[0].StartsWith("/") || (args[0].StartsWith("-") && !args[0].StartsWith("--"))))
             {
                 try { AttachConsole(-1); } catch (Exception) { }

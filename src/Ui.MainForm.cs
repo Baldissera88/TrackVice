@@ -120,6 +120,7 @@ namespace TrackVice
             Shown += Safe.Wrap(delegate
             {
                 CheckYourStorage();
+                StartUpdateCheck();
                 if (start.Remote != null && start.Pick != null)
                 {
                     IRemoteCatalog c = RemoteDialog.DemoCatalog(start.Remote);
@@ -1703,6 +1704,7 @@ namespace TrackVice
             else if (start.Page == "newcustomer") page = NewCustomerDialog.ForDemo(theme, start.Tab);
             else if (Array.IndexOf(AddCustomerUi.Pages, start.Page) >= 0) page = ShotAddCustomer();
             else if (start.Page == "readiness") { ReadinessDialog rd = new ReadinessDialog(theme, new DemoReadinessGraph(DateTime.UtcNow), null, true); rd.RunAtStart = true; page = rd; }
+            else if (Array.IndexOf(UpdatePages, start.Page) >= 0) page = ShotUpdate();
             else if (start.Remote != null && start.Pick == null)
             {
                 bool sign = start.Select != null && start.Select.StartsWith("signin");

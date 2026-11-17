@@ -76,6 +76,8 @@ How a release is made, on the author's Windows PC. `release.ps1` does the build,
      ./package.sh
      ```
 
+     It ends with `sums.sh`, which writes `SHA256SUMS.txt` next to the MSI and the exe, to check the build there. `release.ps1` writes the one that is published, in step 7.
+
      ```powershell
      .\release.ps1 -Thumbprint <thumbprint> -MsiPath \\wsl$\Ubuntu\home\<you>\TrackVice\TrackVice.msi
      ```
@@ -86,7 +88,9 @@ How a release is made, on the author's Windows PC. `release.ps1` does the build,
 
 7. **Hashes.** `release.ps1` writes `out\release\<version>\SHA256SUMS.txt` and `out\release\<version>\release-notes.md`: the changelog section, a table of the files with their SHA-256, the product code and the install and uninstall commands. Read the notes before publishing.
 
-8. **The GitHub release.** Run `release.ps1` again with `-Publish` (and `-Prerelease` for a pre-release). It builds and signs again, so the hashes in the notes are those of the uploaded files. It creates the tag `v<version>` on the pushed commit and the release "TrackVice &lt;version&gt;" with `TrackVice.exe`, `TrackVice.msi` and `agent/Install-TrackViceAgent.ps1`. Then download the files from the release and compare them with `Get-FileHash`.
+   `SHA256SUMS.txt` has one `<hash>  <file>` line, as `sha256sum` writes it, for `TrackVice.msi`, `TrackVice.exe`, `Install-TrackViceAgent.ps1`, `Install-TrackViceAgent-Links.ps1` and `New-TrackViceCustomer.ps1`. Every release must have it: TrackVice installs an update from Settings > Updates or the status bar only when the downloaded MSI or exe has the hash this file gives. A release without it is only offered as a download.
+
+8. **The GitHub release.** Run `release.ps1` again with `-Publish` (and `-Prerelease` for a pre-release). It builds and signs again, so the hashes in the notes are those of the uploaded files. It creates the tag `v<version>` on the pushed commit and the release "TrackVice &lt;version&gt;" with `TrackVice.exe`, `TrackVice.msi`, `SHA256SUMS.txt` and the scripts `agent/Install-TrackViceAgent.ps1`, `agent/Install-TrackViceAgent-Links.ps1` and `agent/New-TrackViceCustomer.ps1`. Then download the files from the release and compare them with `Get-FileHash` and `SHA256SUMS.txt`. Do not mark a normal release as a pre-release: TrackVice asks GitHub for the latest release, which leaves pre-releases out.
 
 9. **The agent.** Devices with the agent check the hash of the `TrackVice.exe` they download, so a new version needs two changes, as in [Maintenance](AGENT.md#maintenance) in docs/AGENT.md:
 
@@ -114,5 +118,6 @@ Go through [docs/TESTING.md](TESTING.md) on real devices for the parts the relea
 - [ ] The parts the changelog mentions, with their test from TESTING.md.
 - [ ] The agent (9): install with the new hash, an upload, the device in the list, removal after its time.
 - [ ] The MSI: a clean install, an upgrade over the previous release with TrackVice open, an uninstall.
+- [ ] The update from the previous release, once published: Settings > Updates > Check now, then Install, with the MSI install and with a copy in a folder. TrackVice opens again in the new version and offers to publish it to Your storage.
 - [ ] The signed exe and MSI show the publisher in the file properties and the UAC prompt.
 - [ ] Anything that failed is in the changelog or fixed before the release.
