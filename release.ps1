@@ -11,7 +11,8 @@
     Then it builds TrackVice.exe with build.ps1, signs it, builds TrackVice.msi with WiX Toolset 3 around the
     signed exe (or takes an MSI built with package.sh, see -MsiPath), signs the MSI and checks both signatures.
     It writes SHA256SUMS.txt and release-notes.md to out\release\<version>: the top CHANGELOG.md entry and a
-    table of the files with their SHA-256.
+    table of the files with their SHA-256. SHA256SUMS.txt has a "<hash>  <file>" line for TrackVice.msi,
+    TrackVice.exe and the scripts in agent/, as package.sh writes it. TrackVice checks an update against it.
 
     Signing is optional. Give a certificate with -Thumbprint or -PfxPath, or Azure Trusted Signing
     with -TrustedSigningMetadata. Without any of them the files are not signed.
@@ -44,8 +45,8 @@
     Linux or WSL. Its version and product code must match TrackVice.wxs.
 
 .PARAMETER Publish
-    Create the GitHub release v<version> with gh, with TrackVice.exe, TrackVice.msi and
-    agent/Install-TrackViceAgent.ps1. The commit must be pushed first.
+    Create the GitHub release v<version> with gh, with TrackVice.exe, TrackVice.msi, SHA256SUMS.txt and
+    the scripts in agent/. The commit must be pushed first.
 
 .PARAMETER Prerelease
     With -Publish, mark the release as a pre-release.
@@ -375,6 +376,9 @@ $outDir = Join-Path -Path $PSScriptRoot -ChildPath "out\release\$version"
 $exe = Join-Path -Path $PSScriptRoot -ChildPath 'TrackVice.exe'
 $msi = Join-Path -Path $PSScriptRoot -ChildPath 'TrackVice.msi'
 $agentScript = Join-Path -Path $PSScriptRoot -ChildPath 'agent\Install-TrackViceAgent.ps1'
+$linksScript = Join-Path -Path $PSScriptRoot -ChildPath 'agent\Install-TrackViceAgent-Links.ps1'
+$customerScript = Join-Path -Path $PSScriptRoot -ChildPath 'agent\New-TrackViceCustomer.ps1'
+$sumsPath = Join-Path -Path $outDir -ChildPath 'SHA256SUMS.txt'
 
 if ($PSCmdlet.ShouldProcess('TrackVice.exe', 'Build with build.ps1')) {
     & (Join-Path -Path $PSScriptRoot -ChildPath 'build.ps1')
@@ -417,7 +421,9 @@ if ($PSCmdlet.ShouldProcess($outDir, 'Write SHA256SUMS.txt and release-notes.md'
     $files = @(
         @{ Name = 'TrackVice.exe'; Path = $exe },
         @{ Name = 'TrackVice.msi'; Path = $msi },
-        @{ Name = 'Install-TrackViceAgent.ps1'; Path = $agentScript }
+        @{ Name = 'Install-TrackViceAgent.ps1'; Path = $agentScript },
+        @{ Name = 'Install-TrackViceAgent-Links.ps1'; Path = $linksScript },
+        @{ Name = 'New-TrackViceCustomer.ps1'; Path = $customerScript }
     )
     $sums = @()
     $table = @('| File | SHA-256 |', '|---|---|')
@@ -445,7 +451,7 @@ if ($PSCmdlet.ShouldProcess($outDir, 'Write SHA256SUMS.txt and release-notes.md'
     )
 
     $utf8 = New-Object System.Text.UTF8Encoding -ArgumentList $false
-    [System.IO.File]::WriteAllText((Join-Path -Path $outDir -ChildPath 'SHA256SUMS.txt'), (($sums -join "`n") + "`n"), $utf8)
+    [System.IO.File]::WriteAllText($sumsPath, (($sums -join "`n") + "`n"), $utf8)
     [System.IO.File]::WriteAllText((Join-Path -Path $outDir -ChildPath 'release-notes.md'), (($notes -join "`n") + "`n"), $utf8)
 
     foreach ($file in $files) {
@@ -458,11 +464,15 @@ if ($PSCmdlet.ShouldProcess($outDir, 'Write SHA256SUMS.txt and release-notes.md'
 
 if ($Publish) {
     $notesPath = Join-Path -Path $outDir -ChildPath 'release-notes.md'
-    $ghArgs = @('release', 'create', $tag, $exe, $msi, $agentScript, '--title', "TrackVice $version", '--notes-file', $notesPath, '--target', $commit)
+    $ghArgs = @('release', 'create', $tag, $exe, $msi, $sumsPath, $agentScript, $linksScript, $customerScript, '--title', "TrackVice $version", '--notes-file', $notesPath, '--target', $commit)
     if ($Prerelease) {
         $ghArgs += '--prerelease'
     }
     if ($PSCmdlet.ShouldProcess("$repoUrl/releases/tag/$tag", 'Create the GitHub release')) {
+        # TrackVice installs an update only when SHA256SUMS.txt in the release lists the file with the same hash.
+        if (-not (Test-Path -Path $sumsPath -PathType Leaf)) {
+            throw "$sumsPath was not found."
+        }
         & gh @ghArgs
         if ($LASTEXITCODE -ne 0) {
             throw "gh release create failed with exit code $LASTEXITCODE."

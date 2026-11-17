@@ -872,6 +872,8 @@ namespace TrackVice
             Add(new SettingRow(Glyphs2.Code, "Client ID", "The app registration TrackVice signs in with. Leave it empty to use Microsoft Graph Command Line Tools (" + GraphClient.DefaultClientId + "). Your own app needs the delegated permission DeviceManagementManagedDevices.Read.All and public client flows turned on.", client));
             Add(new SettingRow(Glyphs.Shield, "Tenant", "The tenant ID or domain, for example contoso.onmicrosoft.com. Leave it empty to sign in to the tenant of the account you use.", tenant));
 
+            foreach (Control c in UpdatesUi.SettingRows(theme, delegate { Relayout(); })) Add(c);
+
             SettingRow store = new SettingRow(Glyphs2.Settings, "Where settings are stored", Prefs.Location, null);
             store.MonoDesc = true;
             Add(new SectionTitle("Data"));

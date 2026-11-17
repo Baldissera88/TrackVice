@@ -64,6 +64,7 @@ namespace TrackVice.Tests
             AddCustomerTests.Run();
             CustomerFlowTests.Run();
             StoragePolicyTests.Run();
+            AppUpdateTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

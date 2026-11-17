@@ -1,6 +1,8 @@
 # Build output
 TrackVice.exe
 TrackVice.msi
+SHA256SUMS.txt
+SHA256SUMS.txt.tmp
 *.wixobj
 *.wixpdb
 *.pdb
