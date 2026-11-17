@@ -114,6 +114,7 @@ namespace TrackVice
             bar.Controls.Add(search);
             bar.Controls.Add(since);
             bar.Controls.Add(bRefresh);
+            if (kind == Sccm) BuildEarlierRuns();
 
             table.Col("Device", 150, delegate (RemoteDeployment d) { return d.Device; });
             table.Col("State", 200, delegate (RemoteDeployment d) { return d.StateText; }).Fill = true;
@@ -311,6 +312,7 @@ namespace TrackVice
             }
             search.BackColor = t.Field;
             search.ForeColor = t.Text;
+            ThemeEarlierRuns(t);
             foreach (IThemed x in themed) x.ApplyTheme(t);
             if (IsHandleCreated) Draw.TitleBar(Handle, t);
         }
@@ -593,6 +595,7 @@ namespace TrackVice
             IRemoteCatalog c = Catalog;
             DateTime from = DateTime.UtcNow.AddHours(-SinceHours[Math.Max(0, Math.Min(SinceHours.Length - 1, since.Selected))]);
             Status("Reading " + c.Title + "…");
+            EarlierRunsTo(c);
             Thread th = new Thread(delegate ()
             {
                 List<RemoteDeployment> l = null;
@@ -615,6 +618,7 @@ namespace TrackVice
                     int running = 0, failed = 0;
                     foreach (RemoteDeployment d in l) { if (States.IsActive(d.State)) running++; if (d.State == State.Failed) failed++; }
                     Status(c.Source + " · " + l.Count + " deployment" + (l.Count == 1 ? "" : "s") + ", " + running + " running, " + failed + " failed · updated " + DateTime.Now.ToString("HH:mm:ss") + ", again in " + (auto.Interval / 1000) + " s");
+                    NoteEarlierRuns(c);
                 });
             });
             th.IsBackground = true;

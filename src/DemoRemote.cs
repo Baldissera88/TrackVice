@@ -156,6 +156,8 @@ namespace TrackVice
             Run(16777288, "P0120006", "P0100231", 80, true, false);
             Run(16777290, "P0120006", "P0100231", 140, true, true);
             Run(16777245, "P0120006", "P0100231", 26 * 60, true, false);
+            // An earlier run on the same device that failed, so the list has a run to hide.
+            Run(16777245, "P0120006", "P0100231", 29 * 60, true, true);
         }
 
         static readonly string[][] Steps =

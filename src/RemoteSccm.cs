@@ -153,16 +153,26 @@ namespace TrackVice
             get { return 30; }
         }
 
+        // Also lists the runs before the newest one of each device and deployment.
+        public bool EarlierRuns;
+        // How many earlier runs the last List left out.
+        public int Earlier;
+
+        // The SMS Provider can compare the time in a WHERE as local time on the site, so each query asks for this much more
+        // and the rows are cut into runs here.
+        public static readonly TimeSpan Margin = TimeSpan.FromHours(14);
+
         public List<RemoteDeployment> List(DateTime sinceUtc)
         {
             const string select = "SELECT ResourceID, AdvertisementID, PackageID, ExecutionTime, LastStatusMsgID, LastStatusMsgName, ExitCode, Step, ActionName FROM SMS_TaskSequenceExecutionStatus WHERE ExecutionTime >= '";
+            DateTime from = sinceUtc - Margin;
             List<Dictionary<string, object>> rows;
-            try { rows = q.Query(select + Dmtf(sinceUtc) + "'"); }
+            try { rows = q.Query(select + Dmtf(from) + "'"); }
             catch (InvalidOperationException)
             {
                 // Some providers only take a time with an offset. The one that works is kept for the device view.
                 if (Dmtf != SccmWmi.Dmtf) throw;
-                rows = q.Query(select + SccmWmi.DmtfZero(sinceUtc) + "'");
+                rows = q.Query(select + SccmWmi.DmtfZero(from) + "'");
                 Dmtf = SccmWmi.DmtfZero;
             }
             Dictionary<string, List<Dictionary<string, object>>> groups = new Dictionary<string, List<Dictionary<string, object>>>(StringComparer.OrdinalIgnoreCase);
@@ -186,27 +196,95 @@ namespace TrackVice
             Dictionary<string, string> tsNames = TaskSequenceNames(pkgs);
             List<RemoteDeployment> list = new List<RemoteDeployment>();
             DateTime now = DateTime.UtcNow;
+            int earlier = 0;
             foreach (KeyValuePair<string, List<Dictionary<string, object>>> g in groups)
             {
-                RemoteDeployment d = Summarize(g.Key, g.Value, now);
-                long id = Int(g.Value[0], "ResourceID");
-                string n;
-                d.Device = names.TryGetValue(id, out n) ? n : "Resource " + id;
-                string pkg = Str(g.Value[0], "PackageID");
-                d.Profile = pkg != null && tsNames.TryGetValue(pkg, out n) ? n : pkg;
-                d.User = Str(g.Value[0], "AdvertisementID");
-                list.Add(d);
+                List<List<Dictionary<string, object>>> runs = Runs(g.Value);
+                List<RemoteDeployment> shown = new List<RemoteDeployment>();
+                for (int i = 0; i < runs.Count; i++)
+                {
+                    DateTime? next = i + 1 < runs.Count ? Time(runs[i + 1][0]) : null;
+                    RemoteDeployment d = Summarize(g.Key + "|" + RunTicks(runs[i]), runs[i], now, next);
+                    // Runs that only fall in the extra margin are not in the period asked for.
+                    if (d.LastUtc < sinceUtc) continue;
+                    long id = Int(g.Value[0], "ResourceID");
+                    string n;
+                    d.Device = names.TryGetValue(id, out n) ? n : "Resource " + id;
+                    string pkg = Str(g.Value[0], "PackageID");
+                    d.Profile = pkg != null && tsNames.TryGetValue(pkg, out n) ? n : pkg;
+                    d.User = Str(g.Value[0], "AdvertisementID");
+                    shown.Add(d);
+                }
+                if (shown.Count == 0) continue;
+                if (EarlierRuns) list.AddRange(shown);
+                else list.Add(shown[shown.Count - 1]);
+                earlier += shown.Count - 1;
             }
+            Earlier = earlier;
             list.Sort(IntuneCatalog.Order);
             return list;
         }
 
-        // The state of one run from its status messages: done, failed, running, or silent for too long.
+        static string RunTicks(List<Dictionary<string, object>> run)
+        {
+            DateTime? t = Time(run[0]);
+            return (t.HasValue ? t.Value.Ticks : 0).ToString(CultureInfo.InvariantCulture);
+        }
+
+        // Cuts the rows of one device and deployment into runs. Each run begins where the task sequence engine starts (11140);
+        // rows before the first start are a run of their own. A start right after a restart message continues the same run.
+        public static List<List<Dictionary<string, object>>> Runs(List<Dictionary<string, object>> rows)
+        {
+            SortRows(rows);
+            List<List<Dictionary<string, object>>> runs = new List<List<Dictionary<string, object>>>();
+            List<Dictionary<string, object>> cur = null;
+            int prev = TsMessage.Other;
+            foreach (Dictionary<string, object> r in rows)
+            {
+                int kind = TsMessage.Of(r).Kind;
+                if (cur == null || (kind == TsMessage.TsStarted && IsStart(r) && prev != TsMessage.Reboot))
+                {
+                    cur = new List<Dictionary<string, object>>();
+                    runs.Add(cur);
+                }
+                cur.Add(r);
+                prev = kind;
+            }
+            return runs;
+        }
+
+        // The engine starting a task sequence, not resuming one.
+        static bool IsStart(Dictionary<string, object> r)
+        {
+            return (Str(r, "LastStatusMsgName") ?? "").IndexOf("resumed", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        // The run that holds the given time: the last one that began at or before it.
+        public static List<Dictionary<string, object>> RunAt(List<List<Dictionary<string, object>>> runs, DateTime? atUtc)
+        {
+            if (runs.Count == 0) return new List<Dictionary<string, object>>();
+            if (!atUtc.HasValue) return runs[runs.Count - 1];
+            List<Dictionary<string, object>> pick = runs[0];
+            foreach (List<Dictionary<string, object>> run in runs)
+            {
+                DateTime? t = Time(run[0]);
+                if (t.HasValue && t.Value <= atUtc.Value) pick = run;
+            }
+            return pick;
+        }
+
         public static RemoteDeployment Summarize(string key, List<Dictionary<string, object>> rows, DateTime nowUtc)
+        {
+            return Summarize(key, rows, nowUtc, null);
+        }
+
+        // The state of one run from its status messages: done, failed, running, or silent for too long.
+        // A run that never reported its end before the next run started has no result.
+        public static RemoteDeployment Summarize(string key, List<Dictionary<string, object>> rows, DateTime nowUtc, DateTime? nextStartUtc)
         {
             RemoteDeployment d = new RemoteDeployment();
             d.Key = key;
-            rows.Sort(RowOrder);
+            SortRows(rows);
             Dictionary<string, object> lastRow = rows[rows.Count - 1];
             d.StartUtc = Time(rows[0]);
             d.LastUtc = Time(lastRow) ?? nowUtc;
@@ -219,7 +297,13 @@ namespace TrackVice
                 else if (m.Kind == TsMessage.TsFailed) { st = State.Failed; text = "Failed"; d.EndUtc = Time(r); d.Detail = Str(r, "LastStatusMsgName"); }
                 else if (m.Kind == TsMessage.TsStarted) { st = State.Installing; text = "Running"; d.EndUtc = null; d.Detail = null; }
             }
-            if (st == State.Installing)
+            if (st == State.Installing && nextStartUtc.HasValue)
+            {
+                st = State.Unknown;
+                text = "No result before the next run, " + Txt.Local(nextStartUtc.Value).Substring(0, 16);
+                d.EndUtc = d.LastUtc;
+            }
+            else if (st == State.Installing)
             {
                 string action = null;
                 for (int i = rows.Count - 1; i >= 0 && string.IsNullOrEmpty(action); i--) action = Str(rows[i], "ActionName");
@@ -234,7 +318,11 @@ namespace TrackVice
         public IRemoteFeed Open(RemoteDeployment d)
         {
             string[] k = d.Key.Split('|');
-            return new SccmFeed(q, long.Parse(k[0], CultureInfo.InvariantCulture), k.Length > 1 ? k[1] : null, d.Device, d.Profile, Dmtf);
+            long ticks = 0;
+            DateTime? run = null;
+            if (k.Length > 2 && long.TryParse(k[2], NumberStyles.None, CultureInfo.InvariantCulture, out ticks) && ticks > 0) run = new DateTime(ticks, DateTimeKind.Utc);
+            else if (d.StartUtc.HasValue) run = d.StartUtc;
+            return new SccmFeed(q, long.Parse(k[0], CultureInfo.InvariantCulture), k.Length > 1 ? k[1] : null, run, d.Device, d.Profile, Dmtf);
         }
 
         Dictionary<long, string> Names(List<long> ids)
@@ -269,10 +357,34 @@ namespace TrackVice
             return map;
         }
 
+        // In time order. Within the same second the start of the task sequence comes first and its end last,
+        // as the start (11140) and the first group (11124) are both step 0 at the same time.
         public static int RowOrder(Dictionary<string, object> a, Dictionary<string, object> b)
         {
             int c = (Time(a) ?? DateTime.MinValue).CompareTo(Time(b) ?? DateTime.MinValue);
+            if (c != 0) return c;
+            c = Rank(a).CompareTo(Rank(b));
             return c != 0 ? c : Int(a, "Step").CompareTo(Int(b, "Step"));
+        }
+
+        static int Rank(Dictionary<string, object> r)
+        {
+            int k = TsMessage.Of(r).Kind;
+            return k == TsMessage.TsStarted ? 0 : k == TsMessage.TsDone || k == TsMessage.TsFailed ? 2 : 1;
+        }
+
+        // Sorts with RowOrder and keeps rows that compare equal in the order the provider gave them.
+        public static void SortRows(List<Dictionary<string, object>> rows)
+        {
+            List<KeyValuePair<int, Dictionary<string, object>>> l = new List<KeyValuePair<int, Dictionary<string, object>>>();
+            for (int i = 0; i < rows.Count; i++) l.Add(new KeyValuePair<int, Dictionary<string, object>>(i, rows[i]));
+            l.Sort(delegate (KeyValuePair<int, Dictionary<string, object>> a, KeyValuePair<int, Dictionary<string, object>> b)
+            {
+                int c = RowOrder(a.Value, b.Value);
+                return c != 0 ? c : a.Key.CompareTo(b.Key);
+            });
+            rows.Clear();
+            foreach (KeyValuePair<int, Dictionary<string, object>> p in l) rows.Add(p.Value);
         }
 
         public static DateTime? Time(Dictionary<string, object> r)
@@ -312,9 +424,10 @@ namespace TrackVice
             bool action = !string.IsNullOrEmpty(SccmCatalog.Str(r, "ActionName")) || n.Contains("action") || n.Contains("instruction");
             if (id == 11143 || n.Contains("completed the task sequence") || n.Contains("successfully completed a task sequence")) m.Kind = TsDone;
             else if (n.Contains("reboot") || n.Contains("restart")) m.Kind = Reboot;
+            // Before the task sequence itself: "The task sequence execution engine started a group" (11124) is not a start.
+            else if (n.Contains("group")) m.Kind = GroupEvent;
             else if (!action && n.Contains("task sequence") && (n.Contains("failed") || n.Contains("aborted"))) m.Kind = TsFailed;
             else if (!action && n.Contains("task sequence") && (n.Contains("started") || n.Contains("resumed"))) m.Kind = TsStarted;
-            else if (n.Contains("group")) m.Kind = GroupEvent;
             else if (n.Contains("skipped")) m.Kind = StepSkipped;
             else if (n.Contains("failed")) m.Kind = StepFailed;
             else if (n.Contains("successfully completed") || n.Contains("completed an action") || n.Contains("completed the action")) m.Kind = StepDone;
@@ -329,15 +442,17 @@ namespace TrackVice
         readonly long resourceId;
         readonly string deployment, device, tsName;
         readonly Func<DateTime, string> dmtf;
-        DateTime after = DateTime.MinValue;
+        readonly DateTime? runUtc;
         readonly HashSet<string> seen = new HashSet<string>();
         bool first = true;
 
-        public SccmFeed(ISccmQuery query, long resource, string advertisement, string deviceName, string taskSequence, Func<DateTime, string> toDmtf)
+        // Follows the run that began at runStartUtc, up to the next start on the same device and deployment.
+        public SccmFeed(ISccmQuery query, long resource, string advertisement, DateTime? runStartUtc, string deviceName, string taskSequence, Func<DateTime, string> toDmtf)
         {
             q = query;
             resourceId = resource;
             deployment = advertisement;
+            runUtc = runStartUtc;
             device = deviceName;
             tsName = taskSequence;
             dmtf = toDmtf;
@@ -357,9 +472,10 @@ namespace TrackVice
         {
             string wql = "SELECT * FROM SMS_TaskSequenceExecutionStatus WHERE ResourceID = " + resourceId.ToString(CultureInfo.InvariantCulture)
                 + (deployment != null ? " AND AdvertisementID = '" + deployment.Replace("'", "") + "'" : "")
-                + (after > DateTime.MinValue ? " AND ExecutionTime >= '" + dmtf(after.AddMinutes(-1)) + "'" : "");
-            List<Dictionary<string, object>> rows = q.Query(wql);
-            rows.Sort(SccmCatalog.RowOrder);
+                + (runUtc.HasValue ? " AND ExecutionTime >= '" + dmtf(runUtc.Value - SccmCatalog.Margin) + "'" : "");
+            // The whole run is read each time: a device sends the status messages it kept during Windows PE and restarts later,
+            // with the time of each step, so reading only what is newer than the last row would miss them.
+            List<Dictionary<string, object>> rows = SccmCatalog.RunAt(SccmCatalog.Runs(q.Query(wql)), runUtc);
             Batch b = new Batch();
             if (first)
             {
@@ -371,11 +487,6 @@ namespace TrackVice
                 first = false;
             }
             Map(rows, seen, b);
-            foreach (Dictionary<string, object> r in rows)
-            {
-                DateTime? t = SccmCatalog.Time(r);
-                if (t.HasValue && t.Value > after) after = t.Value;
-            }
             return b;
         }
 
