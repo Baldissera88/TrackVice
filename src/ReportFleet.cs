@@ -212,7 +212,7 @@ namespace TrackVice
             if (string.IsNullOrEmpty(upload)) throw new ArgumentException("/fleet-report needs /upload <location>: the storage container SAS link or folder the agents upload to.");
             AgentCatalog c = new AgentCatalog(Stores.Open(upload));
             DateTime now = DateTime.UtcNow;
-            List<Session> sessions = c.LoadAll(hours == 0 ? DateTime.MinValue : now.AddHours(-hours), 5000, null);
+            List<Session> sessions = DeviceSides.Filter(c.LoadAll(hours == 0 ? DateTime.MinValue : now.AddHours(-hours), 5000, null), DeviceSides.CliFilter);
             FleetStats st = FleetStats.Build(sessions, now);
             File.WriteAllText(outPath, FleetHtml(st, title, now), new UTF8Encoding(false));
             Console.WriteLine(Int(st.Runs.Count) + " enrollments, " + Int(st.Finished) + " finished, " + Int(st.WithFailures) + " with failed items. Report saved to " + outPath);

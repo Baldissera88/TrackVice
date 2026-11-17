@@ -56,6 +56,12 @@ namespace TrackVice
         Dictionary<string, RemoteDeployment> byKey = new Dictionary<string, RemoteDeployment>();
         // Set to stop the load that runs now. A new load or closing the window sets it.
         ManualResetEvent cancel;
+        // Intune, SCCM or both: which enrollments count. The side the Devices menu is on chooses it at first.
+        public string Side = DeviceSides.Both;
+        Segmented sideFilter;
+        List<Session> readSessions = new List<Session>();
+        List<string> readKeys = new List<string>();
+        int readTotal, readUnreadable;
 
         public StatsDialog(Theme t, AgentCatalog c, bool demo)
         {
@@ -113,11 +119,16 @@ namespace TrackVice
             bPowerBi.Enabled = false;
             bPowerBi.Click += Safe.Wrap(delegate { ExportPowerBi(); });
             themed.Add(bPowerBi);
-            search.Width = Dpi.S(260);
+            search.Width = Dpi.S(200);
             search.BorderStyle = BorderStyle.FixedSingle;
             search.Margin = new Padding(0, Dpi.S(5), Dpi.S(12), 0);
             search.TextChanged += delegate { Bind(); };
             bar.Controls.Add(since);
+            sideFilter = SideFilterUi.Make(DeviceSides.Both);
+            sideFilter.Margin = new Padding(0, 0, Dpi.S(12), 0);
+            sideFilter.Changed += Safe.Wrap(delegate { Side = SideFilterUi.Of(sideFilter); Rebuild(); });
+            themed.Add(sideFilter);
+            bar.Controls.Add(sideFilter);
             bar.Controls.Add(bRefresh);
             bar.Controls.Add(bExport);
             bar.Controls.Add(bPowerBi);
@@ -238,7 +249,12 @@ namespace TrackVice
             {
                 try { SendMessage(search.Handle, 0x1501, (IntPtr)1, "Filter by name, kind or device"); } catch (Exception) { }
             };
-            Shown += Safe.Wrap(delegate { LoadStats(); });
+            Shown += Safe.Wrap(delegate
+            {
+                int si = Array.IndexOf(SideFilterUi.Values, Side);
+                if (si > 0) sideFilter.Selected = si;
+                LoadStats();
+            });
             FormClosed += delegate { if (cancel != null) cancel.Set(); };
         }
 
@@ -348,15 +364,15 @@ namespace TrackVice
                         map[list[i].Key] = list[i];
                     }
                     if (stop.WaitOne(0)) return;
-                    FleetStats st = FleetStats.Build(sessions, keys, DateTime.UtcNow);
-                    Dictionary<string, string> rb = ReferenceCheck.Badges(reference, sessions, keys);
                     Ui(delegate
                     {
                         if (cancel != stop) return;
-                        refBadges = rb;
-                        loaded = sessions;
-                        loadedKeys = keys;
-                        ShowStats(st, map, total, unreadable);
+                        readSessions = sessions;
+                        readKeys = keys;
+                        readTotal = total;
+                        readUnreadable = unreadable;
+                        byKey = map;
+                        Rebuild();
                     });
                 }
                 catch (Exception ex)
@@ -366,6 +382,18 @@ namespace TrackVice
             });
             th.IsBackground = true;
             th.Start();
+        }
+
+        // The statistics of the side chosen, from the sessions read. Changing the side does not read them again.
+        void Rebuild()
+        {
+            List<Session> ss = new List<Session>();
+            List<string> ks = new List<string>();
+            DeviceSides.Filter(readSessions, readKeys, Side, ss, ks);
+            refBadges = ReferenceCheck.Badges(reference, ss, ks);
+            loaded = ss;
+            loadedKeys = ks;
+            ShowStats(FleetStats.Build(ss, ks, DateTime.UtcNow), byKey, readTotal, readUnreadable);
         }
 
         void ShowStats(FleetStats st, Dictionary<string, RemoteDeployment> map, int total, int unreadable)
@@ -385,7 +413,7 @@ namespace TrackVice
             bExport.Enabled = st.Runs.Count > 0;
             bPowerBi.Enabled = st.Runs.Count > 0;
             Bind();
-            string s = catalog.Source + " · " + st.Runs.Count + " enrollment" + (st.Runs.Count == 1 ? "" : "s");
+            string s = catalog.Source + " · " + st.Runs.Count + " enrollment" + (st.Runs.Count == 1 ? "" : "s") + (Side == DeviceSides.Both ? "" : " of " + DeviceSides.Name(Side));
             if (total > MaxSessions) s += ", the newest " + MaxSessions + " of " + total + " uploads";
             if (unreadable > 0) s += ", " + unreadable + " could not be read";
             s += ". Times count finished enrollments only · updated " + DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
