@@ -360,7 +360,9 @@ namespace TrackVice
             string[] tc = TestCode();
             Customer cur = CustomerUi.Book.Current;
             bool list;
-            using (SccmSetupDialog d = new SccmSetupDialog(theme, agentFirst, cur != null ? cur.Name : null, tc != null ? tc[1] : null, false))
+            // The name shown is the customer the code belongs to, which need not be the current one.
+            string who = tc != null ? tc[0] : cur != null ? cur.Name : null;
+            using (SccmSetupDialog d = new SccmSetupDialog(theme, agentFirst, who, tc != null ? tc[1] : null, false))
             {
                 d.ShowDialog(this);
                 list = d.OpenList;

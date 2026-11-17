@@ -90,14 +90,11 @@ How a release is made, on the author's Windows PC. `release.ps1` does the build,
 
    `SHA256SUMS.txt` has one `<hash>  <file>` line, as `sha256sum` writes it, for `TrackVice.msi`, `TrackVice.exe`, `Install-TrackViceAgent.ps1`, `Install-TrackViceAgent-Links.ps1` and `New-TrackViceCustomer.ps1`. Every release must have it: TrackVice installs an update from Settings > Updates or the status bar only when the downloaded MSI or exe has the hash this file gives. A release without it is only offered as a download.
 
-8. **The GitHub release.** Run `release.ps1` again with `-Publish` (and `-Prerelease` for a pre-release). It builds and signs again, so the hashes in the notes are those of the uploaded files. It creates the tag `v<version>` on the pushed commit and the release "TrackVice &lt;version&gt;" with `TrackVice.exe`, `TrackVice.msi`, `SHA256SUMS.txt` and the scripts `agent/Install-TrackViceAgent.ps1`, `agent/Install-TrackViceAgent-Links.ps1` and `agent/New-TrackViceCustomer.ps1`. Then download the files from the release and compare them with `Get-FileHash` and `SHA256SUMS.txt`. Do not mark a normal release as a pre-release: TrackVice asks GitHub for the latest release, which leaves pre-releases out.
+8. **The GitHub release.** Run `release.ps1` again with `-Publish` (and `-Prerelease` for a pre-release). It builds and signs again, so the hashes in the notes are those of the uploaded files. It creates the tag `v<version>` on the pushed commit and the release "TrackVice &lt;version&gt;" with `TrackVice.exe`, `TrackVice.msi`, `SHA256SUMS.txt` and the scripts `agent/Install-TrackViceAgent.ps1`, `agent/Install-TrackViceAgent-Links.ps1` and `agent/New-TrackViceCustomer.ps1`. Check that all six files are attached. When you make or change a release by hand, attach `SHA256SUMS.txt` and all three agent scripts yourself: without `SHA256SUMS.txt`, TrackVice offers the release only as a download. Then download the files from the release and compare them with `Get-FileHash` and `SHA256SUMS.txt`. Do not mark a normal release as a pre-release: TrackVice asks GitHub for the latest release, which leaves pre-releases out.
 
-9. **The agent.** Devices with the agent check the hash of the `TrackVice.exe` they download, so a new version needs two changes, as in [Maintenance](AGENT.md#maintenance) in docs/AGENT.md:
+9. **The agent.** Start the new TrackVice on your PC and click **Publish** in the status bar, or **Settings > Your storage > Publish**. New devices get it from the script at once, and installed agents within 6 hours. The script with the customer code needs no change. See [New TrackVice versions](AGENT.md#new-trackvice-versions) in docs/AGENT.md.
 
-   - Upload the new `TrackVice.exe` over the old one in the `trackvice` storage container. If the script downloads from the GitHub release instead, change the version in `$Download`.
-   - Update `$Sha256` in the platform script in Intune (Devices > Scripts and remediations > Platform scripts) with the hash of `TrackVice.exe` from the release notes. Until then the script fails on purpose.
-
-   For the Win32 app route, upload a new .intunewin with the new exe.
+   For setups with links, as in [Maintenance](AGENT.md#maintenance): publish with **Publish agent update**, or upload the new `TrackVice.exe` over the old one and update `$Sha256` in `agent/Install-TrackViceAgent-Links.ps1` in Intune with the hash from the release notes. For the Win32 app route, upload a new .intunewin with the new exe.
 
 10. **winget.** After the release is published, with the same `TrackVice.msi`:
 
