@@ -286,10 +286,31 @@ namespace TrackVice
             }
             Menus.Separator(m);
 
+            ToolStripMenuItem demos = null;
             foreach (DeviceMenuEntry e in DeviceMenu.For(side))
             {
                 if (e.Separator) { Menus.Separator(m); continue; }
                 string id = e.Id;
+                // The demos go in one submenu, so the menu shows the real things first.
+                if (e.Text != null && e.Text.StartsWith("Demo: ", StringComparison.Ordinal))
+                {
+                    if (demos == null)
+                    {
+                        demos = new ToolStripMenuItem("Demos");
+                        demos.ForeColor = theme.Text;
+                        demos.Padding = new Padding(Dpi.S(4), Dpi.S(3), Dpi.S(4), Dpi.S(3));
+                        demos.DropDown.BackColor = theme.Card;
+                        demos.DropDown.Renderer = m.Renderer;
+                        m.Items.Add(demos);
+                    }
+                    string text = e.Text.Substring(6);
+                    ToolStripMenuItem sub = new ToolStripMenuItem(char.ToUpperInvariant(text[0]) + text.Substring(1), null, Safe.Wrap(delegate { DeviceAction(id); }));
+                    sub.ForeColor = theme.Text;
+                    sub.BackColor = theme.Card;
+                    sub.Padding = demos.Padding;
+                    demos.DropDownItems.Add(sub);
+                    continue;
+                }
                 if (id == DeviceMenu.Compare) CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
                 else if (id == DeviceMenu.Reference) ReferenceMenu(m);
                 else if (id == DeviceMenu.NotifyVice) AddNotifyViceMenu(m);
