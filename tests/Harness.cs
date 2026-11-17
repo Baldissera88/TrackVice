@@ -34,6 +34,7 @@ namespace TrackVice.Tests
             DemoTests.Run();
             RemoteTests.Run();
             SccmRunTests.Run();
+            SccmResumeTests.Run();
             AgentTests.Run();
             NameCacheTests.Run();
             EspStepTests.Run();
