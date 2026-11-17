@@ -124,6 +124,7 @@ namespace TrackVice
                 if (start.Remote != null && start.Pick != null)
                 {
                     IRemoteCatalog c = RemoteDialog.DemoCatalog(start.Remote);
+                    if (ShotNewerRun(c)) return;
                     foreach (RemoteDeployment d in c.List(DateTime.UtcNow.AddDays(-30)))
                         if (d.Device.IndexOf(start.Pick, StringComparison.OrdinalIgnoreCase) >= 0) { watchedCustomer = CustomerBook.Demo().Current.Name; Begin(Engine.ForRemote(c.Open(d), d), true); return; }
                 }
@@ -627,6 +628,7 @@ namespace TrackVice
             bool first = !loadedOnce;
             loadedOnce = true;
             Bind();
+            UpdateNewerRun(e);
             if (first)
             {
                 bool auto = e.Mode != Modes.Live || Settings.WatchOnStart;

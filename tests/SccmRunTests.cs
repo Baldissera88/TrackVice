@@ -65,7 +65,8 @@ namespace TrackVice.Tests
             }
         }
 
-        static readonly DateTime Day1 = new DateTime(2026, 11, 16, 10, 0, 0, DateTimeKind.Utc);
+        // Relative to now, so the newest run is still running and not silent for more than 4 hours.
+        static readonly DateTime Day1 = new DateTime(DateTime.UtcNow.Ticks - DateTime.UtcNow.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc).AddHours(-24);
         static readonly DateTime Run1 = Day1.AddMinutes(111), Run2 = Day1.AddMinutes(120), Run3 = Day1.AddHours(23).AddMinutes(19);
 
         // The group message comes before the start in the same second, as rows from the provider are in no set order.

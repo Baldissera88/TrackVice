@@ -231,26 +231,63 @@ namespace TrackVice
             return (t.HasValue ? t.Value.Ticks : 0).ToString(CultureInfo.InvariantCulture);
         }
 
-        // Cuts the rows of one device and deployment into runs. Each run begins where the task sequence engine starts (11140);
-        // rows before the first start are a run of their own. A start right after a restart message continues the same run.
+        // Cuts the rows of one device and deployment into runs. Rows before the first start are a run of their own.
+        // A later start (11140) only begins a new run when the run before has ended, when the steps after it start again
+        // from the beginning, or after more than 4 hours of silence. Otherwise it is the task sequence resuming after a restart.
         public static List<List<Dictionary<string, object>>> Runs(List<Dictionary<string, object>> rows)
         {
             SortRows(rows);
             List<List<Dictionary<string, object>>> runs = new List<List<Dictionary<string, object>>>();
             List<Dictionary<string, object>> cur = null;
-            int prev = TsMessage.Other;
-            foreach (Dictionary<string, object> r in rows)
+            bool started = false, ended = false;
+            long top = 0;
+            DateTime? last = null;
+            for (int i = 0; i < rows.Count; i++)
             {
+                Dictionary<string, object> r = rows[i];
                 int kind = TsMessage.Of(r).Kind;
-                if (cur == null || (kind == TsMessage.TsStarted && IsStart(r) && prev != TsMessage.Reboot))
+                bool start = kind == TsMessage.TsStarted && IsStart(r);
+                DateTime? t = Time(r);
+                if (cur == null || (start && (!started || ended || Gap(last, t) || FirstStep(rows, i) < top)))
                 {
                     cur = new List<Dictionary<string, object>>();
                     runs.Add(cur);
+                    started = start;
+                    ended = false;
+                    top = 0;
                 }
                 cur.Add(r);
-                prev = kind;
+                if (kind == TsMessage.TsDone || kind == TsMessage.TsFailed) ended = true;
+                if (IsStepRow(kind)) top = Math.Max(top, Int(r, "Step"));
+                if (t.HasValue) last = t;
             }
             return runs;
+        }
+
+        public static readonly TimeSpan RunGap = TimeSpan.FromHours(4);
+
+        static bool Gap(DateTime? last, DateTime? t)
+        {
+            return last.HasValue && t.HasValue && t.Value - last.Value > RunGap;
+        }
+
+        static bool IsStepRow(int kind)
+        {
+            return kind == TsMessage.StepStarted || kind == TsMessage.StepDone || kind == TsMessage.StepFailed || kind == TsMessage.StepSkipped || kind == TsMessage.GroupEvent;
+        }
+
+        // The first step number above 0 reported after the start at index i, or long.MaxValue when none has reported yet.
+        // Step 0 is left out: the start itself, the first group and messages without a step all carry it.
+        static long FirstStep(List<Dictionary<string, object>> rows, int i)
+        {
+            for (int j = i + 1; j < rows.Count; j++)
+            {
+                int kind = TsMessage.Of(rows[j]).Kind;
+                if (kind == TsMessage.TsStarted) break;
+                long step = Int(rows[j], "Step");
+                if (IsStepRow(kind) && step > 0) return step;
+            }
+            return long.MaxValue;
         }
 
         // The engine starting a task sequence, not resuming one.
@@ -413,7 +450,9 @@ namespace TrackVice
     // versions, so the name decides; 11143 is the task sequence completing.
     public sealed class TsMessage
     {
-        public const int Other = 0, StepStarted = 1, StepDone = 2, StepFailed = 3, StepSkipped = 4, TsStarted = 5, TsDone = 6, TsFailed = 7, Reboot = 8, GroupEvent = 9;
+        public const int Other = 0, StepStarted = 1, StepDone = 2, StepFailed = 3, StepSkipped = 4, TsStarted = 5, TsDone = 6, TsFailed = 7, Reboot = 8, GroupEvent = 9, BypassWarning = 10, AppInstalled = 11, AppFailed = 12;
+        // A warning from Task Sequence Action, sent by a Run PowerShell Script step with execution policy Bypass just before it runs.
+        public const long Bypass = 11910;
         public int Kind;
 
         public static TsMessage Of(Dictionary<string, object> r)
@@ -423,6 +462,10 @@ namespace TrackVice
             string n = (SccmCatalog.Str(r, "LastStatusMsgName") ?? "").ToLowerInvariant();
             bool action = !string.IsNullOrEmpty(SccmCatalog.Str(r, "ActionName")) || n.Contains("action") || n.Contains("instruction");
             if (id == 11143 || n.Contains("completed the task sequence") || n.Contains("successfully completed a task sequence")) m.Kind = TsDone;
+            else if (id == Bypass) m.Kind = BypassWarning;
+            // An application from a task sequence variable list. The text names the group of the step, so it comes before the group test.
+            else if (id == SccmApps.Installed || (n.Contains("installed application") && n.Contains("ts variable"))) m.Kind = AppInstalled;
+            else if (id == SccmApps.Failed || (n.Contains("failed to install application") && n.Contains("ts variable"))) m.Kind = AppFailed;
             else if (n.Contains("reboot") || n.Contains("restart")) m.Kind = Reboot;
             // Before the task sequence itself: "The task sequence execution engine started a group" (11124) is not a start.
             else if (n.Contains("group")) m.Kind = GroupEvent;
@@ -475,7 +518,10 @@ namespace TrackVice
                 + (runUtc.HasValue ? " AND ExecutionTime >= '" + dmtf(runUtc.Value - SccmCatalog.Margin) + "'" : "");
             // The whole run is read each time: a device sends the status messages it kept during Windows PE and restarts later,
             // with the time of each step, so reading only what is newer than the last row would miss them.
-            List<Dictionary<string, object>> rows = SccmCatalog.RunAt(SccmCatalog.Runs(q.Query(wql)), runUtc);
+            List<List<Dictionary<string, object>>> runs = SccmCatalog.Runs(q.Query(wql));
+            List<Dictionary<string, object>> rows = SccmCatalog.RunAt(runs, runUtc);
+            int at = runs.IndexOf(rows);
+            NewerRunUtc = at >= 0 && at < runs.Count - 1 ? SccmCatalog.Time(runs[runs.Count - 1][0]) : null;
             Batch b = new Batch();
             if (first)
             {
@@ -488,6 +534,29 @@ namespace TrackVice
             }
             Map(rows, seen, b);
             return b;
+        }
+
+        // When the newest run of the same device and deployment began, if it is newer than the run followed.
+        public DateTime? NewerRunUtc;
+
+        // The newest run, to follow it in place of this one.
+        public RemoteDeployment NewerRun()
+        {
+            if (!NewerRunUtc.HasValue) return null;
+            RemoteDeployment d = new RemoteDeployment();
+            d.Key = resourceId.ToString(CultureInfo.InvariantCulture) + "|" + deployment + "|" + NewerRunUtc.Value.Ticks.ToString(CultureInfo.InvariantCulture);
+            d.Device = device;
+            d.Profile = tsName;
+            d.User = deployment;
+            d.StartUtc = NewerRunUtc;
+            d.LastUtc = NewerRunUtc.Value;
+            d.State = State.Installing;
+            return d;
+        }
+
+        public SccmFeed ForRun(DateTime startUtc)
+        {
+            return new SccmFeed(q, resourceId, deployment, startUtc, device, tsName, dmtf);
         }
 
         public const string RunKey = "ts:run";
@@ -513,6 +582,16 @@ namespace TrackVice
         public static void Map(List<Dictionary<string, object>> rows, HashSet<string> seen, Batch b)
         {
             bool fresh = seen.Count == 0;
+            Dictionary<Dictionary<string, object>, Dictionary<string, object>> attach = SccmLoose.Match(rows);
+            bool ended = false;
+            DateTime? lastTime = null;
+            foreach (Dictionary<string, object> r in rows)
+            {
+                int k = TsMessage.Of(r).Kind;
+                if (k == TsMessage.TsDone || k == TsMessage.TsFailed) ended = true;
+                DateTime? rt = SccmCatalog.Time(r);
+                if (rt.HasValue && (!lastTime.HasValue || rt.Value > lastTime.Value)) lastTime = rt;
+            }
             foreach (Dictionary<string, object> r in rows)
             {
                 DateTime? t = SccmCatalog.Time(r);
@@ -527,6 +606,23 @@ namespace TrackVice
                 long msg = SccmCatalog.Int(r, "LastStatusMsgID");
                 string msgName = SccmCatalog.Str(r, "LastStatusMsgName") ?? ("Status message " + msg);
                 string sig = (t.HasValue ? t.Value.Ticks : 0) + "|" + step + "|" + msg + "|" + action;
+                if (SccmApps.Is(TsMessage.Of(r).Kind))
+                {
+                    if (!seen.Add(sig + "|" + SccmCatalog.Str(r, "ActionOutput"))) continue;
+                    SccmApps.Add(rows, r, ended, b);
+                    continue;
+                }
+                if (SccmLoose.Is(r))
+                {
+                    // A message without a step or group is kept until the step with its action name reports, so it can join that step.
+                    Dictionary<string, object> to;
+                    attach.TryGetValue(r, out to);
+                    bool late = t.HasValue && lastTime.HasValue && lastTime.Value - t.Value > SccmCatalog.RunGap;
+                    if (to == null && !ended && !late) continue;
+                    if (!seen.Add(sig)) continue;
+                    b.Obs.Add(SccmLoose.Obs(r, to, t ?? DateTime.UtcNow));
+                    continue;
+                }
                 if (!seen.Add(sig)) continue;
                 long exit = SccmCatalog.Int(r, "ExitCode");
                 long? code = exit == 0 ? (long?)null : unchecked((int)(uint)exit);
@@ -577,6 +673,7 @@ namespace TrackVice
                 o.AddInfo("Step", step.ToString(CultureInfo.InvariantCulture));
                 if (!string.IsNullOrEmpty(group)) o.AddInfo("Group", group);
                 if (!string.IsNullOrEmpty(output)) o.AddInfo("Output", Txt.Short(output, 2000));
+                if (m.Kind == TsMessage.BypassWarning) SccmLoose.MarkBypass(o, msgName);
                 switch (m.Kind)
                 {
                     case TsMessage.StepStarted: o.State = State.Installing; o.NewAttempt = true; break;
