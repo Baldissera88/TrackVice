@@ -39,7 +39,7 @@ namespace TrackVice
     }
 
     // Add customer: name, sign in, Create. Your storage holds the uploads unless the customer's own Azure is chosen.
-    sealed class AddCustomerDialog : GuideForm
+    sealed partial class AddCustomerDialog : GuideForm
     {
         static readonly string[] StepNames = { "Customer", "Sign in", "Create" };
         const int ResultPage = 3;
@@ -53,13 +53,20 @@ namespace TrackVice
         readonly StepRail rail = new StepRail(StepNames);
         readonly FlatButton bBack = new FlatButton("Back", null);
         readonly FlatButton bNext = new FlatButton("Next", null);
-        readonly TextBox tName, tAlert, tTenant, tAccount;
+        readonly TextBox tName, tAlert, tTenant, tAccount, tSearch;
         readonly ComboBox cSub, cGroup, cRegion, cAccount;
         readonly Segmented sKind;
-        readonly Toggle gGroup, gScript;
+        readonly Toggle gScript;
         readonly ChoiceCard cYours, cTheirs;
         readonly FlatButton bMore;
-        readonly FlatButton bGraph, bSkip, bArm;
+        readonly FlatButton bGraph, bSkip, bArm, bSearch;
+        // Step 1: the name of a customer that exists waits for Update or Choose another name.
+        bool asking;
+        string confirmed = "";
+        // Step 3: the groups found for Assign to a group I choose, null before the first search.
+        List<TenantGroup> found;
+        string searchText = "";
+        SettingRow planRow;
         OwnStorage own;
         WebSignIn graphIn, armIn;
         string graphText = "", armText = "";
@@ -100,14 +107,20 @@ namespace TrackVice
             cYours.Group = cTheirs.Group = group;
             cYours.IsChosen = true;
             bMore = Button("More about this", delegate { Open(AddCustomerUi.AgentDoc); });
-            gGroup = Kept(new Toggle());
-            gGroup.On = true;
             gScript = Kept(new Toggle());
             gScript.On = true;
             bGraph = Button("Sign in", delegate { SignInIntune(); });
             bSkip = Button("Skip", delegate { if (busy) return; skipped = true; Next(); });
             bArm = Button("Sign in", delegate { SignInAzure(); });
-            gGroup.Changed += delegate { run.MakeGroup = gGroup.On; Rebuild(); };
+            tSearch = Field(240, false);
+            bSearch = Button("Search", delegate { SearchGroups(); });
+            tSearch.KeyDown += delegate (object s, KeyEventArgs e)
+            {
+                if (e.KeyCode != Keys.Enter) return;
+                e.Handled = e.SuppressKeyPress = true;
+                SearchGroups();
+            };
+            tName.TextChanged += delegate { if (asking) { asking = false; Rebuild(); Nav(); } };
             gScript.Changed += delegate { run.AddScript = gScript.On; Rebuild(); };
             sKind.Changed += delegate { Rebuild(); Nav(); };
             cSub.SelectedIndexChanged += delegate { if (!filling) LoadSubscription(); };
@@ -152,9 +165,14 @@ namespace TrackVice
             d.tName.Text = "Northwind Traders";
             d.tAlert.Text = "https://northwind.example/workflows/trackvice-alerts";
             if (select == "own") { d.cYours.IsChosen = false; d.cTheirs.IsChosen = true; }
+            // "exists": a customer that is there, with the question of step 1.
+            if (select == "exists") { d.tName.Text = "Contoso"; d.Next(); }
             if (tab >= 1) d.Next();
             if (tab >= 1 && d.run.OwnAzure) { d.tAccount.Text = "northwindtrackvice"; d.SignInAzure(); }
             if (tab >= 2) { d.SignInIntune(); d.Next(); }
+            // "group" and "none" pick the assignment of step 3.
+            if (tab >= 2 && select == "group") { d.Choose(ScriptTarget.ChosenGroup); d.Pick("Autopilot test devices"); }
+            if (tab >= 2 && select == "none") d.Choose(ScriptTarget.None);
             if (tab >= 3) d.Next();
             d.note.Say("", false);
             return d;
@@ -202,6 +220,7 @@ namespace TrackVice
 
         bool CanLeave()
         {
+            if (page == 0) return !asking;
             if (page == 1) return (IntuneReady || skipped) && (!run.OwnAzure || AzureReady) && (run.OwnAzure || !NeedOwnKey || OwnSignedIn);
             return true;
         }
@@ -234,7 +253,8 @@ namespace TrackVice
         {
             l.Add(new SectionTitle("1. Customer"));
             l.Add(Row(Glyphs.Info, "What this does", "Adds a customer in three steps. Devices of the customer upload to a private container in your storage " + (own != null ? own.Account : "") + " and download TrackVice from it. Nothing is created until you press Create in step 3.", null));
-            l.Add(Row(Glyphs2.Device, "Customer name", "Shown at the top of the device lists. When a customer with this name exists, its tenant and upload location are replaced.", tName));
+            l.Add(Row(Glyphs2.Device, "Customer name", "Shown at the top of the device lists. For a customer that exists, TrackVice asks first: updating it makes new links, the old ones stop, and the script in Intune must be updated too.", tName));
+            if (asking) l.Add(ExistsRow());
             l.Add(new SectionTitle("Where the device data goes"));
             cYours.Desc = YourChoiceText(own);
             l.Add(cYours);
@@ -256,6 +276,29 @@ namespace TrackVice
             return "The device data of this customer goes to a private container only for them in " + where + ". The devices can only add files there; only TrackVice on this PC can read them. " + delete + " You can stop it at any time with Remove customer.";
         }
 
+        // The question for a name that exists, with its two answers.
+        SettingRow ExistsRow()
+        {
+            Customer have = ExistingName.Find(book, run.Customer);
+            string name = have != null ? have.Name : run.Customer;
+            FlatButton update = SmallButton(ExistingName.UpdateButton(name), delegate
+            {
+                confirmed = name;
+                asking = false;
+                Next();
+            });
+            update.Primary = true;
+            FlatButton another = SmallButton(ExistingName.ChooseAnother, delegate
+            {
+                asking = false;
+                Rebuild();
+                Nav();
+                tName.Focus();
+                tName.SelectAll();
+            });
+            return Row(Glyphs.Info, ExistingName.Title(name), ExistingName.Detail(name), new ButtonStrip(update, another));
+        }
+
         bool TakeCustomer()
         {
             run.Customer = tName.Text.Trim();
@@ -263,6 +306,14 @@ namespace TrackVice
             run.OwnAzure = cTheirs.IsChosen;
             string p = run.Problem(book);
             if (p != null) { note.Say(p, true); return false; }
+            if (ExistingName.MustAsk(book, run.Customer, confirmed))
+            {
+                asking = true;
+                note.Say("", false);
+                Rebuild();
+                Nav();
+                return false;
+            }
             if (tAccount.Text.Length == 0) tAccount.Text = Arm.Suggest(run.Customer, 0);
             return true;
         }
@@ -309,6 +360,10 @@ namespace TrackVice
             WebSignIn s = new WebSignIn(web, have != null ? have.GraphClientId : null, tTenant.Text, IntuneSetup.Scopes);
             graphIn = s;
             skipped = false;
+            // Groups found in another tenant do not apply.
+            found = null;
+            run.Chosen = null;
+            searchText = "";
             SignIn(s, delegate (string text) { graphText = text; }, null, delegate
             {
                 graphText += " Create can add the group and the platform script.";
@@ -420,12 +475,12 @@ namespace TrackVice
         void BuildCreate(List<Control> l)
         {
             l.Add(new SectionTitle("3. Create"));
-            List<string> plan = run.Plan(own, IntuneReady);
-            l.Add(Row(Glyphs.Info, "What Create makes", string.Join("\n", plan.ToArray()), null));
+            planRow = Row(Glyphs.Info, "What Create makes", PlanText(), null);
+            l.Add(planRow);
             if (IntuneReady)
             {
-                l.Add(Row(Glyphs2.Device, "Create the group " + AddCustomerRun.GroupName, "A dynamic device group with the rule " + AddCustomerRun.GroupRule + ". The group with that name is used when it is there.", gGroup));
-                l.Add(Row(Glyphs2.Apps, "Add the platform script " + AddCustomerRun.ScriptName + " and assign it to that group", "System context, no signature check, 64-bit PowerShell. When a script with that name is there, TrackVice asks before it replaces its content.", gScript));
+                l.Add(Row(Glyphs2.Apps, "Add the platform script " + AddCustomerRun.ScriptName, "System context, no signature check, 64-bit PowerShell. When a script with that name is there, TrackVice asks before it replaces its content.", gScript));
+                if (run.AddScript) BuildAssign(l);
             }
             l.Add(Row(Glyphs.Save, "Saved on this PC", "The customer " + run.Customer + (run.Tenant.Length > 0 ? " with the tenant " + run.Tenant : "") + " and the viewer link, encrypted for your Windows account. The customer code, encrypted. The script in " + folder + ".", null));
         }
@@ -435,8 +490,10 @@ namespace TrackVice
             if (busy) return;
             own = OwnStorage.Load(secrets);
             if (own == null) { note.Say("Your storage is not set up. Set it up in Settings > Your storage.", true); return; }
+            string problem = run.CreateProblem(IntuneReady);
+            if (problem != null) { note.Say(problem, true); return; }
             string key = AddCustomerUi.PublicKey(keys);
-            bool intune = IntuneReady && (run.MakeGroup || run.AddScript);
+            bool intune = IntuneReady && run.AddScript;
             Arm arm = run.OwnAzure ? ArmApi() : null;
             IntuneSetup api = intune ? new IntuneSetup(web, graphIn.Token) : null;
             run.IntuneError = "";
@@ -498,6 +555,8 @@ namespace TrackVice
                 l.Add(Row(Glyphs.Info, "Not done in Intune", run.IntuneError + "\nAdd the saved script as a platform script yourself, or use Customer code > Update the script in Intune later.", null));
             else if (!run.IntuneDone)
                 l.Add(Row(Glyphs.Info, "Intune", "Nothing was changed in Intune. Add the saved script as a platform script: system context, no signature check, 64-bit PowerShell, assigned to a group of Autopilot devices.", null));
+            else if (run.Group == null)
+                l.Add(Row(Glyphs.Info, "Not assigned", "The platform script " + AddCustomerRun.ScriptName + " is in Intune without an assignment. Assign it to a group of devices in Intune. " + AssignHint, null));
             l.Add(new SectionTitle("Keep these like a password"));
             l.Add(Row(Glyphs.Shield, "Customer code", CustomerCodes.Masked(run.Code != null ? run.Code.ToString() : "") + "\nIt holds the link that uploads to the customer's container.", CopyButton("customer code", delegate { return run.Code.ToString(); })));
             FlatButton bOpen = SmallButton("Open", delegate { AddCustomerUi.OpenScript(run.ScriptPath); });
@@ -505,7 +564,8 @@ namespace TrackVice
             ButtonStrip s = new ButtonStrip(CopyButton("script", delegate { return run.Script; }), bOpen);
             l.Add(Row(Glyphs2.Code, "Platform script", run.ScriptPath + "\nThe script with the customer code in it.", s));
             l.Add(new SectionTitle("Next step"));
-            l.Add(Row(Glyphs2.Sync, "Enroll a test device", "Enroll or reset one device of " + run.Customer + " with Autopilot. It appears in Devices > Devices with the TrackVice agent during device setup.", null));
+            string device = run.IntuneDone && run.Target == ScriptTarget.ChosenGroup && run.Group != null ? "one device of " + run.Customer + " that is in " + run.Group.Name : "one device of " + run.Customer;
+            l.Add(Row(Glyphs2.Sync, "Enroll a test device", "Enroll or reset " + device + " with Autopilot. It appears in Devices > Devices with the TrackVice agent during device setup.", null));
         }
     }
 
