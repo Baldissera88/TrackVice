@@ -325,6 +325,8 @@ There is no check on the command line, as the agent, in Windows PE, during Windo
 
 Both demos are written as real log lines and ESP registry values and read through the same code as a real device, at 10 times the speed. The screenshots in this README come from them.
 
+Themes: **Vice** (the default), **Dark**, **Light**, **Terminal** (green on black), **Amber** and **Synthwave**. Pick one in Settings, with the Theme button, or with `--theme <name>`.
+
 ![The task sequence demo in the Vice theme](docs/images/trackvice-osd-vice.png)
 
 ## Command line

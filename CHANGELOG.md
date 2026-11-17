@@ -1,5 +1,15 @@
 # Changelog
 
+## TrackVice 1.4.0
+
+17 November 2026.
+
+- **Themes**: Vice is the default on a new install. Three new themes: **Terminal** (green on black, like an old phosphor screen), **Amber** (amber on black) and **Synthwave** (dark purple with neon pink and cyan). Terminal and Amber have square corners and show numbers, times and durations in a monospace font. Settings shows each theme with a small colour sample, and `--theme terminal|amber|synthwave`. Light's secondary text is darker and easier to read.
+- **SCCM: applications from a variable list**: each application an Install Application step installs from a task sequence variable list is its own row, Done or Failed with its exit code and how long it took; the step shows how many are done.
+- **SCCM: a newer run**: a device window that follows a run says when a newer run of the same task sequence starts on the device, with Follow it.
+- Fixed: a task sequence that restarts the computer in Windows and resumes was split into two runs, so the run being followed never ended. It is now one run.
+- Fixed: the warning a Run PowerShell Script step with execution policy Bypass sends (11910) became a step of its own shown as Unknown, and could keep a finished run at Waiting. It is now a warning on that step.
+
 ## TrackVice 1.3.0
 
 17 November 2026.
