@@ -23,6 +23,10 @@ if (-not $Customer) {
     throw 'Fill in $Customer at the top of the script with the customer code from TrackVice.'
 }
 if (-not $Customer.StartsWith('tv1:')) {
+    # A customer name is short; a customer code is far longer, and a link has ://.
+    if ($Customer.Length -lt 60 -and $Customer -notmatch '://') {
+        throw ""`$Customer holds '$Customer', which looks like a customer name. Paste the customer code from TrackVice > Settings > Customers > Customer code..., which starts with tv1:""
+    }
     throw 'This is not a TrackVice customer code. It starts with tv1:'
 }
 try {

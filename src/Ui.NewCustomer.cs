@@ -115,7 +115,7 @@ namespace TrackVice
         // The page scrolls with the wheel over any row.
         void Wheel(Control c)
         {
-            if (c is NumericUpDown || c is ComboBox) return;
+            if (c is NumericUpDown || c is ComboBox || c is DataGridView) return;
             if (hooked.Contains(c)) { foreach (Control k in c.Controls) Wheel(k); return; }
             hooked.Add(c);
             c.Disposed += delegate { hooked.Remove(c); };
