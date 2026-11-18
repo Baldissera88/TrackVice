@@ -313,7 +313,6 @@ namespace TrackVice
                 }
                 if (id == DeviceMenu.Compare) CompareDialog.AddMenu(m, theme, engine != null, delegate { CompareWith(true); }, delegate { CompareWith(false); });
                 else if (id == DeviceMenu.Reference) ReferenceMenu(m);
-                else if (id == DeviceMenu.NotifyVice) AddNotifyViceMenu(m);
                 else Menus.Add(m, e.Text, delegate { DeviceAction(id); });
             }
             return m;

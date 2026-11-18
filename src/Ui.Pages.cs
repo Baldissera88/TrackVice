@@ -311,6 +311,15 @@ namespace TrackVice
         public string Glyph, Title, Desc, Value;
         public bool MonoDesc;
         public readonly Control Accessory;
+        // A longer explanation behind a small More link under the description.
+        public string More;
+        // Marked: changed from its default. Highlight: the setting a search opened.
+        public bool Marked, Highlight;
+        // Puts a wide control under the text instead of beside it when the row is too narrow for both.
+        public bool WrapAccessory;
+        public event EventHandler MoreToggled;
+        bool expanded, linkHot;
+        Rectangle link;
 
         public SettingRow(string glyph, string title, string desc, Control right)
         {
@@ -322,13 +331,25 @@ namespace TrackVice
             if (right != null) Controls.Add(right);
         }
 
+        public bool Expanded
+        {
+            get { return expanded; }
+            set { if (expanded == value) return; expanded = value; Invalidate(); if (MoreToggled != null) MoreToggled(this, EventArgs.Empty); }
+        }
+
         int TextX()
         {
             return Fonts.Icons != null && !string.IsNullOrEmpty(Glyph) ? Dpi.S(56) : Dpi.S(20);
         }
 
+        bool Under(int width)
+        {
+            return WrapAccessory && Accessory != null && Accessory.Width + Dpi.S(32) > (width - TextX()) / 2;
+        }
+
         int RightW(int width)
         {
+            if (Under(width)) return Dpi.S(16);
             if (Accessory != null) return Accessory.Width + Dpi.S(32);
             if (!string.IsNullOrEmpty(Value)) return Math.Min(Draw.Measure(Value, Fonts.Ui).Width + 2, width / 2) + Dpi.S(20);
             return Dpi.S(16);
@@ -339,11 +360,26 @@ namespace TrackVice
             get { return MonoDesc ? Fonts.MonoSmall : Fonts.Small; }
         }
 
+        bool HasMore
+        {
+            get { return !string.IsNullOrEmpty(More); }
+        }
+
+        int MoreH(int tw)
+        {
+            if (!HasMore) return 0;
+            int h = Dpi.S(2) + Fonts.Small.Height;
+            if (expanded) h += Dpi.S(4) + Draw.WrapHeight(More, Fonts.Small, tw);
+            return h;
+        }
+
         public int Measure(int width)
         {
             int tw = Math.Max(Dpi.S(80), width - TextX() - RightW(width));
             int h = Dpi.S(14) + Fonts.Ui.Height;
             if (!string.IsNullOrEmpty(Desc)) h += Dpi.S(2) + Draw.WrapHeight(Desc, DescFont, tw);
+            h += MoreH(tw);
+            if (Under(width)) h += Dpi.S(10) + Accessory.Height;
             h += Dpi.S(14);
             int min = Accessory != null ? Accessory.Height + Dpi.S(24) : Dpi.S(56);
             return Math.Max(min, h);
@@ -362,7 +398,28 @@ namespace TrackVice
         protected override void OnLayout(LayoutEventArgs levent)
         {
             base.OnLayout(levent);
-            if (Accessory != null) Accessory.Location = new Point(Width - Dpi.S(16) - Accessory.Width, (Height - Accessory.Height) / 2);
+            if (Accessory == null) return;
+            if (Under(Width)) Accessory.Location = new Point(TextX(), Height - Dpi.S(14) - Accessory.Height);
+            else Accessory.Location = new Point(Width - Dpi.S(16) - Accessory.Width, (Height - Accessory.Height) / 2);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            bool hot = HasMore && link.Contains(e.Location);
+            if (hot != linkHot) { linkHot = hot; Cursor = hot ? Cursors.Hand : Cursors.Default; Invalidate(); }
+            base.OnMouseMove(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            if (linkHot) { linkHot = false; Cursor = Cursors.Default; Invalidate(); }
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
+            if (HasMore && link.Contains(e.Location)) Expanded = !expanded;
+            base.OnMouseClick(e);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -370,16 +427,47 @@ namespace TrackVice
             Graphics g = e.Graphics;
             g.Clear(Parent != null ? Parent.BackColor : theme.Bg);
             Draw.Card(g, ClientRectangle, theme);
+            if (Highlight) Shapes.Stroke(g, new RectangleF(1f, 1f, Width - 2.5f, Height - 2.5f), Dpi.S(7), theme.Accent, 2f);
             int s = Dpi.S(20);
             Draw.Glyph(g, Glyph, new Rectangle(Dpi.S(18), (Height - s) / 2, s, s), theme.Text2);
             int tx = TextX();
             int tw = Math.Max(Dpi.S(80), Width - tx - RightW(Width));
             int th = Fonts.Ui.Height;
             int dh = string.IsNullOrEmpty(Desc) ? 0 : Draw.WrapHeight(Desc, DescFont, tw);
-            int block = th + (dh > 0 ? Dpi.S(2) + dh : 0);
-            int y = (Height - block) / 2;
+            int mh = MoreH(tw);
+            int block = th + (dh > 0 ? Dpi.S(2) + dh : 0) + mh;
+            int y = Under(Width) ? Dpi.S(14) : (Height - block) / 2;
             Draw.Text(g, Title, Fonts.Ui, new Rectangle(tx, y, tw, th), theme.Text, Draw.Line);
-            if (dh > 0) Draw.Text(g, Desc, DescFont, new Rectangle(tx, y + th + Dpi.S(2), tw, dh + 2), theme.Text2, Draw.Wrap);
+            if (Marked)
+            {
+                int d = Dpi.S(7);
+                int x = tx + Math.Min(tw - d, Draw.Measure(Title, Fonts.Ui).Width + Dpi.S(8));
+                Shapes.Fill(g, new RectangleF(x, y + (th - d) / 2f, d, d), d / 2f, theme.Accent);
+            }
+            int ly = y + th;
+            if (dh > 0)
+            {
+                Draw.Text(g, Desc, DescFont, new Rectangle(tx, ly + Dpi.S(2), tw, dh + 2), theme.Text2, Draw.Wrap);
+                ly += Dpi.S(2) + dh;
+            }
+            if (HasMore)
+            {
+                ly += Dpi.S(2);
+                if (expanded)
+                {
+                    int eh = Draw.WrapHeight(More, Fonts.Small, tw);
+                    Draw.Text(g, More, Fonts.Small, new Rectangle(tx, ly, tw, eh + 2), theme.Text2, Draw.Wrap);
+                    ly += eh + Dpi.S(4);
+                }
+                string label = expanded ? "Less" : "More";
+                Font f = linkHot ? new Font(Fonts.Small, FontStyle.Underline) : Fonts.Small;
+                try
+                {
+                    link = new Rectangle(tx, ly, Draw.Measure(label, f).Width + Dpi.S(4), Fonts.Small.Height);
+                    Draw.Text(g, label, f, link, theme.Accent, Draw.Line);
+                }
+                finally { if (linkHot) f.Dispose(); }
+            }
             if (Accessory == null && !string.IsNullOrEmpty(Value))
             {
                 int vw = RightW(Width) - Dpi.S(20);
@@ -594,7 +682,26 @@ namespace TrackVice
             col.Controls.Add(c);
             IThemed th = c as IThemed;
             if (th != null) th.ApplyTheme(theme);
-            HookWheel(c);
+            if (hooked.Add(c)) HookWheel(c);
+        }
+
+        readonly HashSet<Control> hooked = new HashSet<Control>();
+
+        // Takes every card out of the column, for a dialog that shows one of several pages in it.
+        protected void ClearItems()
+        {
+            col.SuspendLayout();
+            foreach (Control c in items) col.Controls.Remove(c);
+            items.Clear();
+            col.ResumeLayout(false);
+            scroll.AutoScrollPosition = new Point(0, 0);
+        }
+
+        // Scrolls the column so that c is near the top.
+        protected void ScrollTo(Control c)
+        {
+            if (c == null || !items.Contains(c)) return;
+            scroll.AutoScrollPosition = new Point(0, Math.Max(0, c.Top - Dpi.S(8)));
         }
 
         protected void Relayout()
@@ -725,194 +832,6 @@ namespace TrackVice
         public static int StuckIndex { get { return Index(StuckChoices, StuckMinutes, 1); } }
     }
 
-    public sealed class SettingsDialog : PageForm
-    {
-        public event EventHandler ThemeChanged, IntervalChanged, StuckChanged;
-        // A setting that changes what is read was changed, so a live session should read the device again.
-        public bool ReadAgain, RestartRequested;
-        readonly SettingRow logViceRow;
-
-        public SettingsDialog(Theme t) : base("TrackVice settings", t)
-        {
-            ThemePicker segTheme = new ThemePicker(Palettes.Choices);
-            segTheme.SelectedName = Theme.SavedName();
-            segTheme.Changed += Safe.Wrap(delegate
-            {
-                Prefs.Set("Theme", segTheme.SelectedName);
-                Retheme(Theme.Named(segTheme.SelectedName));
-                if (ThemeChanged != null) ThemeChanged(this, EventArgs.Empty);
-            });
-
-            Segmented segHistory = new Segmented(Settings.HistoryNames);
-            segHistory.Selected = Settings.HistoryIndex;
-            segHistory.Changed += Safe.Wrap(delegate
-            {
-                Settings.Hours = Settings.Histories[segHistory.Selected];
-                ReadAgain = true;
-            });
-
-            Segmented segInterval = new Segmented(Settings.IntervalNames);
-            segInterval.Selected = Settings.IntervalIndex;
-            segInterval.Changed += Safe.Wrap(delegate
-            {
-                Prefs.Set("PollMs", Settings.Intervals[segInterval.Selected].ToString(System.Globalization.CultureInfo.InvariantCulture));
-                if (IntervalChanged != null) IntervalChanged(this, EventArgs.Empty);
-            });
-
-            Segmented segStuck = new Segmented(Settings.StuckNames);
-            segStuck.Selected = Settings.StuckIndex;
-            segStuck.Changed += Safe.Wrap(delegate
-            {
-                Prefs.Set("StuckMinutes", Settings.StuckChoices[segStuck.Selected].ToString(System.Globalization.CultureInfo.InvariantCulture));
-                if (StuckChanged != null) StuckChanged(this, EventArgs.Empty);
-            });
-
-            Toggle watch = new Toggle();
-            watch.On = Settings.WatchOnStart;
-            watch.Changed += Safe.Wrap(delegate { Prefs.SetBool("WatchOnStart", watch.On); });
-
-            Toggle wmi = new Toggle();
-            wmi.On = Settings.UseWmi;
-            wmi.Changed += Safe.Wrap(delegate { Prefs.SetBool("UseWmi", wmi.On); ReadAgain = true; });
-
-            Toggle events = new Toggle();
-            events.On = Settings.UseEvents;
-            events.Changed += Safe.Wrap(delegate { Prefs.SetBool("UseEvents", events.On); ReadAgain = true; });
-
-            FlatButton bBrowse = SmallButton("Browse", delegate { Browse(); });
-            FlatButton bClear = SmallButton("Clear", delegate
-            {
-                Prefs.Set("LogVicePath", null);
-                UpdateLogVice();
-            });
-            logViceRow = new SettingRow(Glyphs2.Folder, "LogVice", "", new ButtonStrip(bBrowse, bClear));
-
-            Add(new SectionTitle("Appearance"));
-            Add(new SettingRow(Glyphs2.Palette, "Theme", "System follows the Windows app mode. Terminal and Amber look like old green and amber screens, with numbers and times in a monospace font.", segTheme));
-
-            Add(new SectionTitle("Reading this device"));
-            Add(new SettingRow(Glyphs2.Calendar, "History to read", "How far back to read logs and event logs. Since install reads everything since Windows was installed. ESP and Win32 app states are always read, with the time they were saved.", segHistory));
-            Add(new SettingRow(Glyphs2.Apps, "ConfigMgr client WMI", "Read application, package and update states from root\\ccm\\ClientSDK. Turn it off on a device where WMI is slow.", wmi));
-            Add(new SettingRow(Glyphs.Log, "Event logs", "Read the Autopilot event log, and errors and warnings from the MDM, device registration and Entra ID event logs.", events));
-            if (Program.IsAdmin)
-            {
-                SettingRow admin = new SettingRow(Glyphs.Shield, "Administrator rights", "TrackVice is running as administrator, so it can read every log, ESP key and WMI class.", null);
-                admin.Value = "On";
-                Add(admin);
-            }
-            else
-            {
-                FlatButton bAdmin = SmallButton("Restart as administrator", delegate
-                {
-                    RestartRequested = true;
-                    Close();
-                });
-                Add(new SettingRow(Glyphs.Shield, "Administrator rights", "The ConfigMgr and Intune logs, the ESP keys and some event logs need administrator rights.", bAdmin));
-            }
-
-            Add(new SectionTitle("Watching"));
-            Add(new SettingRow(Glyphs.Watch, "Watch when TrackVice opens", "Start following this device as soon as TrackVice has read it. When it is off, press Watch or Ctrl+W.", watch));
-            Add(new SettingRow(Glyphs2.Sync, "Read every", "How often TrackVice reads the device while watching. Log files and registry keys are read every time, WMI every third time.", segInterval));
-            Add(new SettingRow(Glyphs2.Clock, "Warn when nothing changes for", "An item that is downloading or installing gets a No progress finding when no source has said anything about it for this long.", segStuck));
-
-            Add(new SectionTitle("LogVice"));
-            Add(logViceRow);
-            UpdateLogVice();
-            foreach (Control c in ViceLinks.SettingRows(theme, delegate { Relayout(); })) Add(c);
-
-            TextBox client = Field(Prefs.Get("GraphClientId", ""), Dpi.S(300), true);
-            client.TextChanged += Safe.Wrap(delegate
-            {
-                string v = client.Text.Trim();
-                if (v.Length == 0) Prefs.Set("GraphClientId", null);
-                else if (GraphClient.IsGuid(v)) Prefs.Set("GraphClientId", v);
-            });
-            TextBox tenant = Field(Prefs.Get("GraphTenant", ""), Dpi.S(300), false);
-            tenant.TextChanged += Safe.Wrap(delegate
-            {
-                string v = tenant.Text.Trim();
-                Prefs.Set("GraphTenant", v.Length == 0 ? null : v);
-            });
-            FlatButton bCustomers = SmallButton("Open", delegate
-            {
-                using (CustomersPage p = new CustomersPage(theme, CustomerUi.Book)) p.ShowDialog(this);
-                // The customer in use may have changed, and with it the tenant and client ID.
-                client.Text = Prefs.Get("GraphClientId", "");
-                tenant.Text = Prefs.Get("GraphTenant", "");
-            });
-            Add(new SectionTitle("Customers"));
-            Add(new SettingRow(Glyphs2.Device, "Customers", "Saved connections for each customer you work for: the Intune tenant, where its agents upload to and its SCCM site. Choose one at the top of a device list. In use: " + (CustomerUi.CurrentName ?? "none") + ".", bCustomers));
-
-            foreach (Control c in YourStorageUi.SettingRows(theme, delegate { Relayout(); })) Add(c);
-
-            FlatButton bPublish = SmallButton("Publish", delegate
-            {
-                using (PublishDialog p = PublishDialog.ForCustomer(theme)) p.ShowDialog(this);
-            });
-            Add(new SectionTitle("Agent updates"));
-            Add(new SettingRow(Glyphs.Shield, "Publish agent update", "Upload a TrackVice.exe with a signed agent/latest.json. Agents installed with $UpdateKey and $UpdateLink update themselves to it, so the platform script stays the same.", bPublish));
-
-            Add(new SectionTitle("Autopilot in Intune"));
-            string kept = MainForm.KeptAccount;
-            FlatButton bSignOut = SmallButton("Sign out", delegate { });
-            SettingRow signRow = new SettingRow(Glyphs.Shield, "Intune sign-in", kept != null
-                ? "Signed in as " + kept + " for " + (CustomerUi.CurrentName ?? "Default") + ". The sign-in is kept encrypted for your Windows account, so names from Intune and the Autopilot list need no new sign-in. Sign out deletes it and the kept names."
-                : "Not signed in for " + (CustomerUi.CurrentName ?? "Default") + ". Sign in from Devices > Autopilot in Intune or Names from Intune. The sign-in is then kept until you sign out here.", bSignOut);
-            bSignOut.Enabled = kept != null;
-            bSignOut.Click += Safe.Wrap(delegate
-            {
-                MainForm.SignOutIntune();
-                bSignOut.Enabled = false;
-                signRow.Desc = "Signed out. The kept sign-in and names are deleted.";
-                signRow.Invalidate();
-            });
-            Add(signRow);
-            Add(new SettingRow(Glyphs2.Code, "Client ID", "The app registration TrackVice signs in with. Leave it empty to use Microsoft Graph Command Line Tools (" + GraphClient.DefaultClientId + "). Your own app needs the delegated permission DeviceManagementManagedDevices.Read.All and public client flows turned on.", client));
-            Add(new SettingRow(Glyphs.Shield, "Tenant", "The tenant ID or domain, for example contoso.onmicrosoft.com. Leave it empty to sign in to the tenant of the account you use.", tenant));
-
-            foreach (Control c in UpdatesUi.SettingRows(theme, delegate { Relayout(); })) Add(c);
-
-            SettingRow store = new SettingRow(Glyphs2.Settings, "Where settings are stored", Prefs.Location, null);
-            store.MonoDesc = true;
-            Add(new SectionTitle("Data"));
-            Add(store);
-        }
-
-        TextBox Field(string value, int width, bool mono)
-        {
-            TextBox b = new TextBox();
-            b.Width = width;
-            b.Font = mono ? Fonts.Mono : Fonts.Ui;
-            b.BorderStyle = BorderStyle.FixedSingle;
-            b.BackColor = theme.Field;
-            b.ForeColor = theme.Text;
-            b.Text = value ?? "";
-            return b;
-        }
-
-        void UpdateLogVice()
-        {
-            string custom = Prefs.Get("LogVicePath", null);
-            string found = LogViceLink.Find();
-            if (!string.IsNullOrEmpty(custom)) logViceRow.Desc = "Chosen: " + custom + (found == custom ? "" : " (not found)");
-            else if (found != null) logViceRow.Desc = "Found: " + found;
-            else logViceRow.Desc = "Not found. TrackVice looks for the LogVice MSI install, App Paths and LogVice.exe next to TrackVice.exe. Browse to choose it.";
-            Relayout();
-        }
-
-        void Browse()
-        {
-            using (OpenFileDialog d = new OpenFileDialog())
-            {
-                d.Filter = "LogVice|LogVice.exe|Programs|*.exe";
-                d.Title = "Locate LogVice";
-                if (d.ShowDialog(this) != DialogResult.OK) return;
-                Prefs.Set("LogVicePath", d.FileName);
-            }
-            UpdateLogVice();
-        }
-    }
-
     public sealed class AboutDialog : PageForm
     {
         public static readonly string[][] CommandLine =
@@ -948,36 +867,55 @@ namespace TrackVice
             new string[] { "--demo osd", "Play a sample SCCM task sequence" },
         };
 
-        public AboutDialog(Theme t) : base("About TrackVice", t)
+        public const string CommandLinePart = "commandline", ShortcutsPart = "shortcuts";
+
+        public AboutDialog(Theme t) : this(t, null)
         {
-            AboutHero hero = new AboutHero();
-            hero.Version = "Version " + Program.Version;
-            hero.Detail = "Built " + Program.BuildDate;
-            hero.Developer = Program.Developer;
-            hero.Blurb = "Follows a deployment on a Windows device as it happens: SCCM task sequences, applications, packages and updates, Windows Autopilot with the Enrollment Status Page, and Intune apps, on one timeline with the log line behind every step. It also follows other devices: Autopilot deployments as Intune reports them, task sequences from the status messages they send to an SCCM site, and devices that run the TrackVice agent, with statistics and comparisons over their enrollments. A companion to LogVice and PolicyVice.";
-            hero.License = "Released under the MIT license.";
-            Add(hero);
-            Add(new SectionTitle("Command line"));
-            KeyTable cli = new KeyTable(true, CommandLine);
-            Add(cli);
-            Add(new SettingRow(Glyphs.Info, "Exit codes", "0 when done, 1 on an error, and 2 when /report, /csv, /session or /fleet-report found failed items. Use Start-Process with -Wait in PowerShell.", null));
-            Add(new SectionTitle("Keyboard shortcuts"));
-            Add(new KeyTable(false,
-                new string[] { "F5", "Read everything again" },
-                new string[] { "Ctrl+W", "Start or pause watching" },
-                new string[] { "Ctrl+F", "Search" },
-                new string[] { "Ctrl+S", "Save the session" },
-                new string[] { "Ctrl+O", "Open a session or a log folder" },
-                new string[] { "Ctrl+E", "Export an HTML report" },
-                new string[] { "Ctrl+L", "Open the selected item's log in LogVice" },
-                new string[] { "Ctrl+M", "Compact view" },
-                new string[] { "Ctrl+D", "Other devices: Autopilot in Intune, devices with the agent, task sequences in SCCM" },
-                new string[] { "Ctrl+,", "Settings" },
-                new string[] { "Ctrl+C", "Copy the selected row" },
-                new string[] { "F1", "This page" },
-                new string[] { "Esc", "Clear the search, or close this page" }));
-            Add(new SectionTitle("Privacy"));
-            Add(new SettingRow(Glyphs.Shield, "TrackVice only reads", "It reads logs, the registry, WMI and event logs, and writes nothing to the device except its own settings in " + Prefs.Location + " and the files you save. It never starts, retries or cancels a deployment.", null));
+        }
+
+        // Help has three pages: About, Command line and Keyboard shortcuts.
+        public AboutDialog(Theme t, string part) : base(part == CommandLinePart ? "Command line" : part == ShortcutsPart ? "Keyboard shortcuts" : "About TrackVice", t)
+        {
+            KeyTable cli = null;
+            if (part == CommandLinePart)
+            {
+                Add(new SectionTitle("Command line"));
+                cli = new KeyTable(true, CommandLine);
+                Add(cli);
+                Add(new SettingRow(Glyphs.Info, "Exit codes", "0 when done, 1 on an error, and 2 when /report, /csv, /session or /fleet-report found failed items. Use Start-Process with -Wait in PowerShell.", null));
+            }
+            else if (part == ShortcutsPart)
+            {
+                Add(new SectionTitle("Keyboard shortcuts"));
+                Add(new KeyTable(false,
+                    new string[] { "F5", "Read everything again" },
+                    new string[] { "Ctrl+W", "Start or pause watching" },
+                    new string[] { "Ctrl+F", "Search" },
+                    new string[] { "Ctrl+S", "Save the session" },
+                    new string[] { "Ctrl+O", "Open a session or a log folder" },
+                    new string[] { "Ctrl+E", "Export an HTML report" },
+                    new string[] { "Ctrl+L", "Open the selected item's log in LogVice" },
+                    new string[] { "Ctrl+M", "Compact view" },
+                    new string[] { "Ctrl+D", "Other devices: Autopilot in Intune, devices with the agent, task sequences in SCCM" },
+                    new string[] { "Ctrl+,", "Settings. Ctrl+F there searches the settings" },
+                    new string[] { "Ctrl+C", "Copy the selected row" },
+                    new string[] { "F1", "About TrackVice" },
+                    new string[] { "Esc", "Clear the search, or close a page" }));
+            }
+            else
+            {
+                AboutHero hero = new AboutHero();
+                hero.Version = "Version " + Program.Version;
+                hero.Detail = "Built " + Program.BuildDate;
+                hero.Developer = Program.Developer;
+                hero.Blurb = "Follows a deployment on a Windows device as it happens: SCCM task sequences, applications, packages and updates, Windows Autopilot with the Enrollment Status Page, and Intune apps, on one timeline with the log line behind every step. It also follows other devices: Autopilot deployments as Intune reports them, task sequences from the status messages they send to an SCCM site, and devices that run the TrackVice agent, with statistics and comparisons over their enrollments. A companion to LogVice and PolicyVice.";
+                hero.License = "Released under the MIT license.";
+                Add(hero);
+                Add(new SectionTitle("Privacy"));
+                Add(new SettingRow(Glyphs.Shield, "TrackVice only reads", "It reads logs, the registry, WMI and event logs, and writes nothing to the device except its own settings in " + Prefs.Location + " and the files you save. It never starts, retries or cancels a deployment.", null));
+                Add(new SettingRow(Glyphs.Info, "Command line and keyboard shortcuts", "They are in the Help menu.", null));
+            }
+            if (part == ShortcutsPart) return;
 
             FlatButton bCopy = new FlatButton("Copy details", Glyphs.Copy);
             bCopy.Dock = DockStyle.Left;
@@ -989,7 +927,8 @@ namespace TrackVice
                 b.Append("Windows: ").Append(Program.OsVersion()).Append("\r\n");
                 b.Append(".NET: ").Append(Environment.Version).Append(Environment.Is64BitProcess ? ", 64-bit" : ", 32-bit").Append("\r\n");
                 b.Append("Administrator: ").Append(Program.IsAdmin ? "yes" : "no").Append("\r\n");
-                b.Append("Program: ").Append(Program.Location).Append("\r\n\r\n").Append(cli.AsText());
+                b.Append("Program: ").Append(Program.Location).Append("\r\n");
+                if (cli != null) b.Append("\r\n").Append(cli.AsText());
                 bCopy.Text = Menus.Copy(b.ToString()) ? "Copied" : "Clipboard busy";
             });
             footer.Controls.Add(bCopy);
