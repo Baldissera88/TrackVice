@@ -34,3 +34,13 @@ Devices from a new image often run in the wrong time zone during the deployment 
 - Show the device's time zone and whether its clock is off, in the device facts, with a finding when the zone changed during the deployment or the clock is more than 2 minutes off.
 - A tick in Add customer and Customer code: **Turn on automatic time zone on new devices** (off by default). When it is on, the agent turns on automatic time zone (the time zone auto-update service, and the location setting it needs) and asks Windows to sync the clock, early in the deployment. The tick explains that it changes a device setting and uses location.
 - Next to it, the policy way, which is preferred where a fixed zone fits: a short guide for an Intune setting that sets the time zone for all devices (Policy CSP TimeLanguageSettings, check the exact setting and the Windows versions it needs before writing the guide).
+
+## 5. Fix: time the device was off counts as deployment time
+
+Seen on a real device: a deployment was stopped by shutting the PC down in the evening and turning it on the next morning. TrackVice then showed "Overall 9 h 27 min" and the restart as "9 h 01 min", although the deployment itself had run for about 26 minutes.
+
+- Time between a shutdown and the next start of Windows (from the restart events) does not count as deployment time: not in Overall, the phase times, Time left, Statistics, Compare, the reference or the reports.
+- Overall shows the active time and the time off apart when there was any: "26 min · off 9 h 01 min".
+- A restart that was a shutdown for longer than 15 minutes is shown as "Off from 00:56 to 09:57 (9 h 01 min)", not as a restart that took 9 hours; its own time is the shutdown and the start, in seconds or minutes.
+- The Gantt shows the time off as a hatched band, and the time axis can collapse it.
+- "No progress" and "agent stopped sending" do not fire for a device that is off after a clean shutdown; the device list says "Off since 00:56" instead of stalled. The same rule as the reseal of a pre-provisioned device, for any long shutdown.
