@@ -308,12 +308,8 @@ For a setup with links, as in [docs/AGENT.md](AGENT.md#agent-updates), with a te
 - [ ] `TrackVice.exe /ship-report ship.html /from session.json` returns 0 for a ready device and 2 for one that is not.
 - [ ] **Clear the reference** removes the badge and the finding.
 
-## 24. PackVice, NotifyVice and Power BI
+## 24. Power BI
 
-- [ ] On a device with a Win32 app installed from an .msi, the details show the Installer section, and **Installer in PackVice** opens the .msi from the IME cache in PackVice.
-- [ ] The same for an SCCM application from ccmcache. When the cache was cleaned, the details say why the .msi is not there.
-- [ ] Without PackVice installed, TrackVice asks for the exe and keeps the choice in Settings.
-- [ ] Watch a device with the agent that finished without failures: **Devices > Tell the user with NotifyVice** starts NotifyVice, and the clipboard has the message.
 - [ ] Statistics > **Export for Power BI** writes `Enrollments.csv`, `Items.csv`, `Findings.csv` and `README.txt`. Load the folder in Power BI as the README says, and relate the tables on SessionId.
 - [ ] `TrackVice.exe /export-data C:\Temp\export /upload "<viewer link>" /hours 168` writes the same files.
 

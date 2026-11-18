@@ -520,7 +520,7 @@ namespace TrackVice
                 case "updates":
                     if (start.Select == "latest") { demo.Newer = false; demo.Latest = Program.Version; }
                     UpdatesUi.Demo = demo;
-                    SettingsDialog sd = new SettingsDialog(theme);
+                    SettingsDialog sd = new SettingsDialog(theme, SettingsCatalog.General);
                     sd.Shown += delegate { sd.BeginInvoke((MethodInvoker)delegate { foreach (Control c in sd.Controls) { Panel p = c as Panel; if (p != null && p.AutoScroll) p.AutoScrollPosition = new Point(0, Dpi.S(start.Tab >= 0 ? start.Tab : 5000)); } }); };
                     return sd;
                 case "update": return new UpdateDialog(theme, demo, true);

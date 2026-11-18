@@ -190,7 +190,7 @@ namespace TrackVice
             Tip(bCompact, "A small window that stays on top, for OOBE and for watching over a shoulder (Ctrl+M)");
             Tip(bTheme, "Change the theme");
             Tip(bSettings, "Settings: history to read, how often to read, sources, LogVice (Ctrl+,)");
-            Tip(bAbout, "Help: getting started, the welcome page, the guide, and About TrackVice with the command line (F1)");
+            Tip(bAbout, "Help: getting started, the welcome page, the guide, the command line, keyboard shortcuts and About TrackVice (F1)");
             foreach (FlatButton b in new FlatButton[] { bWatch, bOpen, bDevices, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout })
             {
                 b.Margin = new Padding(Dpi.S(2), 0, 0, 0);
@@ -282,7 +282,6 @@ namespace TrackVice
             list.MenuExtras = delegate (ContextMenuStrip m, Item it)
             {
                 Menus.Add(m, "Open in LogVice", delegate { OpenItemLog(it); }).Enabled = it.LogFile != null;
-                AddPackViceMenu(m, it);
                 Menus.Add(m, "Show on the timeline", delegate { thisItemOnly = true; bThisItem.Checked = true; tabs.Selected = TabTimeline; BindTimeline(true); });
             };
             themed.Add(list);
@@ -302,7 +301,6 @@ namespace TrackVice
             themed.Add(bItemCopy);
             foot.Controls.Add(bItemLog);
             foot.Controls.Add(bItemCopy);
-            AddPackViceButton(foot);
             itemDetail.Dock = DockStyle.Fill;
             detailHost.Controls.Add(itemDetail);
             detailHost.Controls.Add(foot);
@@ -969,7 +967,6 @@ namespace TrackVice
             if (!force && sig == shownSig) return;
             shownSig = sig;
             bItemLog.Enabled = i != null && i.LogFile != null;
-            UpdatePackVice(i);
             bItemCopy.Enabled = i != null || p != null;
             if (thisItemOnly) BindTimeline(true);
             if (i != null) ShowItem(i);
@@ -1034,7 +1031,6 @@ namespace TrackVice
                     Field(r, p.Key, p.Value, mono);
                 }
             }
-            ShowInstaller(r, i);
 
             Section(r, "Events" + (i.Events.Count > 40 ? " (newest 40 of " + i.Events.Count + ")" : ""));
             int from = Math.Max(0, i.Events.Count - 40);
@@ -1669,7 +1665,6 @@ namespace TrackVice
 
         void Shot()
         {
-            if (start.Page == "packvice") { ViceLinks.Preview = true; shownSig = null; }
             if (start.Tab >= 0) tabs.Selected = start.Tab;
             if (start.Select != null)
             {
@@ -1679,9 +1674,8 @@ namespace TrackVice
             }
             if (start.Compact) ToggleCompact();
             Form page = null;
-            if (start.Page == "settings") page = new SettingsDialog(theme);
+            if (SettingsDialog.IsShotPage(start.Page)) page = SettingsDialog.ForShot(theme, start.Page, start.Select);
             else if (start.Page == "about") page = new AboutDialog(theme);
-            else if (start.Page == "notifyvice") { ViceLinks.Preview = start.Select == "ready"; shotSide = DeviceSides.Intune; ShowDevicesMenu(); }
             else if (Array.IndexOf(WelcomePages, start.Page) >= 0) page = ShotWelcome();
             else if (Array.IndexOf(DevicePages, start.Page) >= 0) page = ShotDevices();
             else if (start.Page == "devicelogs") { FetchDeviceLogs(null, 0); LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); }

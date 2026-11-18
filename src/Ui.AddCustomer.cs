@@ -831,7 +831,7 @@ namespace TrackVice
                     // --select empty shows the section as it is before Your storage is set up.
                     if (start.Select == "empty") YourStorageUi.Secrets = new MemorySecrets();
                     else YourStorageUi.UseDemo();
-                    SettingsDialog sd = new SettingsDialog(theme);
+                    SettingsDialog sd = new SettingsDialog(theme, SettingsCatalog.Storage);
                     // Scrolled to the Your storage section.
                     sd.Shown += delegate { sd.BeginInvoke((MethodInvoker)delegate { foreach (Control c in sd.Controls) { Panel p = c as Panel; if (p != null && p.AutoScroll) p.AutoScrollPosition = new Point(0, Dpi.S(start.Tab >= 0 ? start.Tab : 1500)); } }); };
                     return sd;

@@ -741,6 +741,8 @@ namespace TrackVice
             Menus.Add(m, "The guide to the agent, on GitHub", delegate { OpenLink(AgentGuide); });
             Menus.Add(m, "TrackVice on GitHub", delegate { OpenLink(AppUpdate.ReleasesUrl.Replace("/releases", "")); });
             Menus.Separator(m);
+            Menus.Add(m, "Command line", delegate { HelpPage(AboutDialog.CommandLinePart); });
+            Menus.Add(m, "Keyboard shortcuts", delegate { HelpPage(AboutDialog.ShortcutsPart); });
             Menus.Add(m, "About TrackVice  (F1)", delegate { About(); });
             return m;
         }

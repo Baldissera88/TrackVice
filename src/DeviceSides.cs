@@ -146,7 +146,7 @@ namespace TrackVice
         public const string AddCustomer = "addcustomer", Customers = "customers", Intune = "intune", Agents = "agents",
             Readiness = "readiness", Names = "names", NewCustomer = "newcustomer",
             Sccm = "sccm", SmsProvider = "smsprovider", TsAgent = "tsagent", TsAgents = "tsagents",
-            Stats = "stats", Wall = "wall", Compare = "compare", Reference = "reference", NotifyVice = "notifyvice",
+            Stats = "stats", Wall = "wall", Compare = "compare", Reference = "reference",
             Watch = "watch",
             DemoIntune = "demo-intune", DemoAgents = "demo-agents", DemoSccm = "demo-sccm", DemoStats = "demo-stats",
             DemoWall = "demo-wall", DemoCompare = "demo-compare", DemoReadiness = "demo-readiness",
@@ -155,7 +155,7 @@ namespace TrackVice
         // Every entry the Devices menu had before it was split, so a test can check that none went missing.
         public static readonly string[] Before =
         {
-            AddCustomer, Intune, Agents, Sccm, Stats, Wall, Compare, Reference, Names, Readiness, NewCustomer, NotifyVice, Watch,
+            AddCustomer, Intune, Agents, Sccm, Stats, Wall, Compare, Reference, Names, Readiness, NewCustomer, Watch,
             DemoIntune, DemoAgents, DemoSccm, DemoStats, DemoWall, DemoCompare, DemoReadiness, DemoNewCustomer, DemoAddCustomer
         };
 
@@ -186,7 +186,6 @@ namespace TrackVice
             l.Add(new DeviceMenuEntry(Wall, "Wall view…"));
             l.Add(new DeviceMenuEntry(Compare, "Compare with another enrollment"));
             l.Add(new DeviceMenuEntry(Reference, null));
-            l.Add(new DeviceMenuEntry(NotifyVice, null));
             l.Add(DeviceMenuEntry.Line());
             l.Add(new DeviceMenuEntry(Watch, "Watch this device"));
             l.Add(DeviceMenuEntry.Line());

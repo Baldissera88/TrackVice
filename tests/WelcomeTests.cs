@@ -198,7 +198,7 @@ namespace TrackVice.Tests
             List<string> intune = Ids(DeviceSides.Intune);
             List<string> sccm = Ids(DeviceSides.Sccm);
             foreach (string id in DeviceMenu.Before) T.Check(intune.Contains(id) || sccm.Contains(id), "still in the Devices menu: " + id);
-            foreach (string id in new string[] { DeviceMenu.Stats, DeviceMenu.Wall, DeviceMenu.Compare, DeviceMenu.Reference, DeviceMenu.NotifyVice, DeviceMenu.Watch })
+            foreach (string id in new string[] { DeviceMenu.Stats, DeviceMenu.Wall, DeviceMenu.Compare, DeviceMenu.Reference, DeviceMenu.Watch })
             {
                 T.Check(intune.Contains(id), "on the Intune side: " + id);
                 T.Check(sccm.Contains(id), "on the SCCM side: " + id);
