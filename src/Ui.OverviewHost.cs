@@ -396,6 +396,7 @@ namespace TrackVice
                 snap.Agents = (overviewSig ?? "").Contains("|a|");
                 snap.Sccm = (overviewSig ?? "").Contains("|s|");
             }
+            AgentVersionUi.Wire(overviewDemo);
             OverviewData d = OverviewModel.Build(snap, overviewPage.Filter, now, DateTime.Today.ToUniversalTime(), extraTiles);
             SideFacts f = Facts();
             List<SetupNeed> needs = OverviewModel.SetupNeeds(f.Storage, f.Customers, f.SccmServer, overviewPage.Filter.Side);

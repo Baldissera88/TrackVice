@@ -565,6 +565,7 @@ namespace TrackVice
 
             TimeSpan? el = t.Elapsed(now);
             string left = el.HasValue ? (t.Final ? "Took " : "Running for ") + Txt.DurationShort(el) : "";
+            if (!string.IsNullOrEmpty(t.Version)) left += (left.Length > 0 ? " · " : "") + AgentVersions.Header(t.Version);
             string right = "Last upload " + Txt.Ago(t.LastUtc, now);
             int rw = Draw.Measure(right, small).Width + Dpi.S(4);
             Draw.Text(g, left, small, new Rectangle(x, bottomY, w - rw - Dpi.S(10), small.Height + 2), T.Text3, Draw.Line);

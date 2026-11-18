@@ -432,6 +432,7 @@ namespace TrackVice
             Average(data.Today, nowUtc);
             Steps(data, weekSessions, weekWithSession, nowUtc);
             Attention(data, nowUtc);
+            data.Attention.AddRange(AgentVersions.Tiles(data, nowUtc, AgentVersions.PublishedNow()));
             if (more != null) foreach (AttentionTile t in more) if (t != null) data.Attention.Add(t);
             data.Attention.Sort(delegate (AttentionTile a, AttentionTile b)
             {

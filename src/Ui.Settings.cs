@@ -825,13 +825,14 @@ namespace TrackVice
 
         void BuildLogVice(List<Control> l)
         {
+            FlatButton bDownload = SmallButton("Download", delegate { DownloadLogVice(); });
             FlatButton bBrowse = SmallButton("Browse", delegate { BrowseLogVice(); });
             FlatButton bClear = SmallButton("Clear", delegate
             {
                 Prefs.Set("LogVicePath", null);
                 UpdateLogVice();
             });
-            logViceRow = Bind("logvice", new SettingRow(Glyphs2.Folder, "LogVice", "", new ButtonStrip(bBrowse, bClear)));
+            logViceRow = Bind("logvice", new SettingRow(Glyphs2.Folder, "LogVice", "", new ButtonStrip(bDownload, bBrowse, bClear)));
             l.Add(logViceRow);
             UpdateLogVice();
         }
@@ -841,13 +842,35 @@ namespace TrackVice
             string custom = Prefs.Get("LogVicePath", null);
             string found = LogViceLink.Find();
             string where;
-            if (!string.IsNullOrEmpty(custom)) where = "Chosen: " + custom + (found == custom ? "" : " (not found)");
-            else if (found != null) where = "Found: " + found;
-            else where = "Not found. Browse to choose it.";
+            string version = LogViceGet.VersionOf(found);
+            string has = version != null ? " Version " + version + "." : "";
+            if (!string.IsNullOrEmpty(custom)) where = "Chosen: " + custom + (found == custom ? "." + has : " (not found)");
+            else if (found != null) where = "Found: " + found + "." + has;
+            else where = "Not found. Download gets it from GitHub, Browse chooses it.";
             logViceRow.Desc = SettingsCatalog.Find("logvice").Summary + " " + where;
             logViceRow.Invalidate();
             RefreshMarks();
             Relayout();
+        }
+
+        // Opens the same question as a LogVice button, without opening logs afterwards.
+        void DownloadLogVice()
+        {
+            LogViceContext c = null;
+            foreach (Form f in Application.OpenForms)
+            {
+                MainForm m = f as MainForm;
+                if (m != null) { c = m.LogViceContextNow(); break; }
+            }
+            if (c == null) { c = new LogViceContext(); c.Window = true; c.Admin = Program.IsAdmin; }
+            bool find;
+            using (LogViceDialog d = new LogViceDialog(theme, c, false))
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                find = d.FindChosen;
+            }
+            if (find) BrowseLogVice();
+            else UpdateLogVice();
         }
 
         void BrowseLogVice()

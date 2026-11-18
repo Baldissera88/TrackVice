@@ -352,6 +352,8 @@ namespace TrackVice
         // The checked new TrackVice.exe, when it was downloaded.
         public string Path;
         public string Message;
+        // A short code for why no update was installed, as the agent uploads it: see AgentVersions.
+        public string Why = AgentVersions.Invalid;
     }
 
     public static class AgentUpdate
@@ -395,6 +397,7 @@ namespace TrackVice
             catch (Exception ex)
             {
                 r.Message = "No update information in " + store.Title + ": " + ex.Message;
+                r.Why = AgentVersions.Link;
                 return r;
             }
             r.Manifest = m;
@@ -403,11 +406,13 @@ namespace TrackVice
             catch (Exception ex)
             {
                 r.Message = "The update key cannot be used: " + ex.Message;
+                r.Why = AgentVersions.BadKey;
                 return r;
             }
             if (!signed)
             {
                 r.Message = "agent/latest.json is not signed with the update key of this device. It is ignored.";
+                r.Why = AgentVersions.Signature;
                 return r;
             }
             string problem = m.Problem();
@@ -417,6 +422,7 @@ namespace TrackVice
                 return r;
             }
             r.Decision = Decide(current, publicKey, store.Title, m.Version);
+            r.Why = AgentVersions.On;
             if (r.Decision == UpdateDecision.Same)
             {
                 r.Message = "The agent runs the published version " + m.Version + ".";
@@ -433,12 +439,14 @@ namespace TrackVice
             {
                 r.Decision = UpdateDecision.Invalid;
                 r.Message = "Version " + m.Version + " could not be downloaded: " + ex.Message;
+                r.Why = AgentVersions.Link;
                 return r;
             }
             if (exe.LongLength != m.Size)
             {
                 r.Decision = UpdateDecision.Invalid;
                 r.Message = m.Blob + " has " + exe.LongLength + " bytes, the signed size is " + m.Size + ". It is not installed.";
+                r.Why = AgentVersions.Download;
                 return r;
             }
             string hash = Sha256Hex(exe);
@@ -446,6 +454,7 @@ namespace TrackVice
             {
                 r.Decision = UpdateDecision.Invalid;
                 r.Message = m.Blob + " has SHA-256 " + hash + ", the signed one is " + m.Sha256.ToUpperInvariant() + ". It is not installed.";
+                r.Why = AgentVersions.Download;
                 return r;
             }
             Directory.CreateDirectory(stageDir);
@@ -475,6 +484,9 @@ namespace TrackVice
         readonly IUpdateLauncher launcher;
         DateTime nextUtc = DateTime.MinValue;
         bool waitFirst;
+        // The result of the last check as an AgentVersions code, and when it ran.
+        public string State = AgentVersions.On;
+        public DateTime? CheckedUtc;
 
         public AgentSelfUpdate(ISessionStore store, string publicKey, string current, string installDir, IUpdateLauncher launcher, Action<string> log)
         {
@@ -564,12 +576,15 @@ namespace TrackVice
                 return false;
             }
             UpdateCheck r;
+            CheckedUtc = nowUtc;
             try { r = AgentUpdate.Check(store, key, current, Path.Combine(dir, AgentUpdate.StageFolder)); }
             catch (Exception ex)
             {
+                State = AgentVersions.Link;
                 log("Update check failed: " + ex.Message);
                 return false;
             }
+            State = r.Why;
             log("Update check: " + r.Message);
             if (r.Path == null) return false;
             try
