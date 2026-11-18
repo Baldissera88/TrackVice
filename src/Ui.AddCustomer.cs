@@ -819,6 +819,7 @@ namespace TrackVice
             }
             publishNote.Say(OwnPublish.Prompt(running), true);
             publishNote.Visible = true;
+            ShowPublishBanner(running);
         }
 
         Form ShotAddCustomer()

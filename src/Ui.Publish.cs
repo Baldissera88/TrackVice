@@ -42,7 +42,7 @@ namespace TrackVice
 
             bPublish = SmallButton("Publish", delegate { Run(true); });
             bPublish.Primary = true;
-            publishRow = new SettingRow(Glyphs2.Sync, "Publish", "Uploads TrackVice-<version>.exe and agent/latest.json, signed with the update key. Agents check every 6 hours and never install an older version.", bPublish);
+            publishRow = new SettingRow(Glyphs2.Sync, "Publish", "Uploads TrackVice-<version>.exe and agent/latest.json, signed with the update key. Agents check every 6 hours and never install an older version.", new ButtonStrip(PublishExplainDialog.Button(t), bPublish));
 
             Add(new SectionTitle("Signing key"));
             Add(keyRow);
