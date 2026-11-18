@@ -301,6 +301,7 @@ namespace TrackVice
             themed.Add(bItemCopy);
             foot.Controls.Add(bItemLog);
             foot.Controls.Add(bItemCopy);
+            AddReportLinks(foot);
             itemDetail.Dock = DockStyle.Fill;
             detailHost.Controls.Add(itemDetail);
             detailHost.Controls.Add(foot);
@@ -1691,6 +1692,7 @@ namespace TrackVice
             else if (Array.IndexOf(AddCustomerUi.Pages, start.Page) >= 0) page = ShotAddCustomer();
             else if (start.Page == "readiness") { ReadinessDialog rd = new ReadinessDialog(theme, new DemoReadinessGraph(DateTime.UtcNow), null, true); rd.RunAtStart = true; page = rd; }
             else if (Array.IndexOf(UpdatePages, start.Page) >= 0) page = ShotUpdate();
+            else if (Array.IndexOf(FeedbackPages, start.Page) >= 0) page = ShotFeedback();
             else if (start.Remote != null && start.Pick == null)
             {
                 bool sign = start.Select != null && start.Select.StartsWith("signin");

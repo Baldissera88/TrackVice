@@ -20,6 +20,7 @@ Setups made before this, with a storage account and links per customer, keep wor
 - [Test on one device first](#test-on-one-device-first)
 - [Follow the devices](#follow-the-devices)
 - [New TrackVice versions](#new-trackvice-versions)
+  - [What does Publish do?](#what-does-publish-do)
 - [The settings in the code](#the-settings-in-the-code)
 - [Data in the customer's own Azure](#data-in-the-customers-own-azure)
 - [Change a customer later](#change-a-customer-later)
@@ -244,13 +245,34 @@ Add customer saves the viewer link with the customer, encrypted for your Windows
 
 You publish a version once, to your storage. Every customer gets it from there.
 
-**Publish.** When TrackVice starts and the version in your storage is older than the one running, the status bar says "TrackVice <version> is not published to your storage." with **Publish**. Nothing is published until you click it. **Settings > Your storage > Publish** does the same. TrackVice uploads `agent/TrackVice-<version>.exe` first and `agent/latest.json` last, signed with the update key. To publish another version, publish from that version of TrackVice.
+**Publish.** When TrackVice starts and the version in your storage is older than the one running, a banner at the top of the window says "TrackVice <new> is installed. Your devices still get <old>." with **Publish**, **What does Publish do?** and **Later**, which hides it until the next start. The status bar says "TrackVice <version> is not published to your storage." with **Publish**, also when nothing is published yet. Nothing is published until you click it. After an update from GitHub, TrackVice opens with the banner. **Settings > Your storage > Publish** does the same. TrackVice uploads `agent/TrackVice-<version>.exe` first and `agent/latest.json` last, signed with the update key. To publish another version, publish from that version of TrackVice.
 
 **New devices** download the newest published version when the script runs.
 
 **Installed agents** check `agent/latest.json` at start and every 6 hours, and install a newer version signed with the key in their customer code. A version that is the same or older is not installed. How the replacement works is in [Agent updates](#agent-updates).
 
 If publishing makes a new update key, because this PC had none, TrackVice says so. Codes made before have the old key, so their devices refuse the new version. See [Maintenance](#maintenance).
+
+### What does Publish do?
+
+**What does Publish do?** next to each Publish button shows this, with a drawing.
+
+```text
+This PC                      Your storage                        Devices at your customers
+TrackVice <version>  ----->  trackvice-agent              ----->  New: at enrollment
+the update key    Publish    agent/latest.json, signed   Read    Installed agents: within 6 hours
+                             agent/TrackVice-<version>.exe
+```
+
+**What is sent.** This TrackVice.exe, as agent/TrackVice-&lt;version&gt;.exe, and agent/latest.json, which names that version, its size and its SHA-256 and is signed with the update key on this PC. The exe goes first and agent/latest.json last. Nothing else is sent, and only to trackvice-agent in your storage.
+
+**Who gets it, and when.** New devices: the platform script reads agent/latest.json when it runs at enrollment, checks the signature, size and SHA-256, and installs that version. Installed agents: they check at their start and every 6 hours, and install it when it is newer than their own and signed with the key in their customer code. The platform script in Intune is not changed. The agent in an SCCM task sequence does not update itself: its package decides the version.
+
+**What is not affected.** Your customers' containers with their sessions and logs, the customer codes and links, the scripts in Intune, and GitHub.
+
+**How to go back.** Installed agents never install an older version, so they keep the new one until they remove themselves: 48 hours after their deployment is done, and at the latest 30 days after they were installed, unless the customer code sets other times. For new devices, publish the older version from the command line on this PC, which has the update key: TrackVice.exe /publish-agent /to "&lt;link to trackvice-agent with Create and Write&gt;" /exe "&lt;the older TrackVice.exe&gt;". Make the link in the Azure portal. Publish in the window only offers a version newer than the published one.
+
+TrackVice never publishes by itself.
 
 ## The settings in the code
 

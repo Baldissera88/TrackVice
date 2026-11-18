@@ -459,7 +459,7 @@ namespace TrackVice
             });
             strip = new ButtonStrip(bSetUp);
             main = new SettingRow(Glyphs2.Folder, "Your storage", "", strip);
-            version = new SettingRow(Glyphs2.Sync, "TrackVice for the devices", "", bPublish);
+            version = new SettingRow(Glyphs2.Sync, "TrackVice for the devices", "", new ButtonStrip(PublishExplainDialog.Button(theme), bPublish));
             remove = new SettingRow(Glyphs.Shield, "Remove", "Forgets the account key and the links on this PC. Nothing in Azure is deleted.", bRemove);
             security = new SettingRow(Glyphs.Shield, "Security", "", bCheck);
             days = new SettingRow(Glyphs2.Calendar, "Delete uploads after", "", sDays);
