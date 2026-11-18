@@ -285,6 +285,9 @@ namespace TrackVice
                 go.ForeColor = theme.Accent;
             }
             Menus.Separator(m);
+            Menus.Add(m, "Overview  (Alt+Home)", delegate { GoHome(true); });
+            Menus.Add(m, "Recent devices and search…", delegate { OpenRecentList(""); });
+            Menus.Separator(m);
 
             ToolStripMenuItem demos = null;
             foreach (DeviceMenuEntry e in DeviceMenu.For(side))

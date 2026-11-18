@@ -93,6 +93,7 @@ namespace TrackVice
                 Size = start.Size;
             }
             BuildHeader();
+            BuildNav();
             BuildReference();
             BuildViews();
             Controls.Add(content);
@@ -137,6 +138,7 @@ namespace TrackVice
                 {
                     Begin(Settings.NewLive(), true);
                     MaybeWelcome();
+                    MaybeOverview();
                 }
             });
         }
@@ -565,6 +567,7 @@ namespace TrackVice
         void Begin(Engine e, bool watch)
         {
             HideWelcome();
+            NoteOpened(e);
             pollTimer.Stop();
             if (engine != null) engine.Dispose();
             engine = e;
@@ -640,6 +643,7 @@ namespace TrackVice
                     Status("This deployment started " + Txt.Local(e.StartedBeforeHistory.Value) + ", before the history TrackVice reads, so older items show only their saved state. Settings > History to read > Since install reads everything.");
                 SelectInteresting();
                 WelcomeAfterLoad(e);
+                OverviewAfterLoad(e);
                 if (start.Shot != null) Shot();
                 else if (start.Compact) ToggleCompact();
             }
@@ -799,6 +803,7 @@ namespace TrackVice
             if (compact != null && !compact.IsDisposed) compact.UpdateFrom(engine, watching);
             UpdateStatusRight();
             Text = (s.Items.Count > 0 ? ((int)Math.Round(overall.Progress * 100)).ToString(Inv) + " % · " : "") + s.Computer + " - TrackVice";
+            UpdateRecent();
         }
 
         void SetChip(string f)
@@ -1546,6 +1551,7 @@ namespace TrackVice
                 }
                 if (d.Picked == null || d.Catalog == null) return;
                 watchedCustomer = demo ? null : CustomerUi.CurrentName;
+                demoOpen = demo;
                 Begin(Engine.ForRemote(d.Catalog.Open(d.Picked), d.Picked), true);
             }
         }
@@ -1584,6 +1590,7 @@ namespace TrackVice
                 d.ShowDialog(this);
                 if (d.Picked == null) return;
                 watchedCustomer = demo ? null : CustomerUi.CurrentName;
+                demoOpen = demo;
                 Begin(Engine.ForRemote(d.Catalog.Open(d.Picked), d.Picked), true);
             }
         }
@@ -1664,8 +1671,13 @@ namespace TrackVice
 
         // ---------- screenshots for the README (--shot) ----------
 
+        bool shotStarted;
+
         void Shot()
         {
+            // A device opened while the screenshot is set up loads later and must not start a second one.
+            if (shotStarted) return;
+            shotStarted = true;
             if (start.Tab >= 0) tabs.Selected = start.Tab;
             if (start.Select != null)
             {
@@ -1678,6 +1690,7 @@ namespace TrackVice
             if (SettingsDialog.IsShotPage(start.Page)) page = SettingsDialog.ForShot(theme, start.Page, start.Select);
             else if (start.Page == "about") page = new AboutDialog(theme);
             else if (Array.IndexOf(WelcomePages, start.Page) >= 0) page = ShotWelcome();
+            else if (Array.IndexOf(OverviewPages, start.Page) >= 0) ShotOverview();
             else if (Array.IndexOf(DevicePages, start.Page) >= 0) page = ShotDevices();
             else if (start.Page == "devicelogs") { FetchDeviceLogs(null, 0); LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); }
             else if (start.Page == "customers") page = new CustomersPage(theme, CustomerBook.Demo());
@@ -1719,6 +1732,7 @@ namespace TrackVice
                 {
                     list.ClearHover();
                     list.Refresh();
+                    if (overviewPage != null) { overviewPage.ClearHover(); Refresh(); }
                     gantt.Chart.ClearHover();
                     gantt.Chart.Refresh();
                     Form target = page != null ? page : start.Compact && compact != null ? (Form)compact : this;
@@ -1754,6 +1768,9 @@ namespace TrackVice
                     case Keys.Control | Keys.L: OpenItemLog(list.SelectedItem); return true;
                     case Keys.Control | Keys.M: ToggleCompact(); return true;
                     case Keys.Control | Keys.D: ShowDevicesMenu(); return true;
+                    case Keys.Alt | Keys.Left: case Keys.BrowserBack: NavGo(false); return true;
+                    case Keys.Alt | Keys.Right: case Keys.BrowserForward: NavGo(true); return true;
+                    case Keys.Alt | Keys.Home: case Keys.BrowserHome: GoHome(true); return true;
                     case Keys.Escape:
                         if (search.Focused && search.Text.Length > 0) { search.Text = ""; return true; }
                         if (tlSearch.Focused && tlSearch.Text.Length > 0) { tlSearch.Text = ""; return true; }
