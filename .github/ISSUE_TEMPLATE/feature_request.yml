@@ -1,0 +1,28 @@
+name: Feature request
+description: Something you would like TrackVice to do.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help > Suggest a feature in TrackVice fills in this form for you.
+  - type: textarea
+    id: what
+    attributes:
+      label: What you would like
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What it would solve, or what takes too long today.
+    validations:
+      required: false
+  - type: textarea
+    id: how
+    attributes:
+      label: How you would use it
+    validations:
+      required: false

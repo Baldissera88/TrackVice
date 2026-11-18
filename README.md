@@ -493,6 +493,17 @@ TrackVice is plain C# 5 and Windows Forms on .NET Framework 4.5, with no NuGet p
 | `art/` | The icon, drawn in the same style as the other Vice icons |
 | `release.ps1`, `bump.ps1`, `bump.sh`, `sums.sh`, `winget/` | Release tooling, see [docs/RELEASE.md](docs/RELEASE.md) |
 
+## Using TrackVice? Tell me
+
+TrackVice collects nothing and sends nothing by itself, so the author only knows you use it when you say so.
+
+- **Help > Tell the author you use TrackVice**: name, company, e-mail and what you use it for, all optional. It opens an e-mail to [dbal.itx@gmail.com](mailto:dbal.itx@gmail.com) or a [GitHub discussion](https://github.com/Baldissera88/TrackVice/discussions) with the text, and you send it.
+- **Help > Report a problem**: what happened, what you expected and the steps to repeat it. TrackVice fills in its version, the Windows version, what was open and the last errors it showed, and lists them on the page before anything leaves. Customer names, tenants, device names and links in those errors are replaced. It opens a [bug report](https://github.com/Baldissera88/TrackVice/issues/new?template=bug_report.yml) or an e-mail. A log bundle, with secrets in the session masked as the agent masks them, is saved for you to look through and attach yourself. **Report a problem** also shows below a failed item and in the status bar after an error.
+- **Help > Suggest a feature**: what you would like, why, and how you would use it, as a [feature request](https://github.com/Baldissera88/TrackVice/issues/new?template=feature_request.yml), a discussion or an e-mail.
+- **Help > Downloads** shows how often each release was downloaded from GitHub. It asks GitHub under the same rules as the update check.
+
+None of these is offered on the command line, as the agent, in Windows PE, during Windows setup or the ESP, while a task sequence runs or TrackVice follows a deployment on the device, or as SYSTEM.
+
 ## License
 
 TrackVice is released under the [MIT license](LICENSE).

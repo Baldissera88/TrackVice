@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions, and telling the author you use TrackVice
+    url: https://github.com/Baldissera88/TrackVice/discussions
+    about: Ask a question or say how you use TrackVice. Help > Tell the author you use TrackVice can also open an e-mail.

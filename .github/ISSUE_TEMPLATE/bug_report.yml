@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in TrackVice does not work as it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help > Report a problem in TrackVice fills in this form for you. Do not put customer names, tenants, device names or links here unless they are needed. Attach a log bundle yourself if you made one, after you have looked through it.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What TrackVice did, or the message it showed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to repeat it
+      placeholder: |
+        1. Open Devices > ...
+        2. ...
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: TrackVice version
+      placeholder: "1.4.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 Enterprise 24H2, build 26100.2605"
+    validations:
+      required: false
+  - type: input
+    id: mode
+    attributes:
+      label: What was open
+      description: This PC, devices with the TrackVice agent, Autopilot in Intune, task sequences in SCCM, a saved session or a folder of logs.
+    validations:
+      required: false
+  - type: textarea
+    id: errors
+    attributes:
+      label: Last errors in TrackVice
+      description: The errors TrackVice showed in this session, newest first.
+      render: text
+    validations:
+      required: false

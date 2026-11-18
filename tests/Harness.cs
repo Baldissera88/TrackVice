@@ -71,6 +71,7 @@ namespace TrackVice.Tests
             AppUpdateTests.Run();
             WelcomeTests.Run();
             ThemeTests.Run();
+            FeedbackTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }
