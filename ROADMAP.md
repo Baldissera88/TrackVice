@@ -60,3 +60,22 @@ What is planned for the next version of TrackVice. Nothing here is built yet.
 - **Help > Suggest a feature**: what you would like, why, and how you would use it.
 - Opens a pre-filled GitHub issue (the feature template), a GitHub Discussion, or an e-mail to dbal.itx@gmail.com.
 - A GitHub issue template "Feature request", and a line in the README.
+
+## 8. Settings divided into subjects
+
+Today Settings is one long page with about fifteen sections in a row, from the theme to keyboard shortcuts.
+
+- A list of subjects on the left and one short page per subject on the right:
+  - **General**: theme, what TrackVice opens on, updates from GitHub.
+  - **This device**: what to read and how far back, ConfigMgr client WMI, event logs, how often to look again.
+  - **Customers**: the list, import and export, Customer code.
+  - **Intune / cloud**: Autopilot sign-in, tenant, client ID, names from Intune.
+  - **SCCM / on-premises**: the SMS Provider and site code to use by default.
+  - **Your storage and agents**: Your storage, Publish and what it does, Check security, the update key, keeping the account key.
+  - **Other tools**: LogVice, PackVice and NotifyVice.
+  - **Data and privacy**: where TrackVice keeps things on this PC, what it sends and to whom, forgetting sign-ins and kept data.
+- A search box at the top that finds a setting by name and opens its page.
+- Each setting in one short sentence; a longer explanation behind a small "More" where it is needed.
+- A mark on settings changed from the default, and Reset on each page.
+- Command line, keyboard shortcuts and About move to Help, since they are not settings.
+- It remembers the last page.
