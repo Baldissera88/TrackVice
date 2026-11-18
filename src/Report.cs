@@ -199,7 +199,8 @@ namespace TrackVice
             if (s.Info.Count > 0)
             {
                 b.Append("<h2>Deployment</h2><div class=\"card keep\"><table><tbody>");
-                foreach (Pair p in s.Info) b.Append("<tr><th style=\"width:30%\">").Append(H(p.Key)).Append("</th><td>").Append(H(p.Value)).Append("</td></tr>");
+                foreach (Pair p in s.Info) if (!AgentVersions.IsKey(p.Key)) b.Append("<tr><th style=\"width:30%\">").Append(H(p.Key)).Append("</th><td>").Append(H(p.Value)).Append("</td></tr>");
+                foreach (string[] row in AgentVersions.ReportRows(s)) b.Append("<tr><th style=\"width:30%\">").Append(H(row[0])).Append("</th><td>").Append(H(row[1])).Append("</td></tr>");
                 b.Append("</tbody></table></div>");
             }
 

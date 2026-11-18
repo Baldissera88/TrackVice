@@ -275,39 +275,90 @@ namespace TrackVice
             Dock = DockStyle.Top;
             Height = Dpi.S(44);
             Padding = new Padding(Dpi.S(20), Dpi.S(6), Dpi.S(20), Dpi.S(6));
-            Text2.Dock = DockStyle.Fill;
+            Text2.AutoSize = false;
             Text2.TextAlign = ContentAlignment.MiddleLeft;
-            Text2.AutoEllipsis = true;
+            Text2.UseMnemonic = false;
             PublishButton.Primary = true;
-            foreach (FlatButton b in new FlatButton[] { LaterButton, ExplainButton, PublishButton })
+            Controls.Add(Text2);
+            foreach (FlatButton b in Buttons())
             {
                 b.Compact = true;
                 b.AutoWidth();
-                b.Dock = DockStyle.Right;
                 Controls.Add(b);
-                Panel gap = new Panel();
-                gap.Dock = DockStyle.Right;
-                gap.Width = Dpi.S(6);
-                Controls.Add(gap);
             }
-            Controls.Add(Text2);
-            Text2.BringToFront();
+        }
+
+        // Left to right, as they show.
+        FlatButton[] Buttons()
+        {
+            return new FlatButton[] { PublishButton, ExplainButton, LaterButton };
+        }
+
+        bool arranging, publishShown = true;
+
+        // The text wraps, and the buttons go below it when the window is too narrow for both on one line.
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            base.OnLayout(e);
+            if (arranging) return;
+            arranging = true;
+            try
+            {
+                List<FlatButton> shown = new List<FlatButton>();
+                foreach (FlatButton b in Buttons()) if (b != PublishButton || publishShown) shown.Add(b);
+                int[] widths = new int[shown.Count];
+                for (int i = 0; i < widths.Length; i++) widths[i] = shown[i].Width;
+                int avail = Math.Max(Dpi.S(40), ClientSize.Width - Padding.Horizontal);
+                int gap = Dpi.S(6);
+                BannerFlow f = BannerFlow.Arrange(avail, widths, gap, Dpi.S(280));
+                Size need = TextRenderer.MeasureText(Text2.Text ?? "", Text2.Font, new Size(f.TextWidth, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                int bh = Dpi.S(32);
+                foreach (FlatButton b in shown) bh = Math.Max(bh, b.Height);
+                int th = need.Height;
+                int top = Padding.Top;
+                int h;
+                if (f.OneRow)
+                {
+                    int line = Math.Max(th, bh);
+                    Text2.Bounds = new Rectangle(Padding.Left, top, f.TextWidth, line);
+                    for (int i = 0; i < shown.Count; i++) shown[i].Bounds = new Rectangle(Padding.Left + f.X[i], top + (line - bh) / 2, widths[i], bh);
+                    h = top + line + Padding.Bottom;
+                }
+                else
+                {
+                    Text2.Bounds = new Rectangle(Padding.Left, top, f.TextWidth, th + Dpi.S(4));
+                    int y = top + th + Dpi.S(8);
+                    for (int i = 0; i < shown.Count; i++) shown[i].Bounds = new Rectangle(Padding.Left + f.X[i], y + f.Row[i] * (bh + gap), Math.Min(widths[i], avail), bh);
+                    h = y + f.Rows * (bh + gap) - gap + Padding.Bottom;
+                }
+                if (Height != h) Height = h;
+            }
+            finally { arranging = false; }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            PerformLayout();
         }
 
         public void Say(string text, bool canPublish, string closeText)
         {
             Text2.Text = text;
             PublishButton.Visible = canPublish;
+            publishShown = canPublish;
             PublishButton.Enabled = true;
             ExplainButton.Visible = true;
             LaterButton.Text = closeText;
             LaterButton.AutoWidth();
+            PerformLayout();
         }
 
         public void Working(string text)
         {
             Text2.Text = text;
             PublishButton.Enabled = false;
+            PerformLayout();
         }
 
         public void ApplyTheme(Theme t)

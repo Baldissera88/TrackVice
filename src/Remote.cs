@@ -22,6 +22,8 @@ namespace TrackVice
         public DateTime LastUtc;
         public string Detail;
         public string Serial;
+        // The TrackVice version of the agent that uploaded, for devices with the agent.
+        public string Version;
 
         public TimeSpan? Duration(DateTime nowUtc)
         {

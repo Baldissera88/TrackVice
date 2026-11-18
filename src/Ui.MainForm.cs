@@ -753,7 +753,7 @@ namespace TrackVice
             if (engine.Mode == Modes.Demo) sub.Add("Demo data");
             else if (engine.Mode == Modes.Intune) sub.Add("Intune");
             else if (engine.Mode == Modes.Sccm) sub.Add("SCCM");
-            else if (engine.Mode == Modes.Agent) sub.Add("Agent");
+            else if (engine.Mode == Modes.Agent) sub.Add(AgentVersions.Header(s.AppVersion));
             sub.Add(s.Computer);
             if (s.Items.Count > 0) sub.Add(s.Kind);
             string profile = s.GetInfo("Task sequence") ?? s.GetInfo("Autopilot profile");
@@ -1176,10 +1176,11 @@ namespace TrackVice
             if (engine.Mode == Modes.Live) Field(r, "History read", "Since " + Txt.Local(s.SinceUtc) + " (" + Settings.HoursText(Hours) + ")", false);
             if (engine.Mode == Modes.File) Field(r, "File", s.SourcePath, true);
             if (engine.Mode == Modes.Folder) Field(r, "Folder", s.SourcePath, true);
+            if (engine.Mode == Modes.Agent) ShowAgentFacts(r, s);
             if (s.Info.Count > 0)
             {
                 Section(r, "Deployment");
-                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended") Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
+                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended" && !AgentVersions.IsKey(p.Key)) Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
             }
             List<string> src = engine.Sources;
             if (src.Count > 0)
@@ -1315,19 +1316,8 @@ namespace TrackVice
                 return;
             }
             string exe = LogViceLink.Find();
-            if (exe == null)
-            {
-                DialogResult r = MessageBox.Show(this, "LogVice was not found on this computer. Do you want to locate LogVice.exe?", "TrackVice", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                if (r != DialogResult.Yes) return;
-                using (OpenFileDialog d = new OpenFileDialog())
-                {
-                    d.Filter = "LogVice|LogVice.exe|Programs (*.exe)|*.exe";
-                    d.Title = "Locate LogVice.exe";
-                    if (d.ShowDialog(this) != DialogResult.OK) return;
-                    exe = d.FileName;
-                    Prefs.Set("LogVicePath", exe);
-                }
-            }
+            if (exe == null) exe = GetLogVice();
+            if (exe == null) return;
             try
             {
                 LogViceLink.Open(exe, targets);
@@ -1706,6 +1696,7 @@ namespace TrackVice
             else if (start.Page == "readiness") { ReadinessDialog rd = new ReadinessDialog(theme, new DemoReadinessGraph(DateTime.UtcNow), null, true); rd.RunAtStart = true; page = rd; }
             else if (Array.IndexOf(UpdatePages, start.Page) >= 0) page = ShotUpdate();
             else if (Array.IndexOf(FeedbackPages, start.Page) >= 0) page = ShotFeedback();
+            else if (Array.IndexOf(LogVicePages, start.Page) >= 0) page = ShotLogVice();
             else if (start.Remote != null && start.Pick == null)
             {
                 bool sign = start.Select != null && start.Select.StartsWith("signin");

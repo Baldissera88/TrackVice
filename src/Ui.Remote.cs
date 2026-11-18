@@ -128,6 +128,7 @@ namespace TrackVice
             {
                 table.Col("Deployment", 150, delegate (RemoteDeployment d) { return d.User; });
                 table.Col("Profile or task sequence", 190, delegate (RemoteDeployment d) { return d.Profile; });
+                table.Col("Version", 72, delegate (RemoteDeployment d) { return d.Version; }).SortKey = delegate (RemoteDeployment d) { return AgentVersions.SortKey(d.Version); };
             }
             else
             {
@@ -633,7 +634,7 @@ namespace TrackVice
             List<RemoteDeployment> rows = new List<RemoteDeployment>();
             foreach (RemoteDeployment d in all)
             {
-                if (q.Length > 0 && !Has(d.Device, q) && !Has(d.User, q) && !Has(d.Profile, q) && !Has(d.Serial, q) && !Has(d.StateText, q)) continue;
+                if (q.Length > 0 && !Has(d.Device, q) && !Has(d.User, q) && !Has(d.Profile, q) && !Has(d.Serial, q) && !Has(d.StateText, q) && !Has(d.Version, q)) continue;
                 if (!SideShows(d)) continue;
                 rows.Add(d);
             }

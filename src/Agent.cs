@@ -365,6 +365,7 @@ namespace TrackVice
             m["updated"] = Iso(nowUtc);
             m["idle"] = idle ? "1" : "0";
             m["version"] = s.AppVersion;
+            AgentVersions.AddMeta(s, m);
             if (s.GetInfo("Earlier names") != null) m["names"] = s.GetInfo("Earlier names");
             return m;
         }
@@ -379,6 +380,7 @@ namespace TrackVice
             d.Detail = Str(e, "tenant");
             // The agent has no serial number to show. Earlier computer names go there, so searching for one finds the device.
             d.Serial = Str(e, "names");
+            d.Version = Str(e, "version");
             d.StartUtc = Time(e, "started");
             d.LastUtc = Time(e, "updated") ?? e.ModifiedUtc;
             int items = Int(e, "items"), done = Int(e, "done"), failed = Int(e, "failed"), active = Int(e, "active");
@@ -725,6 +727,7 @@ namespace TrackVice
                 else if (installed) SetReg("StartedUtc", started.ToString("o", CultureInfo.InvariantCulture));
                 if (installed && o.Alert == null) o.Alert = Reg("Alert");
                 if (installed && Reg("Mask") == "0") o.Mask = false;
+                if (installed && !string.IsNullOrEmpty(Reg("Version")) && Reg("Version") != Program.Version) SetReg("UpdatedUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
                 if (installed && Reg("Version") != Program.Version) SetReg("Version", Program.Version);
                 AgentLifetime life = installed ? AgentLifetime.FromSettings(Reg, started) : new AgentLifetime(started, o.KeepHours, o.MaxDays);
                 o.KeepHours = life.KeepHours;
@@ -755,6 +758,8 @@ namespace TrackVice
                 string ending = null;
                 bool updating = false;
                 AgentSelfUpdate self = installed && !o.Once ? AgentSelfUpdate.For(Reg("UpdateKey"), Reg("UpdateLink"), Program.Version, InstallDir, new WinUpdateLauncher(System.Reflection.Assembly.GetExecutingAssembly().Location), Log) : null;
+                DateTime? updatedAt = installed ? AgentVersions.Time(Reg("UpdatedUtc")) : null;
+                string offState = installed && self == null && !o.Once ? AgentVersions.OffState(Reg("UpdateKey"), Reg("UpdateLink")) : null;
                 // Everything since Windows was installed: after a restart the session is read again in full.
                 using (Engine e = Engine.ForLive(0, true, true, 2000))
                 {
@@ -763,6 +768,7 @@ namespace TrackVice
                         DateTime now = DateTime.UtcNow;
                         try { e.Apply(e.Poll()); }
                         catch (Exception ex) { Log("Reading failed: " + ex.Message); }
+                        if (installed) AgentVersions.Stamp(e.S, started, updatedAt, self != null ? self.State : offState, self != null ? self.CheckedUtc : null);
                         LifetimeDecision decision = life.Check(e.S, a.Idle(e.S, now, o.IdleMinutes), now);
                         a.Paused = life.Waiting;
                         bool last = o.Once || decision.Remove;
@@ -994,6 +1000,7 @@ namespace TrackVice
             d.Engine.DemoSpeed = 6;
             d.Engine.Apply(d.Engine.DemoTo(seconds));
             d.Engine.S.Computer = computer;
+            AgentVersions.Demo(d.Engine.S, computer, DateTime.UtcNow);
             devices.Add(d);
         }
 
