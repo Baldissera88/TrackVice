@@ -179,6 +179,7 @@ namespace TrackVice
         public event Action<string> StepClicked;
         public event Action<string> AudienceChosen;
         public event EventHandler NotAgain, Closed, Back;
+        public event EventHandler RecentClicked;
 
         Theme theme = Theme.Light();
         readonly Panel col = new Panel();
@@ -212,6 +213,7 @@ namespace TrackVice
             FlowLayoutPanel foot = Foot();
             FlatButton not = Small("Don't show again", delegate { if (NotAgain != null) NotAgain(this, EventArgs.Empty); });
             foot.Controls.Add(not);
+            foot.Controls.Add(Small("Recent devices", delegate { if (RecentClicked != null) RecentClicked(this, EventArgs.Empty); }));
             foot.Controls.Add(Quiet("Help > Welcome shows this page again."));
             Add(foot);
             Done();
@@ -557,13 +559,15 @@ namespace TrackVice
             welcome.AudienceChosen += delegate (string a) { Safe.Run(delegate { Remember(GettingStarted.AudiencePref, a); Remember(GettingStarted.HiddenPref, null); ShowChecklist(a); }); };
             welcome.StepClicked += delegate (string id) { Safe.Run(delegate { OpenStep(id); }); };
             welcome.Back += delegate { Safe.Run(delegate { welcome.ShowChoices(); }); };
-            welcome.Closed += delegate { Safe.Run(delegate { HideWelcome(); }); };
+            welcome.Closed += delegate { Safe.Run(delegate { HideWelcome(); AfterWelcome(); }); };
+            welcome.RecentClicked += delegate { Safe.Run(delegate { OpenRecentList(""); }); };
             welcome.NotAgain += delegate
             {
                 Safe.Run(delegate
                 {
                     Remember(WelcomeGate.SeenPref, "1");
                     HideWelcome();
+                    AfterWelcome();
                     Status("The welcome page will not show at start. Help > Welcome shows it again.");
                 });
             };
@@ -576,6 +580,7 @@ namespace TrackVice
         void ShowWelcome(string mode)
         {
             BuildWelcome();
+            HidePages();
             if (mode == WelcomePage.Checklist)
             {
                 string a = SetupAudience;

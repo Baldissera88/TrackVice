@@ -881,6 +881,34 @@ namespace TrackVice
             publishBanner.Visible = true;
         }
 
+        IAttentionProvider publishProvider;
+
+        // Puts "Publish <version>" under Needs attention on Overview while the banner's rule holds.
+        void RegisterPublishTile()
+        {
+            if (publishProvider != null) return;
+            publishProvider = OverviewAttention.Register(delegate
+            {
+                List<AttentionTile> tiles = new List<AttentionTile>();
+                PublishTile t;
+                try { t = PublishAttention(); }
+                catch (Exception) { return tiles; }
+                if (t == null || !t.Show) return tiles;
+                AttentionTile a = new AttentionTile();
+                a.Key = "publish";
+                a.Level = 1;
+                a.Title = "Publish TrackVice " + YourStorageUi.RunningVersion;
+                a.Text = t.Text;
+                a.ActionText = "Publish";
+                Action publish = t.Publish;
+                a.Open = delegate { BeginInvoke((MethodInvoker)delegate { publish(); }); };
+                a.Order = 15;
+                tiles.Add(a);
+                return tiles;
+            });
+            FormClosed += delegate { OverviewAttention.Unregister(publishProvider); };
+        }
+
         // What the Needs attention tile on Overview needs: whether to show it, its text, and Publish.
         public PublishTile PublishAttention()
         {
