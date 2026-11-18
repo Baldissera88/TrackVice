@@ -1,5 +1,16 @@
 # Changelog
 
+## TrackVice 1.4.1
+
+18 November 2026.
+
+- **Overview** is the home page on a PC that is not deploying: devices deploying now, today and the last 7 days, what needs attention (failed devices, agents that stopped sending, findings, a newer version to publish), recent and pinned devices, and setup. All customers or one, Intune, SCCM or both.
+- **Recent devices** with one search over all customers and sources, pins, and **Back and Forward** (Alt+Left, Alt+Right and the mouse buttons).
+- **Publish** is easy to see: a banner after a newer version starts, a tile on Overview, and **What does Publish do?** next to every Publish button.
+- **Help**: Report a problem, Suggest a feature, Tell the author you use TrackVice, and Downloads. They open a pre-filled GitHub issue or e-mail; TrackVice sends nothing by itself. GitHub has bug and feature forms.
+- **Settings** is divided into subjects, with search, a mark on changed settings and Reset on each page. Command line and Keyboard shortcuts are under Help.
+- PackVice and NotifyVice are taken out of TrackVice for now. LogVice stays.
+
 ## TrackVice 1.4.0
 
 17 November 2026.

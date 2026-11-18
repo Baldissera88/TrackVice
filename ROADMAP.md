@@ -1,6 +1,6 @@
 # Roadmap
 
-What is planned for the next version of TrackVice. Nothing here is built yet.
+What is planned for the next version of TrackVice. Items 1 to 9 are built in 1.4.1, a test build that is not released yet.
 
 ## 1. Find devices again
 
