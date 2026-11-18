@@ -44,3 +44,13 @@ Seen on a real device: a deployment was stopped by shutting the PC down in the e
 - A restart that was a shutdown for longer than 15 minutes is shown as "Off from 00:56 to 09:57 (9 h 01 min)", not as a restart that took 9 hours; its own time is the shutdown and the start, in seconds or minutes.
 - The Gantt shows the time off as a hatched band, and the time axis can collapse it.
 - "No progress" and "agent stopped sending" do not fire for a device that is off after a clean shutdown; the device list says "Off since 00:56" instead of stalled. The same rule as the reseal of a pre-provisioned device, for any long shutdown.
+
+## 6. Show the agent version
+
+The agent already sends its version with every upload, but TrackVice only shows it in the Power BI export and at the foot of a report.
+
+- **On the device**: the header says "Agent 1.5.0" next to the source, and the Session tab shows the version, when the agent was installed and when it last updated itself.
+- **In the agent device list and the wall**: a Version column, which can be sorted and filtered.
+- **On Overview**: an "Agents" tile with how many devices run each version, compared with the version in Your storage: "12 on 1.5.0, 3 on 1.4.0 (they update within 6 hours)".
+- **Needs attention**: devices whose agent is older than the published version and has not updated for more than 6 hours while it runs, with the likely reason (no update key or link in the script, the signature check failed, the link expired).
+- The version is part of Copy for a ticket and the reports.
