@@ -1,6 +1,6 @@
 # Changelog
 
-## TrackVice 1.4.1
+## TrackVice 1.5.0
 
 18 November 2026.
 

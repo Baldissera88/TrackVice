@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="EA46779D-1EAD-4098-B9C3-AC74ED7CA537"
+  <Product Id="A77D506D-C9D1-4C05-A4FB-55E6A1675CAF"
            Name="TrackVice"
            Language="1033"
            Codepage="1252"
-           Version="1.4.1"
+           Version="1.5.0"
            Manufacturer="Daniel L. Baldissera"
            UpgradeCode="6635DE95-B38E-46BA-A802-22FD5E781A74">
 
@@ -43,7 +43,7 @@
         <Directory Id="INSTALLDIR" Name="TrackVice">
 
           <Component Id="TrackViceExe" Guid="A4093A12-3626-44B2-ADE3-16608812B61F" Win64="yes">
-            <File Id="TrackViceExe" Name="TrackVice.exe" Source="TrackVice.exe" KeyPath="yes" DefaultVersion="1.4.1.0">
+            <File Id="TrackViceExe" Name="TrackVice.exe" Source="TrackVice.exe" KeyPath="yes" DefaultVersion="1.5.0.0">
               <Shortcut Id="StartMenuShortcut"
                         Directory="ProgramMenuFolder"
                         Name="TrackVice"
