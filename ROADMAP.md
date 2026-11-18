@@ -17,3 +17,20 @@ Wishes are welcome: in TrackVice, Help > Suggest a feature, or [Discussions](htt
 ## 2. Fix: the Publish banner is cut off
 
 - At a normal window width the banner's buttons run out of the window ("What does Publish d..."). The banner must wrap its text and keep its buttons inside the window at every width.
+
+## 3. Who is enrolling, and more for support
+
+- **The user** who enrolls or signs in on the device is shown wherever the device is: the device header, Overview, Recent devices, the agent device list, the wall and the reports. Display name and UPN, from what the device already has (the Autopilot or ESP user, the signed-in account), and the task sequence user for SCCM where the site gives one. Search finds devices by user.
+- **Device facts for support** in one card on the device: serial number, maker and model, Windows version, Autopilot profile and group tag, enrollment time, Entra device ID and Intune device ID, network (wired or Wi-Fi), free disk space, TPM, Secure Boot and BIOS mode, and the device's time zone. Only what the device or the existing sources already give; nothing new is collected without a reason shown.
+- **Time left**: an estimate of when the deployment will be done, from the customer's reference enrollment or the last 7 days, shown next to the %.
+- **Copy for a ticket**: one button that copies a short plain summary to paste into a support ticket: device, user, state, what failed and why in plain words, what it waits for, start time and time taken.
+- **Open in Intune and Entra**: links to the device's page in the Intune admin center and Entra ID, when the IDs are known.
+- **Notes**: short notes per device, kept on this PC, shown in the list.
+
+## 4. Correct time on the devices
+
+Devices from a new image often run in the wrong time zone during the deployment (often Pacific time), so their own clock and logs show the wrong hour. TrackVice already reads the time zone changes and shows every time in the viewer's own time zone, but support people look at the device too.
+
+- Show the device's time zone and whether its clock is off, in the device facts, with a finding when the zone changed during the deployment or the clock is more than 2 minutes off.
+- A tick in Add customer and Customer code: **Turn on automatic time zone on new devices** (off by default). When it is on, the agent turns on automatic time zone (the time zone auto-update service, and the location setting it needs) and asks Windows to sync the clock, early in the deployment. The tick explains that it changes a device setting and uses location.
+- Next to it, the policy way, which is preferred where a fixed zone fits: a short guide for an Intune setting that sets the time zone for all devices (Policy CSP TimeLanguageSettings, check the exact setting and the Windows versions it needs before writing the guide).
