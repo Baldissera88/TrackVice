@@ -2,23 +2,13 @@
 
 What is planned for the next version of TrackVice.
 
-Everything that was here is released in TrackVice 1.5.0: Overview as the home page, recent devices with search and Back and Forward, Publish made clear, Report a problem, Suggest a feature, Tell the author, Settings by subject, and only LogVice among the other tools. See CHANGELOG.md.
+Released in 1.5.0: Overview as the home page, recent devices with search and Back and Forward, Publish made clear, Report a problem, Suggest a feature, Tell the author, Settings by subject, and only LogVice among the other tools. See CHANGELOG.md.
 
 Wishes are welcome: in TrackVice, Help > Suggest a feature, or [Discussions](https://github.com/Baldissera88/TrackVice/discussions).
 
-## 1. Get LogVice when it is missing
+On main, not released yet: get LogVice when it is missing, the Publish banner wraps, and the agent version is shown. Items 1 to 3 below were started; the unfinished work is on the branches b39 (item 1) and b40 (items 2 and 3).
 
-- When a LogVice button is used and LogVice is not found, TrackVice asks first: "LogVice is not on this PC. Download LogVice <version> from GitHub?" with **Download and open**, **Find LogVice.exe** and **Cancel**. Nothing is downloaded without that click.
-- It downloads the latest LogVice release from github.com/Baldissera88/LogVice, checks it against the release's SHA256SUMS.txt, and stops with a clear message if the check fails.
-- On a normal PC: installs the MSI when the user is an administrator, otherwise keeps LogVice.exe in TrackVice's own folder under %LOCALAPPDATA%. Then opens the logs in it, as the button meant to.
-- On a device that is deploying (Shift+F10 in OOBE, F8 in a task sequence): only on the same click, keeps LogVice.exe in a temporary folder for this session; never installs anything there. In Windows PE it says that LogVice needs the full Windows.
-- Shows progress and the size; can be cancelled. Remembers where LogVice is afterwards. Settings > LogVice shows the version found and a Download button.
-
-## 2. Fix: the Publish banner is cut off
-
-- At a normal window width the banner's buttons run out of the window ("What does Publish d..."). The banner must wrap its text and keep its buttons inside the window at every width.
-
-## 3. Who is enrolling, and more for support
+## 1. Who is enrolling, and more for support
 
 - **The user** who enrolls or signs in on the device is shown wherever the device is: the device header, Overview, Recent devices, the agent device list, the wall and the reports. Display name and UPN, from what the device already has (the Autopilot or ESP user, the signed-in account), and the task sequence user for SCCM where the site gives one. Search finds devices by user.
 - **Device facts for support** in one card on the device: serial number, maker and model, Windows version, Autopilot profile and group tag, enrollment time, Entra device ID and Intune device ID, network (wired or Wi-Fi), free disk space, TPM, Secure Boot and BIOS mode, and the device's time zone. Only what the device or the existing sources already give; nothing new is collected without a reason shown.
@@ -27,7 +17,7 @@ Wishes are welcome: in TrackVice, Help > Suggest a feature, or [Discussions](htt
 - **Open in Intune and Entra**: links to the device's page in the Intune admin center and Entra ID, when the IDs are known.
 - **Notes**: short notes per device, kept on this PC, shown in the list.
 
-## 4. Correct time on the devices
+## 2. Correct time on the devices
 
 Devices from a new image often run in the wrong time zone during the deployment (often Pacific time), so their own clock and logs show the wrong hour. TrackVice already reads the time zone changes and shows every time in the viewer's own time zone, but support people look at the device too.
 
@@ -35,7 +25,7 @@ Devices from a new image often run in the wrong time zone during the deployment 
 - A tick in Add customer and Customer code: **Turn on automatic time zone on new devices** (off by default). When it is on, the agent turns on automatic time zone (the time zone auto-update service, and the location setting it needs) and asks Windows to sync the clock, early in the deployment. The tick explains that it changes a device setting and uses location.
 - Next to it, the policy way, which is preferred where a fixed zone fits: a short guide for an Intune setting that sets the time zone for all devices (Policy CSP TimeLanguageSettings, check the exact setting and the Windows versions it needs before writing the guide).
 
-## 5. Fix: time the device was off counts as deployment time
+## 3. Fix: time the device was off counts as deployment time
 
 Seen on a real device: a deployment was stopped by shutting the PC down in the evening and turning it on the next morning. TrackVice then showed "Overall 9 h 27 min" and the restart as "9 h 01 min", although the deployment itself had run for about 26 minutes.
 
@@ -45,12 +35,33 @@ Seen on a real device: a deployment was stopped by shutting the PC down in the e
 - The Gantt shows the time off as a hatched band, and the time axis can collapse it.
 - "No progress" and "agent stopped sending" do not fire for a device that is off after a clean shutdown; the device list says "Off since 00:56" instead of stalled. The same rule as the reseal of a pre-provisioned device, for any long shutdown.
 
-## 6. Show the agent version
+## 4. More help while setting up a customer
 
-The agent already sends its version with every upload, but TrackVice only shows it in the Power BI export and at the foot of a report.
+- Every step of Add customer and Your storage says, before it starts, which account it needs and why: the Azure role for making or using the storage account (Contributor, or Storage Account Contributor on an existing account), the Intune role and the admin consent for the platform script and the group, and what each sign-in will be asked for. A "What you need" box at the top of step 1, with a short checklist the user can tick.
+- When a sign-in lacks a role or consent, the message says which role is missing, who can give it, and where in the portal.
+- The same as a table in docs/AGENT.md and in Getting started.
 
-- **On the device**: the header says "Agent 1.5.0" next to the source, and the Session tab shows the version, when the agent was installed and when it last updated itself.
-- **In the agent device list and the wall**: a Version column, which can be sorted and filtered.
-- **On Overview**: an "Agents" tile with how many devices run each version, compared with the version in Your storage: "12 on 1.5.0, 3 on 1.4.0 (they update within 6 hours)".
-- **Needs attention**: devices whose agent is older than the published version and has not updated for more than 6 hours while it runs, with the likely reason (no update key or link in the script, the signature check failed, the link expired).
-- The version is part of Copy for a ticket and the reports.
+## 5. App registration: what, why and how
+
+- A short page in Settings > Intune / cloud (and in docs/AGENT.md) that explains the choice between Microsoft Graph Command Line Tools (the default) and the customer's own app registration:
+  - why one's own can be better: the customer controls it and can see and remove it, it can be limited to the read permissions TrackVice uses, Conditional Access and sign-in logs can target it, and some tenants block Microsoft Graph Command Line Tools or require admin consent for it;
+  - what it needs: a public client app (no secret), the redirect URI and "allow public client flows" for the device code sign-in, the delegated Graph permissions TrackVice asks for (listed from the code, read-only ones apart from the platform script and group ones used by Add customer), admin consent, and who can make it (Application Administrator or Cloud Application Administrator);
+  - step by step in the Entra admin center, and the Client ID field where it goes.
+- Optional: a button that makes the app registration in the customer's tenant after a sign-in with the needed role, with exactly those permissions, and fills in the Client ID. Asks first, shows what it will make.
+
+## 6. The whole task sequence
+
+- Today TrackVice shows only the steps that have sent status: steps and groups that have not run yet, or never run because of a condition, are missing (seen: the groups Apps and FK Distribution - Condor Software).
+- Read the task sequence itself from the SMS Provider (SMS_TaskSequencePackage, its Sequence) when a run is opened, and show every group and step in the right order from the start: Waiting until it runs, Skipped when the engine skipped it, Disabled when it is disabled in the task sequence. Steps that install from a variable list show the base variable name.
+- Needs only the read rights TrackVice already uses on the SMS Provider; when the task sequence cannot be read, show what the status messages give, as today, and say why.
+- The same for the agent in a task sequence where the task sequence is in the environment (_SMSTSTaskSequence, if it is there and readable; check before using it).
+
+## 7. Fix: e-mail when there is no mail program
+
+- Seen: "We can't open this 'mailto' link. Your device needs a new app to open this link." when Windows has no mail program set.
+- Before opening a mailto link, check that Windows has a program for mailto. When it has none, or opening fails, copy the text to the clipboard and show: "There is no e-mail program on this PC. The text is copied: paste it into an e-mail to dbal.itx@gmail.com", with Copy address and Open a discussion instead.
+
+## 8. Fix: the window at small sizes
+
+- Seen: on a small window, the Overview title runs into the header buttons and the tiles overlap.
+- The header buttons fold into a "More" menu when there is no room, the title never overlaps them, and Overview's tiles go into one column below a width. Check every main view, the Settings window and the dialogs at 900 x 600 and at 125 % and 150 % scaling.
