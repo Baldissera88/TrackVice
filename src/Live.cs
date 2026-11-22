@@ -235,6 +235,7 @@ namespace TrackVice
             if (reads == 1 || reads % 2 == 0) b.Obs.AddRange(mdm.Read(reg, nowUtc));
             if (reads == 1 || reads % 2 == 0) b.Obs.AddRange(firstSync.Read(reg, nowUtc));
             if (reads == 1 || reads % 3 == 0) b.Obs.AddRange(remediations.Read(reg, nowUtc));
+            if (reads == 1 || reads % 10 == 0) b.Info.AddRange(DeviceClock.Facts(TimeZoneInfo.Local, Zones.Changes, nowUtc));
             if (reads == 1 || reads % 10 == 0)
             {
                 List<Pair> info = AutopilotInfo.Read(reg);

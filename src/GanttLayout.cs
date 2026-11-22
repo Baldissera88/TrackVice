@@ -106,7 +106,8 @@ namespace TrackVice
             {
                 GanttTick k = new GanttTick();
                 k.Utc = BarStart(i);
-                k.Label = "Restart " + TimeZoneInfo.ConvertTimeFromUtc(k.Utc, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
+                k.Label = (i.Off != null && i.Off.List.Exists(delegate (OffSpan o) { return o.ItemKey == i.Key && o.ToUtc.HasValue && o.Counts(o.ToUtc.Value); }) ? "Off " : "Restart ")
+                    + TimeZoneInfo.ConvertTimeFromUtc(k.Utc, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
                 l.Add(k);
             }
             l.Sort(delegate (GanttTick a, GanttTick b) { return a.Utc.CompareTo(b.Utc); });

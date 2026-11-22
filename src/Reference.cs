@@ -76,7 +76,7 @@ namespace TrackVice
                 x.State = i.StateName;
                 x.ExitCode = i.ExitCode;
                 x.Assignment = AppGroups.Assignment(i);
-                if (i.StartUtc.HasValue) x.Offset = Math.Max(0, (i.StartUtc.Value - start).TotalSeconds);
+                if (i.StartUtc.HasValue) x.Offset = i.StartUtc.Value > start ? OffTime.Active(s, start, i.StartUtc.Value).TotalSeconds : 0;
                 TimeSpan? d = i.Duration(nowUtc);
                 if (d.HasValue) x.Seconds = d.Value.TotalSeconds;
                 r.Items.Add(x);

@@ -238,6 +238,7 @@ namespace TrackVice
                         case "alert": ao.Alert = Next(args, ref i); break;
                         case "alert-test": ao.AlertTest = true; break;
                         case "no-mask": ao.Mask = false; break;
+                        case "auto-timezone": ao.AutoTimeZone = true; break;
                         case "title": title = Next(args, ref i); break;
                         case "fleet-report": fleet = Next(args, ref i); break;
                         case "ship-report": ship = Next(args, ref i); break;

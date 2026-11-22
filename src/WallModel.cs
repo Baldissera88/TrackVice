@@ -26,7 +26,7 @@ namespace TrackVice
     {
         public string Key, Device, Kind, Profile, Current, Names;
         public int Items, Done, FailedCount, Active;
-        public DateTime? StartUtc, EndUtc;
+        public DateTime? StartUtc, EndUtc, OffUtc;
         public DateTime LastUtc;
         public bool Idle;
         public WallState State;
@@ -70,6 +70,7 @@ namespace TrackVice
             switch (State)
             {
                 case WallState.Silent:
+                    if (OffUtc.HasValue) return OffTime.ListText(OffUtc, nowUtc);
                     return "No upload for " + Txt.DurationShort(nowUtc - LastUtc);
                 case WallState.Finished:
                     return "Done, " + Items + " item" + (Items == 1 ? "" : "s");
@@ -223,6 +224,7 @@ namespace TrackVice
             t.Idle = Str(e, "idle") == "1";
             t.StartUtc = Time(e, "started");
             t.LastUtc = Time(e, "updated") ?? e.ModifiedUtc;
+            if (nowUtc - t.LastUtc > TimeSpan.FromMinutes(2)) t.OffUtc = Time(e, OffTime.MetaKey);
             if (t.FailedCount > 0) t.State = WallState.Failed;
             else if (t.Items > 0 && t.Active == 0 && t.Done >= t.Items) t.State = WallState.Finished;
             else if (!t.Idle && nowUtc - t.LastUtc > TimeSpan.FromMinutes(WallBoard.SilentMinutes)) t.State = WallState.Silent;

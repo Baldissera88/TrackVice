@@ -28,6 +28,12 @@ namespace TrackVice
             get { return changes.Count; }
         }
 
+        // The changes in time order, for the device facts.
+        public List<Change> Changes
+        {
+            get { return new List<Change>(changes); }
+        }
+
         public void Add(DateTime utc, int newBias, int oldBias)
         {
             if (newBias == oldBias) return;

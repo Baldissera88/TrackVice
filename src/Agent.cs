@@ -140,6 +140,9 @@ namespace TrackVice
     {
         readonly string container;
         readonly string sas;
+        // The Date header of the last upload's answer and when it was sent and answered, for DeviceClock.
+        public string LastDate;
+        public DateTime LastSentUtc, LastReceivedUtc;
 
         public AzureStore(string url)
         {
@@ -171,8 +174,14 @@ namespace TrackVice
             req.ContentLength = data.Length;
             try
             {
+                DateTime sent = DateTime.UtcNow;
                 using (Stream s = req.GetRequestStream()) s.Write(data, 0, data.Length);
-                using (req.GetResponse()) { }
+                using (WebResponse r = req.GetResponse())
+                {
+                    LastReceivedUtc = DateTime.UtcNow;
+                    LastSentUtc = sent;
+                    LastDate = r.Headers["Date"];
+                }
             }
             catch (WebException ex) { throw Explain(ex, "upload"); }
         }
@@ -366,6 +375,8 @@ namespace TrackVice
             m["idle"] = idle ? "1" : "0";
             m["version"] = s.AppVersion;
             if (s.GetInfo("Earlier names") != null) m["names"] = s.GetInfo("Earlier names");
+            DateTime? off = OffTime.OffSince(s);
+            if (off.HasValue) m[OffTime.MetaKey] = Iso(off.Value);
             return m;
         }
 
@@ -384,6 +395,8 @@ namespace TrackVice
             int items = Int(e, "items"), done = Int(e, "done"), failed = Int(e, "failed"), active = Int(e, "active");
             bool idle = Str(e, "idle") == "1";
             bool silent = !idle && nowUtc - d.LastUtc > TimeSpan.FromMinutes(5);
+            // Only once the device is quiet: one that shut down has stopped uploading, one whose restart was cancelled has not.
+            string off = nowUtc - d.LastUtc > TimeSpan.FromMinutes(2) ? OffTime.ListText(Time(e, OffTime.MetaKey), nowUtc) : null;
             string progress = done + " of " + items + " done";
             if (items == 0)
             {
@@ -404,6 +417,13 @@ namespace TrackVice
             {
                 d.State = done >= items ? State.Succeeded : State.Pending;
                 d.StateText = done >= items ? "Done, " + items + " item" + (items == 1 ? "" : "s") : progress + ", the rest is waiting";
+            }
+            if (off != null)
+            {
+                // Shut down cleanly: the device is off, like a resealed device, not stalled.
+                if (States.IsActive(d.State)) d.State = State.Pending;
+                d.StateText = off + " · " + d.StateText;
+                silent = false;
             }
             if (silent)
             {
@@ -592,6 +612,8 @@ namespace TrackVice
         public string UpdateLink;
         // The customer name from /customer, saved with the installed agent.
         public string CustomerName;
+        // /auto-timezone, or the customer code: turn on automatic time zone at install.
+        public bool AutoTimeZone;
     }
 
     // Runs on the device while it deploys: reads it like the window does, and uploads the session as it changes.
@@ -754,6 +776,7 @@ namespace TrackVice
                 string shownError = null;
                 string ending = null;
                 bool updating = false;
+                DateTime? offTold = null;
                 AgentSelfUpdate self = installed && !o.Once ? AgentSelfUpdate.For(Reg("UpdateKey"), Reg("UpdateLink"), Program.Version, InstallDir, new WinUpdateLauncher(System.Reflection.Assembly.GetExecutingAssembly().Location), Log) : null;
                 // Everything since Windows was installed: after a restart the session is read again in full.
                 using (Engine e = Engine.ForLive(0, true, true, 2000))
@@ -767,6 +790,8 @@ namespace TrackVice
                         a.Paused = life.Waiting;
                         bool last = o.Once || decision.Remove;
                         if (decision.Remove) ending = decision.Reason;
+                        DeviceClock.FromStore(store, e.S);
+                        if (OffTime.ShuttingDown(e.S, ref offTold)) a.Cycle(e.S, now, o, true);
                         if (a.Cycle(e.S, now, o, last) && a.Uploads == 1) Log("First upload done, " + e.S.Items.Count + " items.");
                         if (a.LastError != shownError)
                         {
@@ -845,6 +870,7 @@ namespace TrackVice
                 if (!string.IsNullOrWhiteSpace(o.CustomerName)) k.SetValue("CustomerName", o.CustomerName.Trim());
                 else k.DeleteValue("CustomerName", false);
             }
+            if (o.AutoTimeZone) AutoTimeZone.Apply(new WinTimeHost(), Log);
             string xml = Path.Combine(dir, "task.xml");
             File.WriteAllText(xml, TaskXml(target), Encoding.Unicode);
             try

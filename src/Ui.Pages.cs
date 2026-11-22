@@ -861,6 +861,7 @@ namespace TrackVice
             new string[] { "/agent /alert <link> /alert-test", "Send one test alert and exit" },
             new string[] { "/update-key <key> /update <location>", "With /agent-install: the agent installs newer versions published there, signed with this key. The location is a SAS link with Read, or a folder" },
             new string[] { "/publish-agent /to <location> [/exe <path>]", "Upload TrackVice.exe, or the given exe, with a signed agent/latest.json for the agents to update to. The location needs Create and Write" },
+            new string[] { "/auto-timezone", "With /agent-install: turn on automatic time zone (the tzautoupdate service and location) and sync the clock. The customer code has its own setting for it" },
             new string[] { "/no-mask", "With /agent, /agent-install or /agent-start: upload passwords, keys and tokens as they are, without hiding them" },
             new string[] { "--wall [/upload <location>]", "Start in the wall view: every device with the agent on one screen. Without /upload it uses the upload location of the current customer" },
             new string[] { "--demo", "Play a sample Autopilot deployment" },

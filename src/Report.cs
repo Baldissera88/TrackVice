@@ -262,7 +262,8 @@ namespace TrackVice
             }
             DateTime start = s.FirstUtc.Value;
             DateTime end = End(s, nowUtc);
-            TimeSpan total = end - start;
+            TimeSpan total = OffTime.Active(s, start, end);
+            TimeSpan off = OffTime.Off(s, start, end);
             int failed = s.Count(State.Failed), active = s.CountActive, waiting = 0, done = s.CountComplete, n = s.Items.Count;
             foreach (Item i in s.Items) if (Waiting(i)) waiting++;
             bool running = active > 0 || waiting > 0;
@@ -275,6 +276,7 @@ namespace TrackVice
                 if (Day(end) != Day(start)) b.Append("on ").Append(H(Day(end))).Append(" ");
                 b.Append("at ").Append(H(Clock(end))).Append(", after ").Append(H(Txt.Duration(total))).Append(".");
             }
+            if (off > TimeSpan.Zero) b.Append(" The device was off for ").Append(H(Txt.Duration(off))).Append(" in between, which is not counted.");
             b.Append("</p><p>");
             if (failed > 0)
             {

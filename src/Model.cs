@@ -280,6 +280,8 @@ namespace TrackVice
         [DataMember] public int Order;
         [DataMember] public List<Attempt> Attempts = new List<Attempt>();
         [DataMember] public List<Pair> Info = new List<Pair>();
+        // The times the device was off, set by OffTime.Mark, not saved.
+        public OffSpans Off;
 
         List<TEvent> events;
 
@@ -341,6 +343,7 @@ namespace TrackVice
             if (StartUtc == null) return null;
             DateTime end = EndUtc ?? (States.IsFinal(State) ? LastUtc : nowUtc);
             TimeSpan d = end - StartUtc.Value;
+            if (Off != null) d = Off.Active(this, StartUtc.Value, end, d);
             return d < TimeSpan.Zero ? TimeSpan.Zero : d;
         }
 
@@ -472,6 +475,7 @@ namespace TrackVice
             DateTime? s = StartUtc;
             if (s == null) return null;
             DateTime e = EndUtc ?? nowUtc;
+            if (e > s.Value && Items[0].Off != null) return OffTime.Active(Items[0].Off, s.Value, e);
             return e < s.Value ? TimeSpan.Zero : e - s.Value;
         }
     }
@@ -706,6 +710,7 @@ namespace TrackVice
                 if (i != null) i.Events.Add(e);
             }
             foreach (Phase p in Phases) p.Items.Sort(ItemOrder);
+            OffTime.Mark(this);
         }
 
         public static int ItemOrder(Item a, Item b)

@@ -219,7 +219,7 @@ namespace TrackVice
             }
             r.StartUtc = first;
             r.EndUtc = last;
-            if (first.HasValue && last.HasValue && last.Value > first.Value) r.Seconds = (last.Value - first.Value).TotalSeconds;
+            if (first.HasValue && last.HasValue && last.Value > first.Value) r.Seconds = OffTime.Active(s, first.Value, last.Value).TotalSeconds;
             return r;
         }
 

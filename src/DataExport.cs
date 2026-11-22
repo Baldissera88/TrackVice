@@ -182,7 +182,7 @@ namespace TrackVice
                 "OsVersion", "Windows version",
                 "AgentVersion", "The TrackVice version that uploaded",
                 "StartUtc, EndUtc", "First and last activity of the apps, scripts and steps",
-                "DurationSeconds", "EndUtc minus StartUtc",
+                "DurationSeconds", "From StartUtc to EndUtc, without the time the device was off",
                 "Finished", "Nothing runs and nothing waits any more",
                 "Succeeded", "Finished and no item failed",
                 "Items, Done, Failed, Running, Waiting", "Counts of apps, scripts and steps. Policies and profiles are not counted",

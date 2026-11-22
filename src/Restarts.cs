@@ -290,7 +290,30 @@ namespace TrackVice
         public static string Name(Restart r, TimeZoneInfo zone)
         {
             DateTime local = TimeZoneInfo.ConvertTimeFromUtc(r.AtUtc, zone ?? TimeZoneInfo.Local);
+            if (IsOff(r))
+            {
+                DateTime back = TimeZoneInfo.ConvertTimeFromUtc(r.BootUtc.Value, zone ?? TimeZoneInfo.Local);
+                return "Off from " + local.ToString("HH:mm", CultureInfo.InvariantCulture) + " to " + back.ToString("HH:mm", CultureInfo.InvariantCulture) + " (" + Txt.DurationShort(r.Downtime) + ")";
+            }
             return "Restart at " + local.ToString("HH:mm", CultureInfo.InvariantCulture);
+        }
+
+        // Down for longer than OffTime.Min: time off, not a restart that took long.
+        public static bool IsOff(Restart r)
+        {
+            return r.Downtime.HasValue && r.Downtime.Value > OffTime.Min;
+        }
+
+        // How long Windows took to shut down and to start: from the request to the stop, and from the start to the event log service.
+        public static TimeSpan? OwnTime(Restart r)
+        {
+            if (!r.StopUtc.HasValue || !r.BootUtc.HasValue) return null;
+            TimeSpan d = TimeSpan.Zero;
+            if (r.RequestUtc.HasValue && r.RequestUtc.Value < r.StopUtc.Value && r.StopUtc.Value - r.RequestUtc.Value < OffTime.Min) d += r.StopUtc.Value - r.RequestUtc.Value;
+            DateTime last = r.BootUtc.Value;
+            foreach (SysEvent e in r.Events)
+                if (e.TimeUtc > last && e.TimeUtc - r.BootUtc.Value < TimeSpan.FromMinutes(5)) last = e.TimeUtc;
+            return d + (last - r.BootUtc.Value);
         }
 
         // What a restart adds to its item: plain pairs for the Details pane.
@@ -305,7 +328,8 @@ namespace TrackVice
             if (!string.IsNullOrEmpty(r.Comment)) l.Add(new Pair("Comment", r.Comment));
             if (r.StopUtc.HasValue) l.Add(new Pair("Stopped", Txt.Local(r.StopUtc.Value)));
             if (r.BootUtc.HasValue) l.Add(new Pair("Started again", Txt.Local(r.BootUtc.Value)));
-            if (r.Downtime.HasValue) l.Add(new Pair("Downtime", Txt.Duration(r.Downtime)));
+            if (r.Downtime.HasValue) l.Add(new Pair(IsOff(r) ? "Time off" : "Downtime", Txt.Duration(r.Downtime)));
+            if (IsOff(r)) l.Add(new Pair("Shutdown and start", Txt.Duration(OwnTime(r)) + ". The time off does not count as deployment time"));
             if (r.Unexpected) l.Add(new Pair("Clean shutdown", r.BugCheck.HasValue ? "No, stop error 0x" + unchecked((uint)r.BugCheck.Value).ToString("X8", CultureInfo.InvariantCulture) : "No"));
             return l;
         }

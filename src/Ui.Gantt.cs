@@ -15,6 +15,7 @@ namespace TrackVice
         readonly Panel card = new Panel();
         readonly FlatButton bPolicies = new FlatButton("Policies", null);
         readonly FlatButton bTimed = new FlatButton("Only what took time", null);
+        readonly FlatButton bOff = new FlatButton("Collapse time off", null);
 
         public event Action<Item> ItemClicked;
 
@@ -27,7 +28,7 @@ namespace TrackVice
             flow.Dock = DockStyle.Fill;
             flow.WrapContents = false;
             bar.Controls.Add(flow);
-            foreach (FlatButton b in new FlatButton[] { bPolicies, bTimed })
+            foreach (FlatButton b in new FlatButton[] { bPolicies, bTimed, bOff })
             {
                 b.Compact = true;
                 b.AutoWidth();
@@ -36,6 +37,10 @@ namespace TrackVice
             }
             bPolicies.Click += Safe.Wrap(delegate { Chart.ShowPolicies = !Chart.ShowPolicies; bPolicies.Checked = Chart.ShowPolicies; bPolicies.Invalidate(); });
             bTimed.Click += Safe.Wrap(delegate { Chart.OnlyTimed = !Chart.OnlyTimed; bTimed.Checked = Chart.OnlyTimed; bTimed.Invalidate(); });
+            bOff.Checked = Chart.CollapseOff;
+            bOff.Visible = false;
+            bOff.Click += Safe.Wrap(delegate { Chart.CollapseOff = !Chart.CollapseOff; bOff.Checked = Chart.CollapseOff; bOff.Invalidate(); });
+            Chart.Rebuilt += delegate { bOff.Visible = Chart.HasOff; };
             card.Dock = DockStyle.Fill;
             card.Padding = new Padding(1);
             card.Tag = "card";
@@ -52,6 +57,7 @@ namespace TrackVice
             card.BackColor = t.Divider;
             bPolicies.ApplyTheme(t);
             bTimed.ApplyTheme(t);
+            bOff.ApplyTheme(t);
             Chart.ApplyTheme(t);
         }
     }
@@ -63,12 +69,14 @@ namespace TrackVice
         List<GanttRow> rows = new List<GanttRow>();
         Session session;
         DateTime nowUtc = DateTime.UtcNow, fromUtc, toUtc;
-        bool live, showPolicies, onlyTimed, dragging;
+        bool live, showPolicies, onlyTimed, dragging, collapseOff = true;
+        GanttAxis axis = new GanttAxis();
         int top, hot = -1, dragOffset;
         string tipText;
 
         public string EmptyText = "Nothing to show yet.";
         public event Action<Item> ItemClicked;
+        public event Action Rebuilt;
 
         int RowH { get { return Dpi.S(26); } }
         int AxisH { get { return Dpi.S(30); } }
@@ -114,6 +122,18 @@ namespace TrackVice
             set { onlyTimed = value; Rebuild(); }
         }
 
+        // Times the device was off take a narrow hatched band instead of their length.
+        public bool CollapseOff
+        {
+            get { return collapseOff; }
+            set { collapseOff = value; Rebuild(); }
+        }
+
+        public bool HasOff
+        {
+            get { return axis.Bands.Count > 0; }
+        }
+
         public void SetData(Session s, DateTime now, bool isLive)
         {
             session = s;
@@ -126,13 +146,16 @@ namespace TrackVice
         {
             rows = session == null ? new List<GanttRow>() : GanttLayout.Rows(session, nowUtc, showPolicies, onlyTimed);
             GanttLayout.Range(rows, nowUtc, live, out fromUtc, out toUtc);
+            axis = session == null ? new GanttAxis() : GanttAxis.For(session, fromUtc, toUtc, nowUtc, collapseOff);
             top = GanttLayout.ClampTop(top, rows.Count, RowH, Height - AxisH);
             if (hot >= rows.Count) hot = -1;
             Invalidate();
+            if (Rebuilt != null) Rebuilt();
         }
 
         float X(DateTime utc)
         {
+            if (axis.Bands.Count > 0) return axis.X(utc, ChartL, Math.Max(1, ChartR - ChartL));
             return GanttLayout.X(utc, fromUtc, toUtc, ChartL, Math.Max(1, ChartR - ChartL));
         }
 
@@ -146,7 +169,7 @@ namespace TrackVice
                 return;
             }
             int cl = ChartL, cr = ChartR;
-            List<GanttTick> ticks = GanttLayout.Ticks(fromUtc, toUtc, GanttLayout.Step(toUtc - fromUtc, cr - cl, Dpi.S(84)), TimeZoneInfo.Local);
+            List<GanttTick> ticks = axis.Bands.Count > 0 ? axis.Ticks(cr - cl, Dpi.S(84), TimeZoneInfo.Local) : GanttLayout.Ticks(fromUtc, toUtc, GanttLayout.Step(toUtc - fromUtc, cr - cl, Dpi.S(84)), TimeZoneInfo.Local);
             Color grid = Theme.Mix(T.Card, T.Divider, 0.55f);
             using (Pen pen = new Pen(grid)) foreach (GanttTick k in ticks) { float x = X(k.Utc); g.DrawLine(pen, x, AxisH, x, Height); }
 
@@ -160,6 +183,7 @@ namespace TrackVice
                 if (rows[k].IsHeader) PaintHeader(g, rows[k], r);
                 else PaintItem(g, rows[k], r, k == hot);
             }
+            PaintOff(g);
             PaintRestarts(g);
             if (live)
             {
@@ -171,6 +195,39 @@ namespace TrackVice
             PaintScroll(g);
         }
 
+        // The times the device was off, hatched, with how long at the top of the chart.
+        void PaintOff(Graphics g)
+        {
+            foreach (OffSpan b in axis.Bands)
+            {
+                float x0 = X(b.FromUtc), x1 = Math.Max(X(b.ToUtc.Value), x0 + Dpi.S(4));
+                RectangleF r = new RectangleF(x0, AxisH, x1 - x0, Height - AxisH);
+                using (SolidBrush fill = new SolidBrush(T.Card)) g.FillRectangle(fill, r);
+                using (HatchBrush h = new HatchBrush(HatchStyle.WideUpwardDiagonal, Theme.Mix(T.Card, T.Text3, 0.35f), Theme.Mix(T.Card, T.Text3, 0.08f))) g.FillRectangle(h, r);
+                using (Pen pen = new Pen(Theme.Mix(T.Card, T.Text3, 0.5f))) { g.DrawLine(pen, x0, AxisH, x0, Height); g.DrawLine(pen, x1, AxisH, x1, Height); }
+                string label = GanttAxis.Label(b);
+                Size ts = TextRenderer.MeasureText(label, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding);
+                int pad = Dpi.S(5), w = ts.Width + pad * 2, h2 = ts.Height + Dpi.S(4);
+                int lx = (int)((x0 + x1) / 2 - w / 2f);
+                lx = Math.Max(ChartL, Math.Min(ChartR + Dpi.S(14) - w, lx));
+                int ly = AxisH + Dpi.S(4);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Shapes.Fill(g, new RectangleF(lx, ly, w, h2), Dpi.S(3), T.CardAlt);
+                Shapes.Stroke(g, new RectangleF(lx, ly, w, h2), Dpi.S(3), T.Divider, 1f);
+                TextRenderer.DrawText(g, label, Fonts.Small, new Point(lx + pad, ly + Dpi.S(2)), T.Text2, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            }
+        }
+
+        OffSpan BandAt(float x)
+        {
+            foreach (OffSpan b in axis.Bands)
+            {
+                float x0 = X(b.FromUtc), x1 = Math.Max(X(b.ToUtc.Value), x0 + Dpi.S(4));
+                if (x >= x0 && x <= x1) return b;
+            }
+            return null;
+        }
+
         // A thin line where the device restarted, with a small label at the top of the chart.
         void PaintRestarts(Graphics g)
         {
@@ -178,6 +235,8 @@ namespace TrackVice
             foreach (GanttTick k in GanttLayout.RestartMarks(session, TimeZoneInfo.Local))
             {
                 if (k.Utc < fromUtc || k.Utc > toUtc) continue;
+                // A time off has its band and label.
+                if (axis.Bands.Exists(delegate (OffSpan b) { return b.FromUtc == k.Utc; })) continue;
                 float x = X(k.Utc);
                 using (Pen pen = new Pen(T.WarnFg, Math.Max(1f, Dpi.S(1f)))) g.DrawLine(pen, x, AxisH, x, Height);
                 Size ts = TextRenderer.MeasureText(k.Label, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding);
@@ -305,11 +364,13 @@ namespace TrackVice
                 return;
             }
             int h = Thumb().Contains(e.Location) ? -1 : GanttLayout.RowAt(e.Y, AxisH, top, RowH, rows.Count);
-            if (h != hot)
+            OffSpan band = h >= 0 && (rows[h].IsHeader || e.X < X(rows[h].StartUtc) || e.X > X(rows[h].EndUtc)) ? BandAt(e.X) : null;
+            string want = band != null ? GanttAxis.Tip(band) : h >= 0 ? TipFor(rows[h]) : null;
+            if (h != hot || want != tipText)
             {
                 hot = h;
                 Invalidate();
-                string text = h >= 0 ? TipFor(rows[h]) : null;
+                string text = want;
                 if (text != tipText)
                 {
                     tipText = text;

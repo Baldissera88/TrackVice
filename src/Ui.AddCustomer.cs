@@ -56,7 +56,7 @@ namespace TrackVice
         readonly TextBox tName, tAlert, tTenant, tAccount, tSearch;
         readonly ComboBox cSub, cGroup, cRegion, cAccount;
         readonly Segmented sKind;
-        readonly Toggle gScript;
+        readonly Toggle gScript, gZone;
         readonly ChoiceCard cYours, cTheirs;
         readonly FlatButton bMore;
         readonly FlatButton bGraph, bSkip, bArm, bSearch;
@@ -109,6 +109,7 @@ namespace TrackVice
             bMore = Button("More about this", delegate { Open(AddCustomerUi.AgentDoc); });
             gScript = Kept(new Toggle());
             gScript.On = true;
+            gZone = Kept(new Toggle());
             bGraph = Button("Sign in", delegate { SignInIntune(); });
             bSkip = Button("Skip", delegate { if (busy) return; skipped = true; Next(); });
             bArm = Button("Sign in", delegate { SignInAzure(); });
@@ -261,6 +262,7 @@ namespace TrackVice
             l.Add(cTheirs);
             l.Add(Row(Glyphs.Info, "What is uploaded", WhatIsUploaded, bMore));
             l.Add(Row(Glyphs.Shield, "Alert link (optional)", "A Teams workflow link. The agent posts to the channel when something fails and when a deployment is finished. Anyone with the link can post to the channel.", tAlert));
+            l.Add(Row(Glyphs.Info, AutoZoneUi.Title, AutoZoneUi.Text, gZone));
         }
 
         // What the agent really uploads: the session (src/Model.cs Session, masked by Secrets.MaskedCopy) and the log zip.
@@ -303,6 +305,7 @@ namespace TrackVice
         {
             run.Customer = tName.Text.Trim();
             run.Alert = tAlert.Text.Trim();
+            run.AutoTimeZone = gZone.On;
             run.OwnAzure = cTheirs.IsChosen;
             string p = run.Problem(book);
             if (p != null) { note.Say(p, true); return false; }
@@ -569,6 +572,13 @@ namespace TrackVice
         }
     }
 
+    // The words next to the tick for automatic time zone, in Add customer and Customer code.
+    static class AutoZoneUi
+    {
+        public const string Title = "Turn on automatic time zone on new devices";
+        public const string Text = "Off by default. When it is on, the agent turns on Set time zone automatically when it is installed: it changes this device setting and allows Windows to use the device's location to find the zone, then asks Windows to sync the clock. Where one time zone fits all devices, the Intune setting for the time zone is better: see the guide.";
+    }
+
     // A customer's code later: copy it, change the alert link, and put the new script in Intune.
     sealed class CustomerCodeDialog : GuideForm
     {
@@ -580,6 +590,7 @@ namespace TrackVice
         readonly string container;
         string code;
         readonly TextBox tAlert;
+        readonly Toggle gZone;
         readonly FlatButton bSave, bGraph, bUpdate, bLinks, bRemove;
         WebSignIn graphIn;
         string saveText = "", graphText = "", updateText = "", linksText = "";
@@ -594,7 +605,13 @@ namespace TrackVice
             code = CustomerCodes.Load(secrets, c.Name) ?? "";
             Size = new Size(Dpi.S(800), Dpi.S(620));
             tAlert = Field(360, true);
-            try { tAlert.Text = CustomerCode.Parse(code).Alert ?? ""; }
+            gZone = Kept(new Toggle());
+            try
+            {
+                CustomerCode parsed = CustomerCode.Parse(code);
+                tAlert.Text = parsed.Alert ?? "";
+                gZone.On = parsed.AutoTimeZone;
+            }
             catch (Exception) { }
             bSave = Button("Save", delegate { SaveAlert(); });
             bGraph = Button("Sign in", delegate { SignInIntune(); });
@@ -648,7 +665,8 @@ namespace TrackVice
             }
             l.Add(Row(Glyphs.Shield, "Customer code", CustomerCodes.Masked(code) + "\nKeep it like a password: it holds the link that uploads to the customer's container.", CopyButton("customer code", delegate { return code; })));
             l.Add(Row(Glyphs.Shield, "Alert link", "A Teams workflow link, or empty for no alerts.", tAlert));
-            l.Add(Row(Glyphs.Save, "Save the alert link", saveText.Length > 0 ? saveText : "Makes a new customer code with this link and saves the script again in " + folder + ". Devices use it when the script runs again.", bSave));
+            l.Add(Row(Glyphs.Info, AutoZoneUi.Title, AutoZoneUi.Text, gZone));
+            l.Add(Row(Glyphs.Save, "Save", saveText.Length > 0 ? saveText : "Makes a new customer code with the alert link and the time zone setting, and saves the script again in " + folder + ". Devices use it when the script runs again.", bSave));
             l.Add(new SectionTitle("Intune"));
             bGraph.Text = graphIn != null && graphIn.SignedIn ? "Sign in again" : pending != null ? "Copy code and open" : "Sign in";
             l.Add(Row(Glyphs2.Sync, "Sign in to Intune", graphText.Length > 0 ? graphText : "To " + (customer.Tenant.Length > 0 ? customer.Tenant : "the tenant of the account you use") + ", with DeviceManagementScripts.ReadWrite.All. Signing in changes nothing.", bGraph));
@@ -712,7 +730,7 @@ namespace TrackVice
         void SaveAlert()
         {
             CustomerCode c;
-            try { c = CustomerCodeChange.WithAlert(code, tAlert.Text); }
+            try { c = CustomerCodeChange.WithSettings(code, tAlert.Text, gZone.On); }
             catch (Exception ex) { note.Say(ex.Message, true); return; }
             code = c.ToString();
             CustomerCodes.Save(secrets, customer.Name, code);

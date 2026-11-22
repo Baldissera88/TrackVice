@@ -262,7 +262,7 @@ namespace TrackVice
             return i.ExitCode.HasValue && i.ExitCode.Value != 0 ? ", " + Errors.Short(i.ExitCode) : "";
         }
 
-        // From the first item's start to the last item's end, or to now while something still runs.
+        // From the first item's start to the last item's end, or to now while something still runs, without the time off.
         public static TimeSpan? Total(Session s, DateTime now)
         {
             DateTime? first = s.FirstUtc;
@@ -273,7 +273,7 @@ namespace TrackVice
                 DateTime e = i.EndUtc ?? (States.IsFinal(i.State) || i.State == State.WaitingReboot ? i.LastUtc : States.IsActive(i.State) ? now : i.LastUtc);
                 if (e > end) end = e;
             }
-            return end - first.Value;
+            return OffTime.Active(s, first.Value, end);
         }
 
         public static DiffSummary Summarize(Session a, DateTime nowA, Session b, DateTime nowB, List<DiffRow> rows)
