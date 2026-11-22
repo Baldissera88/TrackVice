@@ -65,3 +65,9 @@ Seen on a real device: a deployment was stopped by shutting the PC down in the e
 
 - Seen: on a small window, the Overview title runs into the header buttons and the tiles overlap.
 - The header buttons fold into a "More" menu when there is no room, the title never overlaps them, and Overview's tiles go into one column below a width. Check every main view, the Settings window and the dialogs at 900 x 600 and at 125 % and 150 % scaling.
+
+## 9. Overview: how many deployments
+
+- Overview shows the total number of deployments for the chosen customer and side (Intune, SCCM or both): today, the last 7 days, the last 30 days and all that TrackVice can see.
+- Every run counts, also when the same device is deployed several times: "48 deployments on 41 devices". A device deployed more than once shows how many times, with a link to its runs, and Overview has a short list "Deployed more than once" (device, times, last result), since a device that is deployed again and again is often worth a look.
+- Each number opens the list of deployments behind it, filtered.
