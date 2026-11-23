@@ -287,6 +287,7 @@ namespace TrackVice
             Menus.Separator(m);
             Menus.Add(m, "Overview  (Alt+Home)", delegate { GoHome(true); });
             Menus.Add(m, "Recent devices and search…", delegate { OpenRecentList(""); });
+            Menus.Add(m, "Get started…", delegate { OpenGetStarted(); });
             Menus.Separator(m);
 
             ToolStripMenuItem demos = null;

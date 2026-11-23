@@ -516,6 +516,7 @@ namespace TrackVice
             UpdateContext c = StartContext();
             string why = WelcomeGate.Reason(c, forSomething, Prefs.GetBool(WelcomeGate.SeenPref, false));
             if (why == null) ShowWelcome(WelcomePage.Choices);
+            MaybeGetStarted(forSomething, why);
             UpdateSetupBar();
         }
 
@@ -742,6 +743,7 @@ namespace TrackVice
             ContextMenuStrip m = Menus.New(theme);
             Menus.Add(m, "Getting started", delegate { Remember(GettingStarted.HiddenPref, null); ShowWelcome(WelcomePage.Checklist); });
             Menus.Add(m, "Welcome", delegate { ShowWelcome(WelcomePage.Choices); });
+            Menus.Add(m, "Get started page…", delegate { OpenGetStarted(); });
             Menus.Separator(m);
             Menus.Add(m, "The guide to the agent, on GitHub", delegate { OpenLink(AgentGuide); });
             Menus.Add(m, "TrackVice on GitHub", delegate { OpenLink(AppUpdate.ReleasesUrl.Replace("/releases", "")); });
