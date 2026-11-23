@@ -14,3 +14,12 @@ Right-click a step, app or script in a running deployment and choose Download, t
 - Nothing is downloaded that the device itself could not read.
 
 Wishes are welcome: in TrackVice, Help > Suggest a feature, or [Discussions](https://github.com/Baldissera88/TrackVice/discussions).
+
+## 2. Sign in on a new PC and get your customers
+
+Install TrackVice on a laptop or lab PC, sign in with Entra ID, and your customers, storage and customer codes are there, without setting anything up again.
+
+- The customer list, with the codes and links, is kept in your own storage account as one encrypted file. Signing in with Entra ID (Storage Blob Data Reader on your storage account) is what lets a PC read it. No link is typed in or copied around.
+- The file is encrypted with a key that is only released to a signed-in user with that role, so someone who gets the file cannot read it. Removing the role removes access from that PC and user.
+- Changes made on one PC (a new customer, a changed code) show up on the others. Each PC can also work offline from its saved copy.
+- Without Entra ID or Azure, the same list can be exported to an encrypted file with a password and imported on the other PC.
