@@ -1,5 +1,12 @@
 # Changelog
 
+## TrackVice 1.11.0
+
+23 November 2026.
+
+- **The same setup on every PC you sign in on**: **Save my setup to the vault** keeps Your storage and the update key in your Key Vault, next to the customers. On another PC, **Get my setup from the vault** fetches them, and that PC can publish too. The same button is in Publish, when it finds another update key than the one on this PC, and in Get started. A key on a PC is never replaced without asking, and nothing in the vault is deleted. The update key is its own secret, so its role can be given only to the people who may publish.
+- Publish checks the update key before it publishes to Your storage, and says when it is another one than the one in your storage.
+
 ## TrackVice 1.10.0
 
 23 November 2026.
