@@ -199,8 +199,11 @@ namespace TrackVice
                 StateLook.Icon(g, st, new RectangleF(ix, r.Y + Dpi.S(11), Dpi.S(16), Dpi.S(16)), T, spin);
                 string dur = Txt.DurationShort(p.Duration(now()));
                 int dw = string.IsNullOrEmpty(dur) ? 0 : TextRenderer.MeasureText(dur, T.Num(Fonts.Small)).Width;
-                Rectangle nameR = new Rectangle((int)(ix + Dpi.S(24)), (int)r.Y + Dpi.S(8), (int)(r.Width - Dpi.S(48) - dw - Dpi.S(8)), Fonts.UiSemibold.Height + 2);
-                TextRenderer.DrawText(g, p.Name, Fonts.UiSemibold, nameR, T.Text, TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                // The title gets the room first: the time is left out when the whole title does not fit next to it.
+                int fullW = (int)(r.Width - Dpi.S(48));
+                if (dw > 0 && TextRenderer.MeasureText(p.Name, Fonts.UiSemibold, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width > fullW - dw - Dpi.S(8)) dw = 0;
+                Rectangle nameR = new Rectangle((int)(ix + Dpi.S(24)), (int)r.Y + Dpi.S(8), fullW - (dw > 0 ? dw + Dpi.S(8) : 0), Fonts.UiSemibold.Height + 2);
+                TextRenderer.DrawText(g, Fit.Text(p.Name, Fonts.UiSemibold, nameR.Width), Fonts.UiSemibold, nameR, T.Text, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
                 if (dw > 0) TextRenderer.DrawText(g, dur, T.Num(Fonts.Small), new Rectangle((int)(r.Right - Dpi.S(12) - dw), (int)r.Y + Dpi.S(10), dw + 2, Fonts.Small.Height + 2), T.Text3, TextFormatFlags.Left | TextFormatFlags.NoPadding);
                 int done = p.Done, failed = p.FailedCount;
                 string sub = done + " of " + p.Items.Count + " done";

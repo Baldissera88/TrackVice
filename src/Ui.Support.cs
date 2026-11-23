@@ -121,6 +121,7 @@ namespace TrackVice
         {
             FlatButton b = new FlatButton(text, glyph);
             b.Compact = true;
+            b.Outline = true;
             b.Height = Dpi.S(27);
             b.AutoWidth();
             b.Margin = new Padding(0, 0, Dpi.S(6), Dpi.S(4));

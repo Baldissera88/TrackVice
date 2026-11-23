@@ -217,6 +217,8 @@ namespace TrackVice
         public bool Primary;
         public bool Checked;
         public bool Compact;
+        // A thin border around the button, for buttons that sit alone and must look like buttons.
+        public bool Outline;
 
         public FlatButton(string text, string glyph)
         {
@@ -269,6 +271,7 @@ namespace TrackVice
                 Color bg = Checked ? T.AccentSoft : down ? T.Pressed : hover ? T.Hover : Color.Empty;
                 if (!bg.IsEmpty) Shapes.Fill(g, r, Dpi.S(5), bg);
                 if (Checked) Shapes.Stroke(g, r, Dpi.S(5), T.Accent, 1f);
+                else if (Outline) Shapes.Stroke(g, r, Dpi.S(5), hover ? T.Text3 : T.Divider, 1f);
                 if (!Enabled) fg = T.Text3;
             }
             int x = Dpi.S(Compact ? 10 : 14);

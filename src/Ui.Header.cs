@@ -61,8 +61,9 @@ namespace TrackVice
                 bMore.Visible = any;
                 for (int i = 0; i < shown.Count; i++) shown[i].Visible = !hidden[i];
                 toolbar.ResumeLayout(true);
-                // A folded button keeps the place of More, so the menu it opens drops from there.
-                foreach (FlatButton b in shown) if (!b.Visible) b.Bounds = bMore.Bounds;
+                // A folded button keeps the place of More, so the menu it opens drops from there. Its size stays,
+                // so it has its own width again when it comes back.
+                foreach (FlatButton b in shown) if (!b.Visible) b.Location = bMore.Location;
                 subtitle.Width = Math.Max(Dpi.S(40), header.ClientSize.Width - subtitle.Left - Dpi.S(16));
             }
             finally { fitting = false; }

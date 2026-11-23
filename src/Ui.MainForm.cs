@@ -306,8 +306,9 @@ namespace TrackVice
             foot.Controls.Add(bItemLog);
             foot.Controls.Add(bItemCopy);
             AddReportLinks(foot);
+            BuildDetailFoot(foot);
             itemDetail.Dock = DockStyle.Fill;
-            detailHost.Controls.Add(itemDetail);
+            detailHost.Controls.Add(Padded(itemDetail));
             detailHost.Controls.Add(foot);
             plain.Add(foot);
             views[TabProgress] = Split(list, detailHost, bar);
@@ -456,6 +457,18 @@ namespace TrackVice
             return host;
         }
 
+        // The text of a detail panel keeps a margin from the border of the card.
+        static Control Padded(Control box)
+        {
+            Panel pad = new Panel();
+            pad.Dock = DockStyle.Fill;
+            pad.Padding = new Padding(Dpi.S(14), Dpi.S(10), Dpi.S(4), Dpi.S(6));
+            pad.Tag = "card-foot";
+            box.Dock = DockStyle.Fill;
+            pad.Controls.Add(box);
+            return pad;
+        }
+
         Panel Card(Control inner)
         {
             Panel p = new Panel();
@@ -463,6 +476,7 @@ namespace TrackVice
             p.Padding = new Padding(1);
             p.Tag = "card";
             inner.Dock = DockStyle.Fill;
+            if (inner is RichTextBox) inner = Padded(inner);
             p.Controls.Add(inner);
             return p;
         }
