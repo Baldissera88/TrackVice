@@ -51,7 +51,7 @@ Seen on a real device: a deployment was stopped by shutting the PC down in the e
 
 ## 6. The whole task sequence
 
-- Today TrackVice shows only the steps that have sent status: steps and groups that have not run yet, or never run because of a condition, are missing (seen: the groups Apps and FK Distribution - Condor Software).
+- Today TrackVice shows only the steps that have sent status: steps and groups that have not run yet, or never run because of a condition, are missing (seen on a real site: whole groups were missing until they ran).
 - Read the task sequence itself from the SMS Provider (SMS_TaskSequencePackage, its Sequence) when a run is opened, and show every group and step in the right order from the start: Waiting until it runs, Skipped when the engine skipped it, Disabled when it is disabled in the task sequence. Steps that install from a variable list show the base variable name.
 - Needs only the read rights TrackVice already uses on the SMS Provider; when the task sequence cannot be read, show what the status messages give, as today, and say why.
 - The same for the agent in a task sequence where the task sequence is in the environment (_SMSTSTaskSequence, if it is there and readable; check before using it).
