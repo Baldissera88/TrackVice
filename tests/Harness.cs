@@ -91,6 +91,7 @@ namespace TrackVice.Tests
             TsAgentSetupTests.Run();
             CustomerFileTests.Run();
             PublishTargetTests.Run();
+            GetStartedTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

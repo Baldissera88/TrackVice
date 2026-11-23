@@ -1715,6 +1715,7 @@ namespace TrackVice
             else if (start.Page == "about") page = new AboutDialog(theme);
             else if (start.Page == NotePage) page = ShotNote();
             else if (Array.IndexOf(WelcomePages, start.Page) >= 0) page = ShotWelcome();
+            else if (Array.IndexOf(GetStartedPages, start.Page) >= 0) page = ShotGetStarted();
             else if (Array.IndexOf(OverviewPages, start.Page) >= 0) ShotOverview();
             else if (Array.IndexOf(DevicePages, start.Page) >= 0) page = ShotDevices();
             else if (start.Page == "devicelogs") { FetchDeviceLogs(null, 0); LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); }
