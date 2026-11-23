@@ -1,5 +1,17 @@
 # Changelog
 
+## TrackVice 1.5.1
+
+23 November 2026.
+
+- **LogVice when it is missing**: a LogVice button asks first, then downloads LogVice from GitHub, checks it against the release's SHA256SUMS.txt and opens the logs. Settings > LogVice shows the version and a Download button.
+- **The agent version** on the device, in the agent device list, on the wall, on Overview (Agents) and in reports. Needs attention lists agents behind the published version.
+- **Who is enrolling**: the user on the device, in Overview, Recent devices, the device list, the wall and search.
+- **For support**: serial, model, Autopilot profile and group tag, Entra and Intune IDs, network, disk, TPM, Secure Boot and time zone in one place; time left; Copy for a ticket; Open in Intune and Entra; notes per device.
+- **Time the device was off does not count**: a shutdown of more than 15 minutes is shown as time off ("26 min · off 9 h 01 min"), not as deployment time, in every view, report and statistic, and the device shows "Off since" instead of stalled.
+- **Correct time**: the device's time zone and clock, a finding when the zone changed during the deployment or the clock is off, and an option in Add customer to turn on automatic time zone on new devices. docs/AGENT.md explains the Intune setting for a fixed time zone.
+- Fixed: the Publish banner no longer runs out of a narrow window.
+
 ## TrackVice 1.5.0
 
 18 November 2026.

@@ -11,7 +11,7 @@ namespace TrackVice
     public static class Program
     {
         public const string Developer = "Daniel L. Baldissera";
-        public const string BuildDate = "18 November 2026";
+        public const string BuildDate = "23 November 2026";
 
         [DllImport("kernel32.dll")]
         static extern bool AttachConsole(int pid);
