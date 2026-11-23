@@ -18,7 +18,7 @@ namespace TrackVice
             get { return Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "TrackVice"), "Scripts"); }
         }
 
-        public static readonly string[] Pages = { "addcustomer", "yourstorage", "yourstorage-settings", "customercode", "publishnote", "storagesecurity", "removecustomer" };
+        public static readonly string[] Pages = { "addcustomer", "yourstorage", "yourstorage-settings", "customercode", "publishnote", "storagesecurity", "removecustomer", "appregistration" };
         public const string AgentDoc = "https://github.com/Baldissera88/TrackVice/blob/main/docs/AGENT.md";
 
         public static string PublicKey(IUpdateKeyStore keys)
@@ -76,6 +76,8 @@ namespace TrackVice
         List<AzureSubscription> subs = new List<AzureSubscription>();
         List<AzureAccount> accounts = new List<AzureAccount>();
         bool filling;
+        // What is ticked in the What you need box of step 1.
+        readonly HashSet<string> ticks = new HashSet<string>();
 
         public AddCustomerDialog(Theme t, CustomerBook book, IWeb web, ISecretStore secrets, IUpdateKeyStore keys, string folder, bool isDemo) : base("Add customer", t, web, isDemo)
         {
@@ -106,6 +108,8 @@ namespace TrackVice
             List<ChoiceCard> group = new List<ChoiceCard>(new ChoiceCard[] { cYours, cTheirs });
             cYours.Group = cTheirs.Group = group;
             cYours.IsChosen = true;
+            cYours.Chosen += delegate { Rebuild(); };
+            cTheirs.Chosen += delegate { Rebuild(); };
             bMore = Button("More about this", delegate { Open(AddCustomerUi.AgentDoc); });
             gScript = Kept(new Toggle());
             gScript.On = true;
@@ -254,6 +258,9 @@ namespace TrackVice
         {
             l.Add(new SectionTitle("1. Customer"));
             l.Add(Row(Glyphs.Info, "What this does", "Adds a customer in three steps. Devices of the customer upload to a private container in your storage " + (own != null ? own.Account : "") + " and download TrackVice from it. Nothing is created until you press Create in step 3.", null));
+            NeedsBox needs = new NeedsBox("What you need", SetupNeeds.BoxIntro, SetupNeeds.Checklist(cTheirs.IsChosen, NeedOwnKey), ticks, "Roles and consent as a table");
+            needs.MoreClicked += delegate { Open(AddCustomerUi.AgentDoc + "#what-you-need"); };
+            l.Add(needs);
             l.Add(Row(Glyphs2.Device, "Customer name", "Shown at the top of the device lists. For a customer that exists, TrackVice asks first: updating it makes new links, the old ones stop, and the script in Intune must be updated too.", tName));
             if (asking) l.Add(ExistsRow());
             l.Add(new SectionTitle("Where the device data goes"));
@@ -858,6 +865,7 @@ namespace TrackVice
                 case "customercode": return CustomerCodeDialog.ForDemo(theme);
                 case "storagesecurity": return StorageSecurityDialog.ForDemo(theme);
                 case "removecustomer": return RemoveCustomerDialog.ForDemo(theme);
+                case "appregistration": return AppRegistrationDialog.ForDemo(theme, start.Tab);
                 default: ShowPublishNote(YourStorageUi.RunningVersion); return null;
             }
         }

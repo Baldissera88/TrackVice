@@ -198,6 +198,9 @@ namespace TrackVice
         // Saves the link TrackVice.exe was uploaded with as the customer's publish location for agent updates.
         public Action<string, string> SavePublishLink;
 
+        // What is ticked in the What you need box of step 1.
+        readonly HashSet<string> ticks = new HashSet<string>();
+
         public NewCustomerDialog(Theme t, CustomerBook book, IWeb web, bool isDemo) : base("New customer", t)
         {
             this.book = book;
@@ -534,6 +537,9 @@ namespace TrackVice
         {
             l.Add(new SectionTitle("1. Customer and tenant"));
             l.Add(Row(Glyphs.Info, "What this does", "Sets up what the TrackVice agent needs for a new customer: a storage account, the links, TrackVice.exe and the platform script. Each step says what it does, and nothing is created or changed until you press its button. Signing in and listing change nothing.", null));
+            NeedsBox needs = new NeedsBox("What you need", SetupNeeds.BoxIntro, SetupNeeds.LinksChecklist(), ticks, "Roles and consent as a table");
+            needs.MoreClicked += delegate { Open(AddCustomerUi.AgentDoc + "#what-you-need"); };
+            l.Add(needs);
             l.Add(Row(Glyphs2.Device, "Customer name", "Shown at the top of the device lists. When a customer with this name exists, it is used and its details are kept until the last step.", tName));
             l.Add(Row(Glyphs.Shield, "Tenant", "The tenant ID or domain of the customer's Intune, such as contoso.onmicrosoft.com. The sign-ins in the next steps go to it.", tTenant));
             l.Add(Row(Glyphs2.Help, "Next", "Adds the customer to your list on this PC, or picks the one with this name.", null));

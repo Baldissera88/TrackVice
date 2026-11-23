@@ -263,7 +263,7 @@ namespace TrackVice
     }
 
     // Settings: a list of subjects on the left, one page on the right, and a search box over all of them.
-    public sealed class SettingsDialog : PageForm
+    public sealed partial class SettingsDialog : PageForm
     {
         public event EventHandler ThemeChanged, IntervalChanged, StuckChanged;
         // A setting that changes what is read was changed, so a live session should read the device again.
@@ -766,6 +766,7 @@ namespace TrackVice
             clientRow.Desc = clientRow.Desc.TrimEnd('.') + ", " + GraphClient.DefaultClientId + ".";
             l.Add(clientRow);
             l.Add(Bind("tenant", new SettingRow(Glyphs.Shield, "Tenant", null, tenant)));
+            AddAppRegistration(l);
             l.Add(new SectionTitle("Names from Intune"));
             l.Add(NameRow("names.scripts", Glyphs2.Code));
             l.Add(NameRow("names.apps", Glyphs2.Apps));

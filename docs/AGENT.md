@@ -16,6 +16,7 @@ Setups made before this, with a storage account and links per customer, keep wor
 - [What you need](#what-you-need)
 - [Set up once: Your storage](#set-up-once-your-storage)
 - [Add a customer in three steps](#add-a-customer-in-three-steps)
+- [App registration](#app-registration)
 - [The customer code](#the-customer-code)
 - [Test on one device first](#test-on-one-device-first)
 - [Follow the devices](#follow-the-devices)
@@ -72,14 +73,33 @@ The Intune Management Extension runs platform scripts before it installs Win32 a
 
 ## What you need
 
+Each sign-in asks for an account with a role, and for consent in the tenant. **Add customer** step 1, **Your storage** and the guide with links show the same as a short checklist that you can tick. Signing in changes nothing.
+
+| Sign-in | Account | Role it needs | Consent | Who can give it |
+|---|---|---|---|---|
+| Your storage, a new account | Your Azure account, with the public client of Azure PowerShell | Contributor or Owner on the subscription | None to ask for | An Owner of the subscription: in the Azure portal, open the subscription, then Access control (IAM) and Add role assignment |
+| Your storage, an existing account | Your Azure account | Storage Account Contributor on the storage account | None to ask for | An Owner of the storage account, its resource group or the subscription, in the same way |
+| Add customer and Publish, when the account key is not kept | Your Azure account | Storage Account Contributor on Your storage account, to read its key | None to ask for | As above |
+| Add customer, the Intune part | An account in the customer's tenant | Intune Administrator, or an Intune role that can add and assign platform scripts. To make the group: the right to make groups, which every user has unless the tenant limited it, or the Groups Administrator role. A dynamic group needs Microsoft Entra ID P1 (or Intune for Education) in the tenant | Admin consent for the delegated permissions `DeviceManagementScripts.ReadWrite.All` and `Group.ReadWrite.All` | For the consent: a Global Administrator, Privileged Role Administrator, Cloud Application Administrator or Application Administrator. For the Intune Administrator role: a Global Administrator or Privileged Role Administrator, in Roles and administrators in the Microsoft Entra admin center. For an Intune role: an Intune Role Administrator |
+| Customer code…, Update the script in Intune | An account in the customer's tenant | The same Intune role | Admin consent for `DeviceManagementScripts.ReadWrite.All` | As above |
+| Add customer with the customer's own Azure | An account in the customer's tenant | Contributor on a subscription or resource group for a new account, or Storage Account Contributor on an existing one | None to ask for | An Owner of the customer's subscription |
+| The guide with links, the Intune part | An account in the customer's tenant | The same Intune role | Admin consent for `DeviceManagementScripts.ReadWrite.All` and `Group.ReadBasic.All` | As above |
+
+The two Azure roles are Azure built-in roles. Contributor cannot give roles to others, so an Owner is needed for that. Storage Account Contributor allows `Microsoft.Storage/storageAccounts/*`, which covers making the account, reading its keys, the container and the lifecycle rule. The Intune Administrator role is a Microsoft Entra role, shown as Intune Service Administrator in Microsoft Graph. Microsoft's documentation does not say which Intune permission covers platform scripts, so try a narrower Intune role on a test tenant before you rely on it.
+
+The consent is for delegated permissions, which work as the signed-in account. A Cloud Application Administrator or Application Administrator can give consent for them. For application permissions of Microsoft Graph only a Privileged Role Administrator can, and TrackVice asks for none. An administrator gives the consent in the Microsoft Entra admin center: **Enterprise apps**, the app, **Permissions**, **Grant admin consent**. The app is Microsoft Graph Command Line Tools, or your own [app registration](#app-registration).
+
+Besides the accounts:
+
 | For | What is needed |
 |---|---|
-| Your storage, once | An Azure subscription of your own. For a new storage account: Contributor (or Owner) on the subscription. For an existing account: Storage Account Contributor on that account. The cost is small: a session is a few hundred kilobytes per device |
-| Add customer | No Azure role: TrackVice makes the customer's container with the account key it keeps. For the Intune part, an account in the customer's tenant, see [Who signs in](#who-signs-in-and-what-they-need) |
+| Cost | Small: a session is a few hundred kilobytes per device |
 | The devices | Outbound HTTPS (port 443) to `<account>.blob.core.windows.net` of your storage, and of the customer's storage when the data is kept there |
 | Files | `TrackVice.exe` on your PC. Add customer writes the platform script from `agent/Install-TrackViceAgent.ps1` for you |
 
 Your storage does not have to be in the customer's tenant. The devices only use the links in the customer code.
+
+The roles and the consent were checked against Microsoft's documentation: [Azure built-in roles](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles), [Storage Account Contributor](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles/storage), [Grant tenant-wide admin consent](https://learn.microsoft.com/entra/identity/enterprise-apps/grant-admin-consent), [Intune role-based access control](https://learn.microsoft.com/intune/fundamentals/role-based-access-control/overview) and [dynamic membership groups](https://learn.microsoft.com/entra/identity/users/groups-create-rule).
 
 ## Set up once: Your storage
 
@@ -165,12 +185,89 @@ Press **Create**. The result page lists what was made, with **Copy** for the cus
 
 ### Who signs in, and what they need
 
-| Sign-in | What the account needs |
+The table in [What you need](#what-you-need) says it for each sign-in. The sign-in of Add customer uses the client ID saved for the customer, or Microsoft Graph Command Line Tools. The Azure sign-in uses the public client of Azure PowerShell.
+
+### When a role or consent is missing
+
+When Azure or Microsoft Graph refuses, the message says which role or consent is missing, who can give it and where. What each answer means:
+
+| Answer | What the message says |
 |---|---|
-| Azure, for Your storage | Contributor (or Owner) on the subscription for a new account, since the name is checked and the resource group is made there. Storage Account Contributor on an existing account. It signs in with the public client of Azure PowerShell |
-| Intune, in Add customer | An Intune role that can add and assign platform scripts, such as Intune Administrator, and a role that can make security groups, such as Groups Administrator, in the customer's tenant. Consent there for the delegated permissions `DeviceManagementScripts.ReadWrite.All` and `Group.ReadWrite.All`, which also lets Assign to a group I choose list the groups. Dynamic groups need Microsoft Entra ID P1 in the tenant. It uses the client ID saved for the customer, or Microsoft Graph Command Line Tools |
-| Intune, in Customer code… | The same Intune role, and consent for `DeviceManagementScripts.ReadWrite.All` |
-| Azure, for the customer's own Azure | As for Your storage, in the customer's subscription |
+| Azure 403 `AuthorizationFailed` | The account lacks an Azure role: Contributor or Owner on the subscription for the resource group, the name check and the account, Storage Account Contributor on the account for its key, container and rule. An Owner gives it in the Azure portal under Access control (IAM). A new role can take a few minutes |
+| Azure `LinkedAuthorizationFailed` or 401 `InvalidAuthenticationTokenTenant` | The account is in another tenant than the resource. Enter that tenant in Azure tenant |
+| Azure `RequestDisallowedByPolicy` | An Azure Policy of the subscription does not allow it. Pick another region or resource group, or ask the Owner which policy applies |
+| Azure `MissingSubscriptionRegistration` | The subscription is not registered for `Microsoft.Storage`. An Owner or Contributor registers it under Resource providers |
+| Azure `SubscriptionNotFound` | The account has no role on the subscription, or the sign-in is for another tenant |
+| Graph 403 `Forbidden` or `Authorization_RequestDenied` | The account lacks the Intune role, or the right to make groups. The message names the role and who gives it. When Graph's message lists scopes, the sign-in lacks the permission: an administrator gives admin consent |
+| Graph 400 about a license, for the dynamic group | The tenant has no Microsoft Entra ID P1. Choose Assign to a group I choose, or Do not assign |
+| Sign-in `AADSTS65001` or `AADSTS90094` (consent or admin consent required) | The tenant has not given consent for the permissions to the app. The message names the permissions and who can give consent |
+| Sign-in `AADSTS65004` | The consent was declined in the browser. Sign in again and accept it |
+| Sign-in `AADSTS700016` | The tenant does not know the app. Check the Client ID and the tenant |
+| Sign-in `AADSTS7000218` | The app registration is not a public client. Set Allow public client flows to Yes, see [App registration](#app-registration) |
+| Sign-in `AADSTS70011` | The app does not know a permission that was asked for. Add it under API permissions |
+| Sign-in `AADSTS53003` or `AADSTS53000` | A Conditional Access policy blocked the sign-in. An administrator finds the policy in the sign-in logs |
+| Sign-in `AADSTS50076` or `AADSTS50079` | The tenant asks for multifactor authentication. Finish it in the browser, or register a method first |
+| Sign-in `AADSTS50105` | The account is not assigned to the app, and the app needs an assignment |
+| Sign-in `AADSTS50020`, `AADSTS90002` or `AADSTS50059` | The account is not in the tenant, or the tenant was not found. Check Tenant |
+
+The codes are the ones in Microsoft's lists of [AADSTS error codes](https://learn.microsoft.com/entra/identity-platform/reference-error-codes) and of [common Azure deployment errors](https://learn.microsoft.com/azure/azure-resource-manager/troubleshooting/common-deployment-errors). Any other answer keeps Microsoft's own words.
+
+## App registration
+
+TrackVice reads Intune and Add customer writes to it with Microsoft Graph, after a sign-in with a code. By default it signs in as **Microsoft Graph Command Line Tools**, the app that Microsoft Graph PowerShell uses. **Settings > Intune / cloud > Client ID** can name an app registration of the customer's own instead. Settings explains the choice in the same words as here.
+
+### Why use your own
+
+- The customer controls it: they can see it, change it and remove it.
+- It can be limited to the permissions TrackVice uses. The read permissions need no write permission at all.
+- Conditional Access and the sign-in logs can target it by name.
+- Some tenants block Microsoft Graph Command Line Tools, or ask for admin consent for it.
+
+Microsoft Graph Command Line Tools needs nothing made, which is why it is the default.
+
+### What it needs
+
+- **A public client, with no secret.** TrackVice signs in with a code, so it cannot keep a secret. In the app registration, **Authentication > Advanced settings > Allow public client flows** must be **Yes**. With it off, Microsoft treats the app as a confidential client and the sign-in fails with `AADSTS7000218`.
+- **No redirect URI** is needed for the sign-in with a code. When no redirect URI is sent, Microsoft decides the client type from Allow public client flows. The button that makes the app adds `https://login.microsoftonline.com/common/oauth2/nativeclient` only so that the consent link has a page to return to.
+- **The delegated Microsoft Graph permissions below**, with admin consent. They are delegated: they work as the signed-in account, and TrackVice asks for no application permission.
+- **Who can make it:** an Application Developer, Application Administrator or Cloud Application Administrator, or any user when the tenant lets users register applications.
+- **Who can give admin consent for delegated permissions:** a Global Administrator, Privileged Role Administrator, Cloud Application Administrator or Application Administrator.
+
+| Permission | Permission ID | What for |
+|---|---|---|
+| `DeviceManagementManagedDevices.Read.All` | `314874da-47d6-4978-88dc-cf0d37f0bb82` | Read only. Autopilot in Intune, and finding the device for its profiles |
+| `DeviceManagementScripts.Read.All` | `d32381d8-ee89-4220-9c83-b672aa68d404` | Read only. Names of platform scripts and remediations |
+| `DeviceManagementApps.Read.All` | `4edf5f54-4666-44af-9de9-0144fb4b6e8c` | Read only. Names of apps |
+| `DeviceManagementConfiguration.Read.All` | `f1493658-876a-4c87-8fa7-edb559b3476a` | Read only. Configuration profiles of a device |
+| `DeviceManagementServiceConfig.Read.All` | `8696daa5-bce5-4b2e-83f9-51b6defc4e1e` | Read only. The check before enrollment: Autopilot devices, profiles and Enrollment Status Pages |
+| `Device.Read.All` | `951183d1-1a61-466f-a6d1-1fde911bfd95` | Read only. The groups of a device, in the check before enrollment |
+| `DeviceManagementScripts.ReadWrite.All` | `8b9d79d0-ad75-4566-8619-f7500ecfcebe` | Writes. Only Add customer and Customer code: adds and assigns the platform script |
+| `Group.ReadWrite.All` | `4e46008b-f24c-477d-8fff-7bb4ec7aafe0` | Writes. Only Add customer: makes the Autopilot device group and searches groups |
+
+The first six only read. Each is asked for only when the feature that needs it is on, so an app that has only these six cannot add or change anything. The last two are asked for only when you add a customer or update its script. The guide with links also asks for `Group.ReadBasic.All`, which is not in this list or in the app that the button makes.
+
+### Step by step in the Microsoft Entra admin center
+
+1. Sign in as one of the roles above. Open **Identity > Applications > App registrations > New registration**.
+2. Name it `TrackVice`. Choose **Accounts in this organizational directory only**. Leave the redirect URI empty. Choose **Register**.
+3. Copy the **Application (client) ID**.
+4. Open **Authentication > Advanced settings**. Set **Allow public client flows** to **Yes** and save.
+5. Open **API permissions > Add a permission > Microsoft Graph > Delegated permissions**. Add the permissions in the table, all of them to use Add customer, or only the first six to read.
+6. Choose **Grant admin consent**, or send the consent link to an administrator.
+7. In TrackVice, paste the Client ID in **Settings > Intune / cloud > Client ID**. Sign out there and sign in again, so that TrackVice uses the app. The Client ID is kept for the customer in use.
+
+### The button that makes it
+
+**Settings > Intune / cloud > Make the app registration > Make it…** does steps 1 to 5 for you.
+
+1. **Sign in** to the customer's tenant with a code, as Microsoft Graph Command Line Tools, for the delegated permission `Application.ReadWrite.All`. Microsoft lists it for making the enterprise application, and as the higher of two for the application. The account needs one of the roles above. Signing in and looking change nothing.
+2. TrackVice looks for an app named `TrackVice`. When there is one, it is not changed: **Use it** fills in its Client ID, and makes its enterprise application only when that is missing.
+3. When there is none, the page lists exactly what **Make** will make, and Make asks again before it starts:
+   - `POST /v1.0/applications` with the name `TrackVice`, `signInAudience` `AzureADMyOrg`, `isFallbackPublicClient` true, the redirect URI above under `publicClient`, and `requiredResourceAccess` for Microsoft Graph (`00000003-0000-0000-c000-000000000000`) with exactly the eight permissions above, each of type `Scope`.
+   - `POST /v1.0/servicePrincipals` with the new app's ID. The directory can need a minute to know a new app, so TrackVice tries again a few times.
+4. The Client ID is filled in on the settings page, with **Copy**. The page shows the **admin consent link**, `https://login.microsoftonline.com/<tenant>/adminconsent?client_id=<id>`, with **Open the link** and **Copy**. An administrator opens it, signs in and accepts. Until then the sign-in asks for consent and fails with `AADSTS65001`.
+
+It makes no secret, no certificate, no application permission and no consent, and it changes nothing else in the tenant. To remove the app later, delete it under **App registrations**.
 
 ## The customer code
 
@@ -741,9 +838,9 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 | "... has ... bytes and SHA-256 ..., expected ... It is refused." | The exe in `trackvice-agent` is not the one that was signed, or the download was cut off. Publish again |
 | "TrackVice.exe /agent-install returned 1." | The reason follows, from TrackVice itself, such as a code with a setting below zero or an alert link that is not https |
 | The script installs nothing and says "Not a new enrollment" | The device was enrolled more than 24 hours ago (`m` in the code, `$MaxAgeHours` with links). To test on such a device, run `TrackVice.exe /agent-install /customer "<code>"` as in [Test on one device first](#test-on-one-device-first) |
-| Your storage: "Your account may not ..." | The account lacks a role on the subscription or the storage account, see [Who signs in](#who-signs-in-and-what-they-need). A blocked sign-in usually means the Azure PowerShell client is not allowed in your tenant |
+| Your storage: "Your account may not ..." | The account lacks a role on the subscription or the storage account, see [What you need](#what-you-need). The message names the role and who gives it. A blocked sign-in usually means the Azure PowerShell client is not allowed in your tenant |
 | Add customer: "refused the account key (HTTP 403...)" | The key of your storage account was rotated. Set up Your storage again |
-| Add customer: "Access denied" in Intune | The account needs an Intune role that can add scripts, a role that can make groups, and consent for `DeviceManagementScripts.ReadWrite.All` and `Group.ReadWrite.All`. The result page says what was not done. Add the saved script by hand, or use **Customer code… > Update the script in Intune** later |
+| Add customer: "Access denied" in Intune | The account needs the Intune Administrator role or an Intune role that can add scripts, the right to make groups, and consent for `DeviceManagementScripts.ReadWrite.All` and `Group.ReadWrite.All`. The message says which is missing and who gives it, see [When a role or consent is missing](#when-a-role-or-consent-is-missing). The result page says what was not done. Add the saved script by hand, or use **Customer code… > Update the script in Intune** later |
 | Customer code…: "This tenant has no platform script called TrackVice agent" | It was not added, or has another name. Add the saved script as a platform script with that name, or run Add customer again |
 | **Customer code…** is not on the customer's row | The customer was not made with Add customer on this PC and Windows user |
 | The script says the SHA-256 is not the expected one | Links only: the exe in the container is not the one `$Sha256` in `agent/Install-TrackViceAgent-Links.ps1` was taken from. Take the hash again from the uploaded file |

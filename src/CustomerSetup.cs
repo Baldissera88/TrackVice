@@ -227,7 +227,7 @@ namespace TrackVice
         {
             Dictionary<string, object> r = Post(Authority + "devicecode", "client_id=" + Uri.EscapeDataString(ClientId) + "&scope=" + Uri.EscapeDataString(Scopes + " offline_access"));
             string err = Http.Str(r, "error_description") ?? Http.Str(r, "error");
-            if (err != null) throw new SetupException(err);
+            if (err != null) throw new SetupException(Explain(r) ?? err);
             DeviceCode d = new DeviceCode();
             d.Code = Http.Str(r, "device_code");
             d.UserCode = Http.Str(r, "user_code");
@@ -254,10 +254,18 @@ namespace TrackVice
                 if (err == "authorization_pending") continue;
                 if (err == "slow_down") { interval += 5; continue; }
                 if (err == "expired_token") throw new SetupException("The code expired. Start again.");
+                string known = Explain(r);
+                if (known != null) throw new SetupException(known);
                 if (err == "authorization_declined" || err == "access_denied") throw new SetupException("The sign-in was declined.");
                 throw new SetupException(Http.Str(r, "error_description") ?? err ?? "The sign-in failed.");
             }
             throw new SetupException("The code expired. Start again.");
+        }
+
+        // Says what a refusal of the tenant or the app means, or null for any other error.
+        string Explain(Dictionary<string, object> r)
+        {
+            return SetupErrors.SignIn(Http.Str(r, "error"), Http.Str(r, "error_description"), SetupErrors.AppName(ClientId), SetupErrors.Permissions(Scopes));
         }
 
         bool Take(Dictionary<string, object> r)
@@ -362,8 +370,9 @@ namespace TrackVice
             string code = Http.Str(e, "code") ?? "";
             string msg = Http.Str(e, "message");
             string text;
+            string known = r.Status == 401 && code != "InvalidAuthenticationTokenTenant" ? null : SetupErrors.Azure(r.Status, code, msg, doing);
+            if (known != null) return new SetupException(known, r.Status, code);
             if (r.Status == 401) text = "The Azure sign-in has expired or is not valid. Sign in again.";
-            else if (r.Status == 403 || code == "AuthorizationFailed") text = "Your account may not " + doing + ".";
             else text = "Azure could not " + doing + ".";
             if (!string.IsNullOrEmpty(msg)) text += " " + Txt.Short(msg.Trim(), 300);
             else if (r.Status >= 400) text += " (HTTP " + r.Status + ")";

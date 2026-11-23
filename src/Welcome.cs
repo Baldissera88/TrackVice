@@ -83,6 +83,7 @@ namespace TrackVice
             l.Add(Step(Follow, "Follow the devices",
                 "Open the list of devices with the agent. A device shows up there during device setup, and you can watch it as if you sat at it.",
                 "Open the list", f.ListOpened));
+            foreach (SetupStep st in l) st.Text += SetupNeeds.StepNeeds(st.Id);
             return l;
         }
 

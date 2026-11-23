@@ -83,8 +83,9 @@ namespace TrackVice
             Dictionary<string, object> e = ImeJson.Get(r.Json, "error") as Dictionary<string, object>;
             string msg = GraphClient.Clean(Http.Str(e, "message"));
             string text;
+            string known = r.Status == 401 ? null : SetupErrors.Graph(r.Status, Http.Str(e, "code"), msg, doing, doing.IndexOf("group", StringComparison.OrdinalIgnoreCase) >= 0 ? SetupErrors.GraphUse.Groups : SetupErrors.GraphUse.Scripts);
+            if (known != null) return new SetupException(known, r.Status, Http.Str(e, "code"));
             if (r.Status == 401) text = "The Intune sign-in has expired. Sign in again.";
-            else if (r.Status == 403) text = "Access denied: the account may not " + doing + ". It needs an Intune role that can add scripts, and consent for DeviceManagementScripts.ReadWrite.All and Group.ReadBasic.All.";
             else text = "Microsoft Graph could not " + doing + ".";
             if (!string.IsNullOrEmpty(msg)) text += " (" + msg + ")";
             else if (r.Status >= 400 && r.Status != 401 && r.Status != 403) text += " (HTTP " + r.Status + ")";

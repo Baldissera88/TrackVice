@@ -583,6 +583,8 @@ namespace TrackVice
         readonly Segmented sDays;
         // The account the customers' links point at, to select once the subscription is read.
         string preselect;
+        // What is ticked in the What you need box.
+        readonly HashSet<string> ticks = new HashSet<string>();
 
         public YourStorageDialog(Theme t, IWeb web, ISecretStore secrets, IUpdateKeyStore keys, Func<byte[]> exe, string version, bool isDemo, IEnumerable<Customer> customers) : base("Your storage", t, web, isDemo)
         {
@@ -651,6 +653,12 @@ namespace TrackVice
         {
             l.Add(new SectionTitle("Your storage"));
             l.Add(Row(Glyphs.Info, "What this does", "Sets up one storage account in your Azure for all customers. TrackVice versions go in the container " + Arm.AgentFiles + ", where devices download them, and Add customer makes a private container for each customer's uploads. The account key is kept on this PC, encrypted for your Windows account, to make those containers and their links, unless you choose below to sign in each time. Signing in and listing change nothing.", null));
+            if (run.Result == null)
+            {
+                NeedsBox needs = new NeedsBox("What you need", SetupNeeds.BoxIntro, SetupNeeds.StorageChecklist(), ticks, "Roles and consent as a table");
+                needs.MoreClicked += delegate { Open(AddCustomerUi.AgentDoc + "#what-you-need"); };
+                l.Add(needs);
+            }
             if (run.Result != null)
             {
                 l.Add(new SectionTitle("Done"));
