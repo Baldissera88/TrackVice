@@ -228,6 +228,11 @@ namespace TrackVice
             AutoWidth();
         }
 
+        public void PerformClick()
+        {
+            OnClick(EventArgs.Empty);
+        }
+
         public void AutoWidth()
         {
             int w = Dpi.S(Compact ? 10 : 14) * 2;

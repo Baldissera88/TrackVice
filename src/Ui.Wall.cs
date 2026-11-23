@@ -50,6 +50,7 @@ namespace TrackVice
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
             MinimumSize = new Size(Dpi.S(640), Dpi.S(420));
+            DialogFit.Keep(this);
 
             header.Dock = DockStyle.Top;
             header.Height = Dpi.S(96);

@@ -78,6 +78,8 @@ namespace TrackVice.Tests
             DeviceTimeTests.Run();
             LogViceGetTests.Run();
             AgentVersionTests.Run();
+            MailTests.Run();
+            NarrowTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

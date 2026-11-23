@@ -166,6 +166,7 @@ namespace TrackVice
                     int w, h;
                     if (wh.Length == 2 && int.TryParse(wh[0], out w) && int.TryParse(wh[1], out h)) o.Size = new Size(w, h);
                 }
+                else if (low == "--scale" && i + 1 < args.Length) ShotScale.Apply(args[++i]);
                 else if (low == "--wall") o.Wall = true;
                 else if ((low == "/upload" || low == "--upload") && i + 1 < args.Length) o.Upload = args[++i];
                 else if (Directory.Exists(a)) o.Folder = a;

@@ -24,7 +24,7 @@ namespace TrackVice
 
     // A source over a device list. The catalog is made on first use, on the reading thread, since connecting to an
     // SMS Provider can take a while.
-    public sealed class CatalogSource : IOverviewSource
+    public sealed class CatalogSource : IOverviewSource, IOverviewRuns
     {
         readonly string customer, kind;
         readonly Func<IRemoteCatalog> make;
@@ -76,6 +76,19 @@ namespace TrackVice
         {
             IRemoteCatalog c = Catalog;
             return c == null ? new List<RemoteDeployment>() : c.List(sinceUtc);
+        }
+
+        // Every run: an SCCM site is asked for earlier runs of a device too, and only as far back as OverviewCounts.SccmHistory.
+        public List<RemoteDeployment> Runs(DateTime sinceUtc)
+        {
+            IRemoteCatalog c = Catalog;
+            if (c == null) return new List<RemoteDeployment>();
+            SccmCatalog sc = c as SccmCatalog;
+            if (sc == null) return c.List(sinceUtc);
+            bool was = sc.EarlierRuns;
+            sc.EarlierRuns = true;
+            try { return sc.List(sinceUtc); }
+            finally { sc.EarlierRuns = was; }
         }
 
         public Session Load(RemoteDeployment d)
@@ -140,6 +153,8 @@ namespace TrackVice
         public readonly List<OverviewDevice> Devices = new List<OverviewDevice>();
         public readonly List<string> Problems = new List<string>();
         public readonly List<string> Customers = new List<string>();
+        // Every run of every source, also older ones and repeats on one device, for the deployment counts. Empty when not read.
+        public readonly List<OverviewDevice> Runs = new List<OverviewDevice>();
         public bool Agents, Sccm;
         public DateTime ReadUtc;
     }
@@ -165,6 +180,7 @@ namespace TrackVice
 
         readonly List<IOverviewSource> sources;
         readonly Dictionary<IOverviewSource, Listed> lists = new Dictionary<IOverviewSource, Listed>();
+        readonly Dictionary<IOverviewSource, Listed> runLists = new Dictionary<IOverviewSource, Listed>();
         readonly Dictionary<string, Loaded> sessions = new Dictionary<string, Loaded>();
         public int SessionReads;
 
@@ -213,6 +229,7 @@ namespace TrackVice
                 List<RemoteDeployment> sorted = new List<RemoteDeployment>(l.Rows);
                 sorted.Sort(delegate (RemoteDeployment a, RemoteDeployment b) { return b.LastUtc.CompareTo(a.LastUtc); });
                 int n = 0;
+                int first = snap.Devices.Count;
                 foreach (RemoteDeployment d in sorted)
                 {
                     OverviewDevice o = new OverviewDevice();
@@ -242,11 +259,70 @@ namespace TrackVice
                     }
                     snap.Devices.Add(o);
                 }
+                AddRuns(snap, src, snap.Devices.GetRange(first, snap.Devices.Count - first), nowUtc, force);
             }
             List<string> drop = new List<string>();
             foreach (string k in sessions.Keys) if (!used.Contains(k)) drop.Add(k);
             foreach (string k in drop) sessions.Remove(k);
             return snap;
+        }
+
+        // Older runs are read less often than the week: the list is long and the numbers change slowly.
+        static int RunsRefresh(IOverviewSource src)
+        {
+            return src.Kind == OverviewKinds.Sccm ? 900 : 300;
+        }
+
+        // Puts every run of the source in the snapshot. A run that is also in the week is the same object, so it keeps its
+        // session. A source that cannot give older runs gives the devices it listed.
+        void AddRuns(OverviewSnapshot snap, IOverviewSource src, List<OverviewDevice> own, DateTime nowUtc, bool force)
+        {
+            IOverviewRuns rs = src as IOverviewRuns;
+            List<RemoteDeployment> rows = null;
+            if (rs != null)
+            {
+                Listed l;
+                runLists.TryGetValue(src, out l);
+                if (force || l == null || nowUtc - l.ReadUtc >= TimeSpan.FromSeconds(RunsRefresh(src)))
+                {
+                    try
+                    {
+                        List<RemoteDeployment> r = rs.Runs(src.Kind == OverviewKinds.Sccm ? nowUtc - OverviewCounts.SccmHistory : DateTime.MinValue);
+                        l = new Listed();
+                        l.ReadUtc = nowUtc;
+                        l.Rows = r ?? new List<RemoteDeployment>();
+                        runLists[src] = l;
+                    }
+                    catch (Exception ex)
+                    {
+                        snap.Problems.Add((string.IsNullOrEmpty(src.Customer) ? "" : src.Customer + ", ") + KindName(src.Kind) + ", older deployments: " + ex.Message);
+                    }
+                }
+                if (l != null) rows = l.Rows;
+            }
+            if (rows == null)
+            {
+                snap.Runs.AddRange(own);
+                return;
+            }
+            Dictionary<string, OverviewDevice> week = new Dictionary<string, OverviewDevice>();
+            foreach (OverviewDevice o in own) if (o.D.Key != null) week[o.D.Key] = o;
+            HashSet<string> seen = new HashSet<string>();
+            foreach (RemoteDeployment d in rows)
+            {
+                OverviewDevice o;
+                if (d.Key == null || !week.TryGetValue(d.Key, out o))
+                {
+                    o = new OverviewDevice();
+                    o.Customer = src.Customer;
+                    o.Kind = src.Kind;
+                    o.D = d;
+                    o.Source = src;
+                }
+                if (d.Key != null) seen.Add(d.Key);
+                snap.Runs.Add(o);
+            }
+            foreach (OverviewDevice o in own) if (o.D.Key == null || !seen.Contains(o.D.Key)) snap.Runs.Add(o);
         }
     }
 
@@ -382,6 +458,7 @@ namespace TrackVice
         public readonly List<StepStat> FailingMost = new List<StepStat>();
         public readonly List<AttentionTile> Attention = new List<AttentionTile>();
         public readonly List<OverviewDevice> Devices = new List<OverviewDevice>();
+        public DeployCounts Counts = new DeployCounts();
         public bool HasAgents, HasSccm;
 
         public bool HasSources
@@ -429,6 +506,7 @@ namespace TrackVice
                 if (a.Failed != b.Failed) return a.Failed ? -1 : 1;
                 return b.Dev.D.LastUtc.CompareTo(a.Dev.D.LastUtc);
             });
+            data.Counts = OverviewCounts.Build(snap, f, nowUtc, todayStartUtc);
             Average(data.Week, nowUtc);
             Average(data.Today, nowUtc);
             Steps(data, weekSessions, weekWithSession, nowUtc);

@@ -476,6 +476,23 @@ namespace TrackVice
             else Said("Opened " + where, "Look it through and send it there. TrackVice sent nothing.");
         }
 
+        // Opens an e-mail when Windows has a program for it. Without one, the text is copied and a page says so.
+        protected void OpenMail(string url, string fullText)
+        {
+            MailResult r;
+            using (LiveRegistry reg = new LiveRegistry())
+                r = MailHandler.Open(reg, url, fullText, delegate (string u) { Process.Start(u); }, Menus.Copy);
+            if (r.Outcome == MailOutcome.Opened)
+            {
+                bool cut = url.IndexOf(Feedback.Escape(Feedback.CutNote), StringComparison.Ordinal) >= 0;
+                if (cut && Menus.Copy(fullText)) Said("Opened an e-mail to " + Feedback.Email, "Some text was too long for the link and was cut. The whole text is on the clipboard: paste the rest in yourself. You send it; TrackVice sent nothing.");
+                else Said("Opened an e-mail to " + Feedback.Email, "Look it through and send it there. TrackVice sent nothing.");
+                return;
+            }
+            Said("There is no e-mail program on this PC", r.Copied ? MailHandler.NoProgramMessage : "Write to " + Feedback.Email + ".");
+            using (NoMailDialog d = new NoMailDialog(theme, MailHandler.Clip(url, fullText), r.Copied)) d.ShowDialog(this);
+        }
+
         protected void OpenDiscussion(string text)
         {
             bool copied = Menus.Copy(text);
@@ -519,7 +536,7 @@ namespace TrackVice
             Add(bundleRow);
             AddResultRow();
             Secondary();
-            Footer("Open an e-mail", false, delegate { ProblemReport r = Report(); OpenLink(r.MailUrl(), "an e-mail to " + Feedback.Email, Feedback.Body(r.Fields())); });
+            Footer("Open an e-mail", false, delegate { ProblemReport r = Report(); OpenMail(r.MailUrl(), Feedback.Body(r.Fields())); });
             Footer("Open a GitHub issue", true, delegate { ProblemReport r = Report(); OpenLink(r.IssueUrl(), "a new issue on GitHub", Feedback.Body(r.Fields())); });
         }
 
@@ -592,7 +609,7 @@ namespace TrackVice
             Add(fHow);
             AddResultRow();
             Secondary();
-            Footer("Open an e-mail", false, delegate { FeatureWish w = Wish(); OpenLink(w.MailUrl(), "an e-mail to " + Feedback.Email, Feedback.Body(w.Fields())); });
+            Footer("Open an e-mail", false, delegate { FeatureWish w = Wish(); OpenMail(w.MailUrl(), Feedback.Body(w.Fields())); });
             Footer("Open a discussion", false, delegate { OpenDiscussion(Feedback.Body(Wish().Fields())); });
             Footer("Open a GitHub issue", true, delegate { FeatureWish w = Wish(); OpenLink(w.IssueUrl(), "a new issue on GitHub", Feedback.Body(w.Fields())); });
         }
@@ -633,7 +650,7 @@ namespace TrackVice
             AddResultRow();
             Secondary();
             Footer("Open a discussion", false, delegate { OpenDiscussion(Note().Text()); });
-            Footer("Open an e-mail", true, delegate { UsageNote n = Note(); OpenLink(n.MailUrl(), "an e-mail to " + Feedback.Email, n.Text()); });
+            Footer("Open an e-mail", true, delegate { UsageNote n = Note(); OpenMail(n.MailUrl(), n.Text()); });
         }
 
         UsageNote Note()
@@ -984,7 +1001,7 @@ namespace TrackVice
             });
         }
 
-        public static readonly string[] FeedbackPages = { "publish-banner", "publish-done", "publish-explain", "report", "feature", "tellauthor", "downloads", "report-note" };
+        public static readonly string[] FeedbackPages = { "publish-banner", "publish-done", "publish-explain", "report", "feature", "tellauthor", "downloads", "report-note", "nomail" };
 
         // Screenshots of the banner, the explanation and the Help pages, with made-up data. --tab scrolls a page down.
         Form ShotFeedback()
@@ -1019,6 +1036,7 @@ namespace TrackVice
                     fd.Fill("Filter the wall view by Autopilot profile.", "We run three profiles at one customer, and the wall gets full.", "Pick the profile at the top of the wall view during a roll-out day.");
                     return fd;
                 case "tellauthor": return new TellAuthorDialog(theme);
+                case "nomail": return new NoMailDialog(theme, "Subject: TrackVice: a note\r\n\r\nText", true);
                 case "downloads": return new DownloadsDialog(theme, DownloadCounts.Demo());
                 default:
                     ShowReportNote();

@@ -84,7 +84,7 @@ namespace TrackVice
             KeyPreview = true;
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(Dpi.S(1320), Dpi.S(860));
-            MinimumSize = new Size(Dpi.S(940), Dpi.S(600));
+            MinimumSize = new Size(Dpi.S(600), Dpi.S(400));
             if (start.Shot == null) LoadBounds();
             if (!start.Size.IsEmpty)
             {
@@ -94,6 +94,7 @@ namespace TrackVice
             }
             BuildHeader();
             BuildNav();
+            BuildHeaderFold();
             BuildReference();
             BuildSupport();
             BuildViews();
@@ -431,6 +432,20 @@ namespace TrackVice
             {
                 try
                 {
+                    // In a narrow window the detail goes under the list instead of beside it.
+                    bool narrow = host.Width < Dpi.S(720);
+                    if (narrow != (sp.Orientation == Orientation.Horizontal))
+                    {
+                        sp.Orientation = narrow ? Orientation.Horizontal : Orientation.Vertical;
+                        sp.Tag = false;
+                    }
+                    if (narrow)
+                    {
+                        int under = Math.Min(Dpi.S(260), Math.Max(Dpi.S(150), sp.Height * 45 / 100));
+                        int dist = Math.Max(Dpi.S(70), sp.Height - under - sp.SplitterWidth);
+                        if (dist < sp.Height - sp.SplitterWidth) sp.SplitterDistance = dist;
+                        return;
+                    }
                     int want = Math.Min(Dpi.S(470), Math.Max(Dpi.S(300), host.Width * 36 / 100));
                     if (sp.Width > want + Dpi.S(240) && Math.Abs(sp.Width - sp.SplitterDistance - sp.SplitterWidth - want) > Dpi.S(4) && !sp.Tag.Equals(true))
                         sp.SplitterDistance = sp.Width - want - sp.SplitterWidth;
@@ -1714,6 +1729,7 @@ namespace TrackVice
             {
                 page.StartPosition = FormStartPosition.Manual;
                 page.Location = new Point(Left + 40, Top + 40);
+                if (!start.Size.IsEmpty) page.Size = start.Size;
                 page.Show(this);
             }
             // Keep the pointer out of the picture, so no row shows as hovered.

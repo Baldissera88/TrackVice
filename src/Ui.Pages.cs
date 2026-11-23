@@ -635,7 +635,8 @@ namespace TrackVice
             MaximizeBox = false;
             KeyPreview = true;
             Size = new Size(Dpi.S(780), Dpi.S(660));
-            MinimumSize = new Size(Dpi.S(560), Dpi.S(420));
+            MinimumSize = new Size(Dpi.S(620), Dpi.S(420));
+            DialogFit.Keep(this);
             BackColor = t.Bg;
             ForeColor = t.Text;
             scroll.Dock = DockStyle.Fill;
