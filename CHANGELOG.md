@@ -1,5 +1,13 @@
 # Changelog
 
+## TrackVice 1.9.2
+
+23 November 2026.
+
+- **Get started**: a page that lists the setup in order (Your storage, Publish, Add customer, the script or task sequence step, a test device), says what each step makes, shows what is done and what is next, and has one button per step. It is in Devices > Get started and in Help, and opens once at start when nothing is set up.
+- **Publish agent update** says when Your storage is not set up and offers to set it up, instead of an empty box asking for a SAS link. With Your storage it names the account. The link or folder, and the update key details, are behind a button.
+- **Sign in once**: the Azure sign-in and each customer's Intune sign-in are reused by the next dialog in the same run, which asks only for extra permissions. Sign out in Settings, or choosing another customer, forgets them.
+
 ## TrackVice 1.9.1
 
 23 November 2026.

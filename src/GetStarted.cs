@@ -37,7 +37,7 @@ namespace TrackVice
     {
         public const string Storage = "storage", Publish = "publish", Customer = "customer", Script = "script", Test = "test";
         public const string HiddenPref = "GetStartedHidden", ShownPref = "GetStartedShown";
-        public const string GuideLink = "docs/AGENT.md, the part \"Test on one device first\"";
+        public const string GuideLink = "the guide, in the part \"Test on one device first\"";
 
         public static List<GetStartedStep> Steps(GetStartedState s)
         {
