@@ -821,7 +821,13 @@ namespace TrackVice
             foreach (Control c in YourStorageUi.SettingRows(theme, delegate { Relayout(); })) l.Add(c);
             FlatButton bPublish = SmallButton("Publish", delegate
             {
-                using (PublishDialog p = PublishDialog.ForCustomer(theme)) p.ShowDialog(this);
+                bool setUp;
+                using (PublishDialog p = PublishDialog.ForCustomer(theme)) { p.ShowDialog(this); setUp = p.WantsSetUp; }
+                if (setUp)
+                {
+                    using (YourStorageDialog d = YourStorageDialog.ForLive(theme)) d.ShowDialog(this);
+                    Relayout();
+                }
             });
             l.Add(new SectionTitle("Agent updates"));
             l.Add(Bind("agentupdate", new SettingRow(Glyphs.Shield, "Publish agent update", null, bPublish)));

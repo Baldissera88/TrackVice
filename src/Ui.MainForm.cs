@@ -1728,7 +1728,7 @@ namespace TrackVice
             else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
             else if (start.Page == "refcompare") page = ReferenceUi.DemoCompareDialog(theme);
             else if (start.Page == "wall") { WallView wv = new WallView(theme, new AgentCatalog(new WallDemoStore()), true); wv.FiltersAtStart = start.Select == "filters"; if (start.Tab >= 0) wv.FilterIndex = start.Tab; page = wv; }
-            else if (start.Page == "publish") page = PublishDialog.ForDemo(theme);
+            else if (start.Page == "publish" || start.Page == "publish-none" || start.Page == "publish-link") page = PublishDialog.ForDemo(theme, start.Page);
             else if (start.Page == "names") page = new NamesDialog(theme, engine != null ? engine.S.Computer : null);
             else if (start.Page == "newcustomer") page = NewCustomerDialog.ForDemo(theme, start.Tab);
             else if (Array.IndexOf(AddCustomerUi.Pages, start.Page) >= 0) page = ShotAddCustomer();
