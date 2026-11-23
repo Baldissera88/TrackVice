@@ -25,6 +25,7 @@ namespace TrackVice
     public sealed class WallTile
     {
         public string Key, Device, Kind, Profile, Current, Names;
+        public string Version;
         public int Items, Done, FailedCount, Active;
         public DateTime? StartUtc, EndUtc, OffUtc;
         public DateTime LastUtc;
@@ -94,7 +95,7 @@ namespace TrackVice
         public bool Matches(string q)
         {
             if (string.IsNullOrEmpty(q)) return true;
-            foreach (string s in new string[] { Device, Kind, Profile, Current, Names })
+            foreach (string s in new string[] { Device, Kind, Profile, Current, Names, Version })
                 if (s != null && s.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return false;
         }
@@ -217,6 +218,7 @@ namespace TrackVice
             t.Profile = Str(e, "profile");
             t.Current = Str(e, "current");
             t.Names = Str(e, "names");
+            t.Version = Str(e, "version");
             t.Items = Int(e, "items");
             t.Done = Int(e, "done");
             t.FailedCount = Int(e, "failed");
@@ -354,6 +356,7 @@ namespace TrackVice
             e.Apply(e.DemoTo(seconds));
             Session s = e.S;
             s.Computer = computer;
+            AgentVersions.Demo(s, computer, DateTime.UtcNow);
             if (allDone)
             {
                 // A made-up device on which everything went well.

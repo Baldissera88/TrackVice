@@ -184,7 +184,7 @@ namespace TrackVice
 
             // LogVice
             D("logvice", LogVice, "LogVice", "Where LogVice.exe is. TrackVice opens logs in it.",
-                "TrackVice looks for the LogVice MSI install, App Paths and LogVice.exe next to TrackVice.exe. Browse chooses another one.",
+                "TrackVice looks for the LogVice MSI install, App Paths and LogVice.exe next to TrackVice.exe. Download gets the latest LogVice from GitHub after it asks; Browse chooses another one.",
                 "log viewer path exe", "LogVicePath", ""),
 
             // Data and privacy

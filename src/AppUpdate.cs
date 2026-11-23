@@ -237,7 +237,6 @@ namespace TrackVice
         static readonly Regex RxPre = new Regex("\"prerelease\"\\s*:\\s*true");
         static readonly Regex RxDraft = new Regex("\"draft\"\\s*:\\s*true");
         static readonly Regex RxBody = new Regex("\"body\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
-        static readonly Regex RxAsset = new Regex("\"browser_download_url\"\\s*:\\s*\"(https://github\\.com/" + Regex.Escape(Repo) + "/releases/download/[^\"/]+/(TrackVice\\.msi|TrackVice\\.exe|SHA256SUMS\\.txt))\"", RegexOptions.IgnoreCase);
 
         // Reads a reply of releases/latest. Only assets of this repository's own releases are taken.
         public static void Parse(string json, string current, AppUpdateInfo r)
@@ -251,13 +250,11 @@ namespace TrackVice
             // releases/latest skips pre-releases and drafts; a tag like 1.3.0-beta is not offered either.
             r.Prerelease = RxPre.IsMatch(json) || RxDraft.IsMatch(json) || r.Latest.IndexOf('-') >= 0;
             r.Newer = !r.Prerelease && IsNewer(r.Latest, current);
-            foreach (Match m in RxAsset.Matches(json))
-            {
-                string name = m.Groups[2].Value;
-                if (string.Equals(name, MsiName, StringComparison.OrdinalIgnoreCase)) r.MsiUrl = m.Groups[1].Value;
-                else if (string.Equals(name, ExeName, StringComparison.OrdinalIgnoreCase)) r.ExeUrl = m.Groups[1].Value;
-                else if (string.Equals(name, SumsName, StringComparison.OrdinalIgnoreCase)) r.SumsUrl = m.Groups[1].Value;
-            }
+            Dictionary<string, GitHubAsset> assets = GitHubFiles.Assets(json, Repo, new string[] { MsiName, ExeName, SumsName });
+            GitHubAsset a;
+            if (assets.TryGetValue(MsiName, out a)) r.MsiUrl = a.Url;
+            if (assets.TryGetValue(ExeName, out a)) r.ExeUrl = a.Url;
+            if (assets.TryGetValue(SumsName, out a)) r.SumsUrl = a.Url;
             Match body = RxBody.Match(json);
             if (body.Success) r.Notes = NotesText(JsonString(body.Groups[1].Value));
         }
@@ -318,50 +315,18 @@ namespace TrackVice
 
         static string FetchText(string url)
         {
-            HttpWebRequest req = Request(url, 10000);
-            req.Accept = "application/vnd.github+json";
-            using (WebResponse resp = req.GetResponse())
-            using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
-                return sr.ReadToEnd();
-        }
-
-        static HttpWebRequest Request(string url, int timeout)
-        {
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-            HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
-            req.UserAgent = "TrackVice/" + Program.Version;
-            req.Timeout = timeout;
-            req.ReadWriteTimeout = timeout;
-            req.AllowAutoRedirect = true;
-            IWebProxy proxy = WebRequest.GetSystemWebProxy();
-            if (proxy != null) proxy.Credentials = CredentialCache.DefaultNetworkCredentials;
-            req.Proxy = proxy;
-            return req;
+            return GitHubFiles.FetchText(url);
         }
 
         static void Download(string url, string path, Action<int> progress)
         {
-            HttpWebRequest req = Request(url, 60000);
-            using (WebResponse resp = req.GetResponse())
-            using (Stream src = resp.GetResponseStream())
-            using (FileStream dst = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            int last = -1;
+            GitHubFiles.Download(url, path, delegate (long done, long length)
             {
-                long length = resp.ContentLength;
-                byte[] buf = new byte[81920];
-                int n, last = -1;
-                long total = 0;
-                while ((n = src.Read(buf, 0, buf.Length)) > 0)
-                {
-                    dst.Write(buf, 0, n);
-                    total += n;
-                    if (total > 256L * 1024 * 1024) throw new IOException("The download is larger than expected.");
-                    if (progress != null && length > 0)
-                    {
-                        int pct = (int)Math.Min(100, total * 100 / length);
-                        if (pct != last) { last = pct; progress(pct); }
-                    }
-                }
-            }
+                if (progress == null || length <= 0) return;
+                int pct = (int)Math.Min(100, done * 100 / length);
+                if (pct != last) { last = pct; progress(pct); }
+            }, null);
         }
 
         // The hash SHA256SUMS.txt gives for file, in lower case, or null. Lines are "<hash>  <file>" as sha256sum writes them.

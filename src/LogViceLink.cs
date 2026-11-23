@@ -66,6 +66,9 @@ namespace TrackVice
             catch (Exception) { }
             try { candidates.Add(Path.Combine(Path.GetDirectoryName(Program.Location), "LogVice.exe")); } catch (Exception) { }
             candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"LogVice\LogVice.exe"));
+            // The copy Download keeps for this user, and the temporary one on a device that deploys.
+            if (!Program.IsAdmin) candidates.Add(Path.Combine(LogViceGet.KeepFolder, LogViceGet.ExeName));
+            if (LogViceGet.SessionExe != null) candidates.Add(LogViceGet.SessionExe);
             foreach (string c in candidates)
             {
                 try { if (!string.IsNullOrEmpty(c) && File.Exists(c)) return c; } catch (Exception) { }
