@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.9.1
+
+23 November 2026.
+
+- Fixed: when TrackVice follows a deployment (or a task sequence or Windows setup runs), Update now no longer offers to install and then fails with "could not be installed automatically". It says at once that the update waits until the deployment is done, because the update restarts TrackVice, and offers the release page.
+
 ## TrackVice 1.9.0
 
 23 November 2026.

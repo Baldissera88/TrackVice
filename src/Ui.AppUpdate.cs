@@ -465,6 +465,18 @@ namespace TrackVice
                 try { Process.Start(r.Url); } catch (Exception) { }
                 return;
             }
+            RefreshUpdateDeploying();
+            string why = UpdateBlocked();
+            if (why != null)
+            {
+                // Updating restarts TrackVice, which would stop it following the deployment.
+                string text = updateDeploying
+                    ? "TrackVice " + r.Latest + " is out. It is not installed while TrackVice follows a deployment on this device, because the update restarts TrackVice. Update when the deployment is done, or download it now and install it on another PC.\r\n\r\nOpen the release page?"
+                    : "TrackVice " + r.Latest + " is out. " + why.Replace("No update check", "It is not installed") + "\r\n\r\nOpen the release page?";
+                if (MessageBox.Show(this, text, "Update TrackVice", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    try { Process.Start(r.Url); } catch (Exception) { }
+                return;
+            }
             DialogResult a;
             using (UpdateDialog d = new UpdateDialog(theme, r, msi)) a = d.ShowDialog(this);
             if (a == DialogResult.No) { try { Process.Start(r.Url); } catch (Exception) { } return; }
