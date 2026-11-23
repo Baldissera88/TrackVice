@@ -391,6 +391,7 @@ namespace TrackVice
 
         public static void Run(Session s, DateTime nowUtc, bool live)
         {
+            OffTime.Mark(s);
             List<Finding> list = new List<Finding>();
             foreach (Item i in s.Items)
             {
@@ -488,6 +489,8 @@ namespace TrackVice
             }
 
             AutopilotFlow.Apply(s, list, nowUtc);
+            OffTime.Apply(s, list, nowUtc);
+            DeviceClock.Apply(s, list, nowUtc);
             EspSteps.Apply(s, list, nowUtc);
             Downloads.Apply(s, list);
             SccmLoose.Apply(s, list);

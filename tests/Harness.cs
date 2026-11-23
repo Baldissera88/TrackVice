@@ -74,6 +74,8 @@ namespace TrackVice.Tests
             FeedbackTests.Run();
             OverviewTests.Run();
             SupportTests.Run();
+            OffTimeTests.Run();
+            DeviceTimeTests.Run();
             LogViceGetTests.Run();
             AgentVersionTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");

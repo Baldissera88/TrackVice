@@ -148,6 +148,7 @@ namespace TrackVice
             n.Hint = "The device is off, restarting, asleep or without network. The agent starts again with Windows and continues this session.";
             n.TimeUtc = LastUploadUtc;
             S.Findings.Insert(0, n);
+            OffTime.Silent(S, LastUploadUtc, DateTime.UtcNow);
         }
 
         public bool IsRemote

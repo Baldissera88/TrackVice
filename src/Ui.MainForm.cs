@@ -740,7 +740,7 @@ namespace TrackVice
         string Elapsed()
         {
             DateTime? f = engine.S.FirstUtc;
-            return f.HasValue ? Txt.DurationShort(engine.Now - f.Value - AutopilotFlow.BoxedTime(engine.S, engine.Now)) : "";
+            return f.HasValue ? OffTime.Elapsed(engine.S, engine.Now) : "";
         }
 
         // ---------- binding ----------
@@ -1179,11 +1179,12 @@ namespace TrackVice
             if (engine.Mode == Modes.Live) Field(r, "History read", "Since " + Txt.Local(s.SinceUtc) + " (" + Settings.HoursText(Hours) + ")", false);
             if (engine.Mode == Modes.File) Field(r, "File", s.SourcePath, true);
             if (engine.Mode == Modes.Folder) Field(r, "Folder", s.SourcePath, true);
+            foreach (Pair p in DeviceClock.FactsOf(s)) Field(r, p.Key, p.Value, false);
             if (engine.Mode == Modes.Agent) ShowAgentFacts(r, s);
             if (s.Info.Count > 0)
             {
                 Section(r, "Deployment");
-                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended" && !DeviceFacts.Is(p.Key) && !AgentVersions.IsKey(p.Key)) Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
+                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended" && !DeviceFacts.Is(p.Key) && !DeviceClock.IsFact(p.Key) && !AgentVersions.IsKey(p.Key)) Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
             }
             List<string> src = engine.Sources;
             if (src.Count > 0)

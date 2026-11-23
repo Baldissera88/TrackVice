@@ -647,6 +647,8 @@ namespace TrackVice
         // Store the data in the customer's own Azure instead of your storage.
         public bool OwnAzure;
         public bool AddScript = true;
+        // Turn on automatic time zone on new devices. Off unless chosen.
+        public bool AutoTimeZone;
         // Where the platform script is assigned. Chosen is the group picked for ScriptTarget.ChosenGroup.
         public ScriptTarget Target = ScriptTarget.NewGroup;
         public TenantGroup Chosen;
@@ -793,6 +795,7 @@ namespace TrackVice
             c.Agent = own.AgentRead;
             c.Key = publicKey;
             c.Alert = (Alert ?? "").Trim();
+            c.AutoTimeZone = AutoTimeZone;
             string p = c.Problem();
             if (p != null) throw new SetupException(p);
             Code = c;
@@ -919,6 +922,14 @@ namespace TrackVice
             c.Alert = a.Length > 0 ? a : null;
             string p = c.Problem();
             if (p != null) throw new SetupException(p);
+            return c;
+        }
+
+        // The code with another alert link and the automatic time zone on or off, checked.
+        public static CustomerCode WithSettings(string code, string alert, bool autoTimeZone)
+        {
+            CustomerCode c = WithAlert(code, alert);
+            c.AutoTimeZone = autoTimeZone;
             return c;
         }
 

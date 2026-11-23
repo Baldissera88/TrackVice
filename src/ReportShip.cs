@@ -114,7 +114,7 @@ namespace TrackVice
             if (first.HasValue)
             {
                 DateTime end = pp != null && pp.State == State.Succeeded ? pp.StateUtc : End(s, nowUtc);
-                if (end > first.Value) Fact(b, pp == null && v.Running + v.Waiting > 0 ? "Running for" : "Took", Txt.Duration(end - first.Value));
+                if (end > first.Value) Fact(b, pp == null && v.Running + v.Waiting > 0 ? "Running for" : "Took", Txt.Duration(OffTime.Active(s, first.Value, end)));
             }
             b.Append("</tbody></table></div></div></div>");
 

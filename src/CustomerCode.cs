@@ -26,6 +26,8 @@ namespace TrackVice
         public int MaxAgeHours = DefaultMaxAgeHours;
         public int KeepHours = DefaultKeepHours;
         public int MaxDays = DefaultMaxDays;
+        // Turn on automatic time zone when the agent is installed. Codes made before it have no "tz" and leave it off.
+        public bool AutoTimeZone;
 
         [DataContract(Namespace = "")]
         sealed class Doc
@@ -38,6 +40,7 @@ namespace TrackVice
             [DataMember(Name = "m", Order = 6)] public int MaxAgeHours;
             [DataMember(Name = "keep", Order = 7)] public int KeepHours;
             [DataMember(Name = "d", Order = 8)] public int MaxDays;
+            [DataMember(Name = "tz", Order = 9, EmitDefaultValue = false)] public bool AutoTimeZone;
         }
 
         // What is missing or wrong, or null.
@@ -64,6 +67,7 @@ namespace TrackVice
             d.MaxAgeHours = MaxAgeHours;
             d.KeepHours = KeepHours;
             d.MaxDays = MaxDays;
+            d.AutoTimeZone = AutoTimeZone;
             using (MemoryStream ms = new MemoryStream())
             {
                 new DataContractJsonSerializer(typeof(Doc)).WriteObject(ms, d);
@@ -93,6 +97,7 @@ namespace TrackVice
             c.MaxAgeHours = d.MaxAgeHours;
             c.KeepHours = d.KeepHours > 0 ? d.KeepHours : DefaultKeepHours;
             c.MaxDays = d.MaxDays > 0 ? d.MaxDays : DefaultMaxDays;
+            c.AutoTimeZone = d.AutoTimeZone;
             return c;
         }
     }

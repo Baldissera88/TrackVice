@@ -25,7 +25,13 @@ namespace TrackVice
 
         public TimeSpan Duration
         {
-            get { return EndUtc - StartUtc; }
+            get
+            {
+                TimeSpan d = EndUtc - StartUtc;
+                if (Item != null && Item.Off != null) return Item.Off.Active(Item, StartUtc, EndUtc, d);
+                if (Item == null && Phase != null && Phase.Items.Count > 0 && Phase.Items[0].Off != null) return OffTime.Active(Phase.Items[0].Off, StartUtc, EndUtc, Phase);
+                return d;
+            }
         }
     }
 
@@ -106,7 +112,8 @@ namespace TrackVice
             {
                 GanttTick k = new GanttTick();
                 k.Utc = BarStart(i);
-                k.Label = "Restart " + TimeZoneInfo.ConvertTimeFromUtc(k.Utc, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
+                k.Label = (i.Off != null && i.Off.List.Exists(delegate (OffSpan o) { return o.ItemKey == i.Key && o.ToUtc.HasValue && o.Counts(o.ToUtc.Value); }) ? "Off " : "Restart ")
+                    + TimeZoneInfo.ConvertTimeFromUtc(k.Utc, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
                 l.Add(k);
             }
             l.Sort(delegate (GanttTick a, GanttTick b) { return a.Utc.CompareTo(b.Utc); });

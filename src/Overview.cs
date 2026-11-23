@@ -115,6 +115,7 @@ namespace TrackVice
         public bool Running(DateTime nowUtc)
         {
             if (Silent) return false;
+            if ((D.StateText ?? "").StartsWith("Off since", StringComparison.Ordinal)) return false;
             if (S != null && S.CountActive > 0) return true;
             if (States.IsActive(D.State)) return true;
             return D.State == State.Pending && !D.EndUtc.HasValue && nowUtc - D.LastUtc < TimeSpan.FromMinutes(15);
