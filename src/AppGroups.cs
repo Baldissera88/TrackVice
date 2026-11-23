@@ -119,7 +119,7 @@ namespace TrackVice
 
         public static string StateLabel(Item i)
         {
-            return Idle(i) ? "Available" : States.Label(i.State);
+            return Idle(i) ? "Available" : TsPlan.DisabledLabel(i) ?? States.Label(i.State);
         }
 
         public static bool IsAppsStep(Item i)

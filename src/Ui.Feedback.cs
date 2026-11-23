@@ -930,6 +930,7 @@ namespace TrackVice
             }
             publishBanner.Say(PublishBanner.Text(running, published), true, "Later");
             publishBanner.Visible = true;
+            ShowTsPackageLine(running);
         }
 
         IAttentionProvider publishProvider;

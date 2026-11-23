@@ -27,6 +27,8 @@ namespace TrackVice
         public bool Reboot;
         public string Command;
         public bool NewAttempt;
+        // Updates the item but makes no event in the timeline, for an item shown before it reports.
+        public bool Quiet;
         // Only update an item that another source already made, for example a detection run over every app.
         public bool OnlyIfExists;
         // The name is a fallback: an existing name wins.
@@ -199,6 +201,8 @@ namespace TrackVice
             S.Unindex(src.Key);
             Phase ph = S.FindPhase(src.PhaseKey);
             if (ph != null) ph.Items.Remove(src);
+            Phase into = S.FindPhase(dst.PhaseKey);
+            if (into != null) into.Items.Sort(Session.ItemOrder);
             Changes++;
         }
 
@@ -227,6 +231,7 @@ namespace TrackVice
             }
             if (o.Text == null && o.State == null) return;
             if (o.Text == null && item == null) return;
+            if (o.Quiet) return;
             TEvent e = new TEvent();
             e.TimeUtc = o.TimeUtc;
             e.Source = o.Source;

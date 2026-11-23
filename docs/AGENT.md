@@ -426,7 +426,15 @@ The agent can also follow an SCCM task sequence, from Windows PE to the end, as 
 
 **Devices > SCCM / on-premises > Add the agent to a task sequence** shows the command with the customer code of the customer in use, with **Copy**, and where the steps go. **Devices with the agent in a task sequence** on the same side lists these devices.
 
-**The steps.** Add a **Run Command Line** step at each of these places, all with the same command line and the TrackVice package:
+**Let TrackVice do it.** In **Add the agent to a task sequence**, connect to the SMS Provider (the server saved in **SMS Provider connection**). TrackVice then:
+
+- Makes the package **TrackVice agent** from a source folder you give, a share the site server can read. It copies TrackVice.exe there, makes a package without a program, and adds it to the distribution point groups you tick. Next time it updates the package content instead.
+- Adds a step **TrackVice agent (WinPE)** after Partition Disk and a step **TrackVice agent (Windows)** after Setup Windows and ConfigMgr to the task sequence you pick. Both have Continue on error and the customer code of the customer in use. A step that is there already is set again, not added twice.
+- Says whether the boot image has WinPE-NetFx. It does not change boot images.
+
+It shows what it will change and asks first. Before a change it keeps a copy of the task sequence in `%LOCALAPPDATA%\TrackVice\task-sequence-copies`, and **Undo** puts the last copy back. It needs the right to change packages and task sequences in the console, as a security role that can modify packages and task sequences. When the Publish banner shows and the package holds an older TrackVice than this PC, a second line offers **Update the TrackVice package**.
+
+**The steps by hand.** Add a **Run Command Line** step at each of these places, all with the same command line and the TrackVice package:
 
 ```text
 TrackVice.exe /agent-start /customer "<customer code>"

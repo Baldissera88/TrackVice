@@ -858,7 +858,7 @@ namespace TrackVice
                 case "customercode": return CustomerCodeDialog.ForDemo(theme);
                 case "storagesecurity": return StorageSecurityDialog.ForDemo(theme);
                 case "removecustomer": return RemoveCustomerDialog.ForDemo(theme);
-                default: ShowPublishNote(YourStorageUi.RunningVersion); return null;
+                default: ShowPublishNote(YourStorageUi.RunningVersion); if (start.Select == "tspackage") ShotTsPackageLine(); return null;
             }
         }
     }

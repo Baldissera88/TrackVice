@@ -13,7 +13,7 @@ namespace TrackVice
         List<Dictionary<string, object>> Query(string wql);
     }
 
-    public sealed class SccmWmi : ISccmQuery
+    public sealed partial class SccmWmi : ISccmQuery
     {
         public readonly string Server;
         public string SiteCode;
@@ -487,6 +487,7 @@ namespace TrackVice
         readonly Func<DateTime, string> dmtf;
         readonly DateTime? runUtc;
         readonly HashSet<string> seen = new HashSet<string>();
+        readonly TsPlanFeed ts = new TsPlanFeed();
         bool first = true;
 
         // Follows the run that began at runStartUtc, up to the next start on the same device and deployment.
@@ -531,10 +532,11 @@ namespace TrackVice
                 if (!string.IsNullOrEmpty(deployment)) b.Info.Add(new Pair("Deployment ID", deployment));
                 string siteUser = SiteUser.Of(q, resourceId);
                 if (siteUser != null) b.Info.Add(new Pair(DeviceFacts.SiteUser, siteUser));
-                b.Notes.Add("This task sequence is read from the status messages it sends to the site. They arrive a little after each step, and only steps that report are shown. Run TrackVice on the device to see smsts.log line by line.");
+                b.Notes.Add(TsPlanFeed.BaseNote);
                 first = false;
             }
             Map(rows, seen, b);
+            ts.Update(q, deployment, rows, runUtc, b);
             return b;
         }
 
