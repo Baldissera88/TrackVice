@@ -47,6 +47,7 @@ namespace TrackVice.Tests
             DeviceLogTests.Run();
             ReportTests.Run();
             CustomerTests.Run();
+            VaultCustomerTests.Run();
             TsAgentTests.Run();
             IntuneLookupTests.Run();
             AutopilotTests.Run();
