@@ -698,6 +698,13 @@ namespace TrackVice
             scroll.AutoScrollPosition = new Point(0, 0);
         }
 
+        // Scrolls to the end of the column, for screenshots of the lower part of a page.
+        public void ScrollToEnd()
+        {
+            Relayout();
+            scroll.AutoScrollPosition = new Point(0, col.Height);
+        }
+
         // Scrolls the column so that c is near the top.
         protected void ScrollTo(Control c)
         {

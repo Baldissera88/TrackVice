@@ -282,7 +282,7 @@ namespace TrackVice
 
     // The Get started page. A button sets Chosen and closes it, so the window for that step opens on its own.
     // The guide step does not close it: it asks Link to open the guide.
-    public sealed class GetStartedDialog : PageForm
+    public sealed partial class GetStartedDialog : PageForm
     {
         public string Chosen;
         public readonly TickBox NotAgain;
@@ -307,6 +307,7 @@ namespace TrackVice
                 c.NeedsToggled += delegate { Relayout(); };
                 cards.Add(c);
                 Add(c);
+                if (i == 0) AddVaultLink(s);
             }
             NotAgain = new TickBox("Do not show again");
             NotAgain.On = hidden;
@@ -411,6 +412,9 @@ namespace TrackVice
                         OpenGetStarted();
                     });
                     return false;
+                case VaultSetupUi.GetStartedId:
+                    Status(VaultSetupUi.RunGet(this, YourStorageUi.Keys, YourStorageUi.Secrets));
+                    break;
                 case GetStarted.Customer:
                     OpenAddCustomer(false);
                     break;
@@ -444,7 +448,8 @@ namespace TrackVice
         Form ShotGetStarted()
         {
             GetStartedState s = new GetStartedState();
-            s.StorageSet = s.PublishedKnown = true;
+            s.StorageSet = s.PublishedKnown = start.Select != "vault";
+            if (start.Select == "vault") VaultSetupUi.DemoAddress = true;
             if (start.Page == "getstarted-done")
             {
                 s.Customers = s.CustomersWithLocation = 1;

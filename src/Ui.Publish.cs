@@ -7,7 +7,7 @@ namespace TrackVice
     using System.Windows.Forms;
 
     // Publishes a TrackVice.exe for the agents to update themselves to: the exe and a signed agent/latest.json.
-    public sealed class PublishDialog : PageForm
+    public sealed partial class PublishDialog : PageForm
     {
         readonly IUpdateKeyStore keys;
         readonly Action<string> saveLink;
@@ -84,6 +84,7 @@ namespace TrackVice
             Add(haveBox);
             Add(boxBox);
             Add(publishRow);
+            AddVaultRow();
 
             // A saved folder is shown in the box, as it was before.
             if (PublishTarget.Decide(saved, storageLink, false, "").Kind == PublishTargetKind.UseLink) { another = true; link.Text = saved; }
@@ -107,6 +108,7 @@ namespace TrackVice
             string storage = page == "publish" || page == null ? "https://contosotrackvice.blob.core.windows.net/trackvice-agent?sv=2022-11-02&sp=cw&sig=made-up" : "";
             PublishDialog d = new PublishDialog(t, ks, Program.Location, "", storage, null);
             if (page == "publish-link") d.SetAnother(true);
+            if (page == "publish-vault") { VaultSetupUi.DemoAddress = true; d.Say("Not published: latest.json in contosoagents " + OtherKeyMarker + ", so devices would refuse what this PC makes."); }
             return d;
         }
 
@@ -185,6 +187,7 @@ namespace TrackVice
             note = text;
             publishRow.Desc = text;
             publishRow.Invalidate();
+            ShowVaultRow(text);
             Relayout();
         }
 
@@ -214,6 +217,12 @@ namespace TrackVice
                         if (!publish) result = "The key is created. Copy it into $UpdateKey before you publish.";
                         else
                         {
+                            OwnStorage own = YourStorageUi.Load();
+                            if (own != null && own.AgentWrite.Length > 0 && own.AgentWrite == to)
+                            {
+                                string keyProblem = OwnPublish.KeyProblem(YourStorageUi.Web, own, UpdateKeys.PublicKey(key));
+                                if (keyProblem != null) throw new SetupException(keyProblem);
+                            }
                             ISessionStore store = Stores.Open(to);
                             string version = SemVer.OfFile(exe);
                             if (version == null) throw new ArgumentException("The version of " + exe + " could not be read.");

@@ -22,14 +22,21 @@ namespace TrackVice
 
         public static Form ForShot(Theme t)
         {
+            return ForShot(t, false);
+        }
+
+        // end: scrolled to the end, where the setup rows are.
+        public static Form ForShot(Theme t, bool end)
+        {
             Demo = true;
             CustomersPage p = new CustomersPage(t, CustomerBook.Demo());
             p.Size = new Size(Dpi.S(820), Dpi.S(940));
+            if (end) p.Shown += delegate { p.ScrollToEnd(); };
             return p;
         }
     }
 
-    sealed class VaultRows : Panel, IThemed, IMeasured
+    sealed partial class VaultRows : Panel, IThemed, IMeasured
     {
         readonly Form owner;
         readonly CustomerBook book;
@@ -121,6 +128,7 @@ namespace TrackVice
             l.Add(new SettingRow(Glyphs2.Sync, "Get customers from the vault", "Adds the customers of the vault and updates the ones with the same name on this PC, the way Import does. Nothing is removed.", getStrip));
             l.Add(new SettingRow(Glyphs.Save, "Save customers to the vault", "You pick the customers. It needs the role Key Vault Secrets Officer. The storage links and customer codes go into the secrets. A secret that changed after your last sync is only written over when you agree.", saveStrip));
             l.Add(new SettingRow(Glyphs.Info, "Status", status.Length == 0 ? "Not signed in." : status, null));
+            l.AddRange(SetupRows());
             inner.SetRows(l);
             foreach (SettingRow r in l) r.ApplyTheme(theme);
             bSign.Enabled = bGet.Enabled = bSave.Enabled = !busy;
@@ -162,6 +170,7 @@ namespace TrackVice
             bOut.ApplyTheme(t);
             bGet.ApplyTheme(t);
             bSave.ApplyTheme(t);
+            ThemeSetup(t);
             inner.ApplyTheme(t);
         }
 
