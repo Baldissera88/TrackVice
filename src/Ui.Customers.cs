@@ -319,6 +319,8 @@ namespace TrackVice
             Add(new SectionTitle("Customers"));
             Add(new SettingRow(Glyphs2.Device, "Saved connections", "Each customer keeps its Intune tenant, where its agents upload to and its SCCM site. Choose one at the top of a device list to connect to it. The storage links are encrypted for your Windows account.", new ButtonStrip(bAdd)));
             Add(rows);
+            Add(new SectionTitle("Key Vault"));
+            Add(CustomersVaultUi.Rows(this, theme, book, live, delegate { Fill(); }, note));
             Add(new SectionTitle("Import and export"));
             Add(new SettingRow(Glyphs.Shield, "Include the storage links", "The storage links are credentials: anyone with the file can read what the agents uploaded. When this is off, the file has everything else.", links));
             Add(new SettingRow(Glyphs.Export, "Customers file", "A JSON file with the customers, to move them to another PC. Importing adds new customers and updates the ones with the same name.", new ButtonStrip(bImport, bExport)));

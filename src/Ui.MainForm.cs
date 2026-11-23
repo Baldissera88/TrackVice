@@ -1718,6 +1718,7 @@ namespace TrackVice
             else if (Array.IndexOf(DevicePages, start.Page) >= 0) page = ShotDevices();
             else if (start.Page == "devicelogs") { FetchDeviceLogs(null, 0); LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); }
             else if (start.Page == "customers") page = new CustomersPage(theme, CustomerBook.Demo());
+            else if (start.Page == "keyvault") page = CustomersVaultUi.ForShot(theme);
             else if (start.Page == "customer") { CustomerBook cb = CustomerBook.Demo(); page = new CustomerEditor(theme, cb, cb.Find("Contoso")); }
             else if (start.Page == "stats") { StatsDialog sd = new StatsDialog(theme, new AgentCatalog(new DemoAgentStore()), true); if (start.Tab >= 0) sd.Tab = start.Tab; if (DeviceSides.Parse(start.Select) != null) sd.Side = DeviceSides.Parse(start.Select); page = sd; }
             else if (start.Page == "compare") page = CompareDialog.ForDemo(theme);
