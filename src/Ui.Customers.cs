@@ -321,7 +321,7 @@ namespace TrackVice
             Add(rows);
             Add(new SectionTitle("Import and export"));
             Add(new SettingRow(Glyphs.Shield, "Include the storage links", "The storage links are credentials: anyone with the file can read what the agents uploaded. When this is off, the file has everything else.", links));
-            Add(new SettingRow(Glyphs.Export, "Customers file", "A JSON file with the customers, to move them to another PC. Importing adds new customers and updates the ones with the same name.", new ButtonStrip(bImport, bExport)));
+            Add(new SettingRow(Glyphs.Export, "Customers file", "A file with the customers, to move them to another PC. It can be locked with a password, and must be when it holds the storage links. Importing adds new customers and updates the ones with the same name.", new ButtonStrip(bImport, bExport)));
             Fill();
         }
 
@@ -401,16 +401,26 @@ namespace TrackVice
         void Export()
         {
             if (book.Count == 0) { note.Say("There are no customers to export.", true); return; }
+            bool protect = links.On || MessageBox.Show(this, "Protect the file with a password?", "Export customers", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            string password = null;
+            if (protect)
+            {
+                password = CustomerPasswordDialog.Ask(this, theme, true);
+                if (password == null) return;
+            }
             using (SaveFileDialog d = new SaveFileDialog())
             {
-                d.Filter = "Customers (*.json)|*.json";
-                d.FileName = "TrackVice customers.json";
+                d.Filter = protect ? "Protected customers (*.tvcustomers)|*.tvcustomers" : "Customers (*.json)|*.json";
+                d.FileName = "TrackVice customers" + (protect ? CustomerFile.Extension : ".json");
                 d.Title = "Export customers";
                 if (d.ShowDialog(this) != DialogResult.OK) return;
-                File.WriteAllText(d.FileName, book.Export(links.On), new System.Text.UTF8Encoding(false));
+                string json = book.Export(links.On);
+                if (protect) File.WriteAllBytes(d.FileName, CustomerFile.Seal(json, password));
+                else File.WriteAllText(d.FileName, json, new System.Text.UTF8Encoding(false));
+                password = null;
                 note.Say(links.On
-                    ? "Exported " + book.Count + " customer" + (book.Count == 1 ? "" : "s") + " with the storage links. Keep the file safe."
-                    : "Exported " + book.Count + " customer" + (book.Count == 1 ? "" : "s") + ". The storage links are left out.", false);
+                    ? "Exported " + book.Count + " customer" + (book.Count == 1 ? "" : "s") + " with the storage links, locked with the password. Keep the file safe."
+                    : "Exported " + book.Count + " customer" + (book.Count == 1 ? "" : "s") + (protect ? ", locked with the password" : "") + ". The storage links are left out.", false);
             }
         }
 
@@ -418,12 +428,25 @@ namespace TrackVice
         {
             using (OpenFileDialog d = new OpenFileDialog())
             {
-                d.Filter = "Customers (*.json)|*.json|All files|*.*";
+                d.Filter = "Customers (*.json;*.tvcustomers)|*.json;*.tvcustomers|All files|*.*";
                 d.Title = "Import customers";
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 Customer before = Snapshot();
                 ImportResult r;
-                try { r = book.Import(File.ReadAllText(d.FileName)); }
+                try
+                {
+                    byte[] data = File.ReadAllBytes(d.FileName);
+                    string json;
+                    if (CustomerFile.IsSealed(data))
+                    {
+                        string password = CustomerPasswordDialog.Ask(this, theme, false);
+                        if (password == null) return;
+                        json = CustomerFile.Open(data, password);
+                        password = null;
+                    }
+                    else json = System.Text.Encoding.UTF8.GetString(data);
+                    r = book.Import(json);
+                }
                 catch (InvalidDataException ex) { note.Say(ex.Message, true); return; }
                 Done(before, "Imported: " + r.Added + " new, " + r.Updated + " updated." + (r.HadLinks ? "" : " The file had no storage links."));
             }
