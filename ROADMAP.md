@@ -44,3 +44,15 @@ In the test build 1.5.1, not released yet: get LogVice when it is missing, the P
 - Overview shows the total number of deployments for the chosen customer and side (Intune, SCCM or both): today, the last 7 days, the last 30 days and all that TrackVice can see.
 - Every run counts, also when the same device is deployed several times: "48 deployments on 41 devices". A device deployed more than once shows how many times, with a link to its runs, and Overview has a short list "Deployed more than once" (device, times, last result), since a device that is deployed again and again is often worth a look.
 - Each number opens the list of deployments behind it, filtered.
+
+## 7. Add the agent to a task sequence for you
+
+Today the agent in a task sequence is set up by hand: a package with TrackVice.exe, WinPE-NetFx in the boot image, and two Run Command Line steps with the customer code. TrackVice can do it, from Devices > SCCM / on-premises > Add the agent to a task sequence, through the SMS Provider with the account that runs TrackVice:
+
+- **Package**: makes a package "TrackVice agent" with only TrackVice.exe (from a source folder share the user picks, where TrackVice copies itself), no program, and distributes it to the distribution point groups the user ticks. When it exists, offers to update its content to this version and redistribute.
+- **Boot image**: reads the boot image the chosen task sequence uses and says whether it has WinPE-NetFx. When it lacks it, says how to add it in the console (Optional Components) and that the agent then runs only in Windows; it does not change boot images itself.
+- **Steps**: picks a task sequence from a list, shows where the two steps will go (after Partition Disk / Format and Partition Disk, and after Setup Windows and ConfigMgr), and adds "TrackVice agent (WinPE)" and "TrackVice agent (Windows)" as Run Command Line steps with the package and the customer code, Continue on error on. Finds existing TrackVice steps and updates them instead of adding more.
+- **Asks before every change**, shows exactly what it will make, and keeps a copy of the task sequence before changing it so the change can be undone with one click.
+- **Needs**: a role that can edit task sequences and packages and distribute content (for example Operating System Deployment Manager, or Full Administrator), and write access to the source share. Says which is missing when a step fails.
+- **Updates**: since the agent in a task sequence does not update itself, the Publish banner also offers "Update the TrackVice package" when the package holds an older version.
+- Check every SMS Provider class and method against Microsoft's documentation before writing it (SMS_Package, SMS_TaskSequencePackage, SetSequence, SMS_TaskSequence_RunCommandLineAction, SMS_DistributionPointGroup AddPackages); test with a fake WMI layer.
