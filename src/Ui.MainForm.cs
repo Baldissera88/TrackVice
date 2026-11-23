@@ -1176,19 +1176,12 @@ namespace TrackVice
             if (engine.Mode == Modes.Live) Field(r, "History read", "Since " + Txt.Local(s.SinceUtc) + " (" + Settings.HoursText(Hours) + ")", false);
             if (engine.Mode == Modes.File) Field(r, "File", s.SourcePath, true);
             if (engine.Mode == Modes.Folder) Field(r, "Folder", s.SourcePath, true);
-<<<<<<< HEAD
             foreach (Pair p in DeviceClock.FactsOf(s)) Field(r, p.Key, p.Value, false);
-            if (s.Info.Count > 0)
-            {
-                Section(r, "Deployment");
-                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended" && !DeviceClock.IsFact(p.Key)) Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
-=======
             if (engine.Mode == Modes.Agent) ShowAgentFacts(r, s);
             if (s.Info.Count > 0)
             {
                 Section(r, "Deployment");
-                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended" && !AgentVersions.IsKey(p.Key)) Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
->>>>>>> main
+                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended" && !DeviceClock.IsFact(p.Key) && !AgentVersions.IsKey(p.Key)) Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
             }
             List<string> src = engine.Sources;
             if (src.Count > 0)
