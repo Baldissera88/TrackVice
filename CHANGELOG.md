@@ -1,9 +1,14 @@
 # Changelog
 
-## TrackVice 1.5.1
+## TrackVice 1.6.0
 
 23 November 2026.
 
+- **The whole task sequence**: an SCCM run shows every group and step of the task sequence from the start, read from the site: Waiting until it runs, Skipped or Disabled. Steps that install from a variable list show the variable name.
+- **Add the agent to a task sequence for you**: Devices > SCCM / on-premises makes the package with TrackVice.exe, distributes it, checks the boot image for WinPE-NetFx and adds the two steps with the customer code. It asks first, keeps a copy of the task sequence and can undo. The Publish banner offers to update the package when it holds an older version.
+- **What you need**: Add customer, Your storage and the guide with links say which account, role and consent each step needs, with a checklist, and say which role or consent is missing and who can give it.
+- **Your own app registration**: Settings > Intune / cloud explains why and how, lists the exact Microsoft Graph permissions, and can make the app registration for you.
+- **Overview counts deployments**: today, 7 days, 30 days and all, every run counted ("48 deployments on 41 devices"), and the devices deployed more than once.
 - **LogVice when it is missing**: a LogVice button asks first, then downloads LogVice from GitHub, checks it against the release's SHA256SUMS.txt and opens the logs. Settings > LogVice shows the version and a Download button.
 - **The agent version** on the device, in the agent device list, on the wall, on Overview (Agents) and in reports. Needs attention lists agents behind the published version.
 - **Who is enrolling**: the user on the device, in Overview, Recent devices, the device list, the wall and search.
@@ -11,6 +16,9 @@
 - **Time the device was off does not count**: a shutdown of more than 15 minutes is shown as time off ("26 min · off 9 h 01 min"), not as deployment time, in every view, report and statistic, and the device shows "Off since" instead of stalled.
 - **Correct time**: the device's time zone and clock, a finding when the zone changed during the deployment or the clock is off, and an option in Add customer to turn on automatic time zone on new devices. docs/AGENT.md explains the Intune setting for a fixed time zone.
 - Fixed: the Publish banner no longer runs out of a narrow window.
+- Fixed: with no e-mail program on the PC, the text is copied and the page says where to send it.
+- Fixed: the window, Overview and the dialogs work at small sizes and at 125 % and 150 % scaling; the header buttons fold into More.
+- Fixed: the guide with links asked for a Microsoft Graph permission that does not exist (Group.ReadBasic.All). It asks for GroupMember.Read.All.
 
 ## TrackVice 1.5.0
 
