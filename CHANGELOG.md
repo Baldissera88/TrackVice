@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.7.1
+
+23 November 2026.
+
+- Fixed: after Publish, the banner showed a squeezed piece of "What does Publish do?" next to Close. After publishing it shows only the result and Close, and the banner's buttons are sized from their text every time, so they are never cut.
+
 ## TrackVice 1.7.0
 
 23 November 2026.

@@ -294,7 +294,7 @@ namespace TrackVice
             return new FlatButton[] { PublishButton, ExplainButton, LaterButton };
         }
 
-        bool arranging, publishShown = true;
+        bool arranging, publishShown = true, explainShown = true;
 
         // The text wraps, and the buttons go below it when the window is too narrow for both on one line.
         protected override void OnLayout(LayoutEventArgs e)
@@ -305,7 +305,14 @@ namespace TrackVice
             try
             {
                 List<FlatButton> shown = new List<FlatButton>();
-                foreach (FlatButton b in Buttons()) if (b != PublishButton || publishShown) shown.Add(b);
+                foreach (FlatButton b in Buttons()) if ((b != PublishButton || publishShown) && (b != ExplainButton || explainShown)) shown.Add(b);
+                // Measured again here: the text or the screen's scaling may have changed since the button was made,
+                // and a button narrower than its text shows only its middle.
+                foreach (FlatButton b in shown)
+                {
+                    b.AutoWidth();
+                    b.BringToFront();
+                }
                 int[] widths = new int[shown.Count];
                 for (int i = 0; i < widths.Length; i++) widths[i] = shown[i].Width;
                 int avail = Math.Max(Dpi.S(40), ClientSize.Width - Padding.Horizontal);
@@ -348,7 +355,9 @@ namespace TrackVice
             PublishButton.Visible = canPublish;
             publishShown = canPublish;
             PublishButton.Enabled = true;
-            ExplainButton.Visible = true;
+            // After a publish there is nothing to explain: only the result and Close.
+            ExplainButton.Visible = canPublish;
+            explainShown = canPublish;
             LaterButton.Text = closeText;
             LaterButton.AutoWidth();
             PerformLayout();
