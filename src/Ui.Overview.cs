@@ -20,6 +20,13 @@ namespace TrackVice
         public object Tag;
     }
 
+    // One number in the strip at the top of a tile, such as the deployments today. A Link opens the list behind it.
+    public sealed class CountCell
+    {
+        public string Label, Value, Sub;
+        public bool Link;
+    }
+
     // A card on Overview: a title, a small table of numbers, rows that can be clicked, or a plain empty state with the
     // button that sets the source up.
     public sealed class OverviewTile : FlatControl
@@ -28,14 +35,18 @@ namespace TrackVice
         public readonly List<TileRow> Rows = new List<TileRow>();
         // Label, today, last 7 days. The first entry is the heading.
         public readonly List<string[]> Stats = new List<string[]>();
+        // Numbers side by side above the rows. They go two by two when the tile is narrow.
+        public readonly List<CountCell> Counts = new List<CountCell>();
         public string EmptyTitle, EmptyText, Footer;
         public readonly FlatButton EmptyButton = new FlatButton("", null);
         public event Action<TileRow> RowClicked;
         public event Action<int, bool> StatClicked;
+        public event Action<int> CountClicked;
         public event EventHandler FooterClicked;
 
         readonly List<KeyValuePair<Rectangle, TileRow>> hits = new List<KeyValuePair<Rectangle, TileRow>>();
         readonly List<KeyValuePair<Rectangle, int[]>> statHits = new List<KeyValuePair<Rectangle, int[]>>();
+        readonly List<KeyValuePair<Rectangle, int>> countHits = new List<KeyValuePair<Rectangle, int>>();
         Rectangle footerHit;
         Point mouse = new Point(-1, -1);
 
@@ -52,7 +63,7 @@ namespace TrackVice
 
         public bool Empty
         {
-            get { return Rows.Count == 0 && Stats.Count == 0; }
+            get { return Rows.Count == 0 && Stats.Count == 0 && Counts.Count == 0; }
         }
 
         public void SetEmptyAction(string text)
@@ -83,6 +94,26 @@ namespace TrackVice
 
         int measureWidth = 400;
 
+        // The columns of the count strip: all in one row when each gets room for "Last 30 days" and a number, else two.
+        int CountColumns(int width)
+        {
+            int n = Counts.Count;
+            if (n == 0) return 1;
+            return (width - Pad * 2) / n >= Dpi.S(104) ? n : Math.Min(2, n);
+        }
+
+        int CountsHeight(int width)
+        {
+            int cols = CountColumns(width);
+            int rows = (Counts.Count + cols - 1) / cols;
+            return rows * CountCellHeight + Dpi.S(8);
+        }
+
+        static int CountCellHeight
+        {
+            get { return Fonts.Small.Height + Fonts.Title.Height + Fonts.Small.Height + Dpi.S(18); }
+        }
+
         int HeadHeight
         {
             get { return Pad + Fonts.UiSemibold.Height + Dpi.S(10); }
@@ -100,6 +131,7 @@ namespace TrackVice
                 if (EmptyButton.Visible) h += EmptyButton.Height + Dpi.S(8);
                 return h + Pad;
             }
+            if (Counts.Count > 0) h += CountsHeight(width);
             if (Stats.Count > 0) h += Stats.Count * Dpi.S(26) + Dpi.S(8);
             foreach (TileRow r in Rows) h += RowHeight(r);
             if (!string.IsNullOrEmpty(Footer)) h += Dpi.S(34);
@@ -129,6 +161,7 @@ namespace TrackVice
             Draw.Card(g, ClientRectangle, T);
             hits.Clear();
             statHits.Clear();
+            countHits.Clear();
             measureWidth = Width;
             footerHit = Rectangle.Empty;
             int w = Width - Pad * 2;
@@ -145,6 +178,27 @@ namespace TrackVice
                 }
                 Draw.Text(g, EmptyText, Fonts.Ui, new Rectangle(Pad, y, w, Height - y), T.Text3, Draw.Wrap);
                 return;
+            }
+            if (Counts.Count > 0)
+            {
+                int cols = CountColumns(Width);
+                int cw = w / cols, ch = CountCellHeight;
+                for (int k = 0; k < Counts.Count; k++)
+                {
+                    CountCell c = Counts[k];
+                    Rectangle cell = new Rectangle(Pad + (k % cols) * cw, y + (k / cols) * ch, cw, ch);
+                    bool hot = c.Link && cell.Contains(mouse);
+                    int ty = cell.Y + Dpi.S(2);
+                    Draw.Text(g, c.Label, Fonts.Small, new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Small.Height + 2), T.Text3, Draw.Line);
+                    ty += Fonts.Small.Height + Dpi.S(4);
+                    Font vf = hot ? new Font(Fonts.Title, FontStyle.Underline) : Fonts.Title;
+                    try { Draw.Text(g, c.Value, T.Num(vf), new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Title.Height + 2), c.Link ? T.Accent : T.Text, Draw.Line); }
+                    finally { if (hot) vf.Dispose(); }
+                    ty += Fonts.Title.Height + Dpi.S(2);
+                    Draw.Text(g, c.Sub, Fonts.Small, new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Small.Height + 2), T.Text2, Draw.Line);
+                    if (c.Link) countHits.Add(new KeyValuePair<Rectangle, int>(cell, k));
+                }
+                y += ((Counts.Count + cols - 1) / cols) * ch + Dpi.S(8);
             }
             if (Stats.Count > 0)
             {
@@ -227,6 +281,7 @@ namespace TrackVice
         {
             foreach (KeyValuePair<Rectangle, TileRow> h in hits) if (h.Key.Contains(p)) return true;
             foreach (KeyValuePair<Rectangle, int[]> h in statHits) if (h.Key.Contains(p)) return true;
+            foreach (KeyValuePair<Rectangle, int> h in countHits) if (h.Key.Contains(p)) return true;
             return footerHit.Contains(p);
         }
 
@@ -253,6 +308,8 @@ namespace TrackVice
                 if (h.Key.Contains(e.Location)) { if (RowClicked != null) RowClicked(h.Value); return; }
             foreach (KeyValuePair<Rectangle, int[]> h in statHits)
                 if (h.Key.Contains(e.Location)) { if (StatClicked != null) StatClicked(h.Value[0], h.Value[1] == 2); return; }
+            foreach (KeyValuePair<Rectangle, int> h in countHits)
+                if (h.Key.Contains(e.Location)) { if (CountClicked != null) CountClicked(h.Value); return; }
             if (footerHit.Contains(e.Location) && FooterClicked != null) FooterClicked(this, EventArgs.Empty);
         }
 
@@ -289,6 +346,7 @@ namespace TrackVice
         readonly Label status = new Label();
         readonly OverviewTile now = new OverviewTile("Now");
         readonly OverviewTile attention = new OverviewTile("Needs attention");
+        readonly OverviewTile deploy = new OverviewTile("Deployments");
         readonly OverviewTile period = new OverviewTile("Today and the last 7 days");
         readonly OverviewTile recent = new OverviewTile("Recent and pinned devices");
         readonly OverviewTile setup = new OverviewTile("Setup");
@@ -340,6 +398,9 @@ namespace TrackVice
             now.FooterClicked += Safe.Wrap(delegate { if (data != null) List("now", "Deploying now", Devices(NowDevices())); });
             attention.RowClicked += delegate (TileRow r) { Safe.Run(delegate { if (AttentionClicked != null && r.Tag is AttentionTile) AttentionClicked((AttentionTile)r.Tag); }); };
             period.RowClicked += delegate (TileRow r) { Safe.Run(delegate { StepStat s = r.Tag as StepStat; if (s != null) List("step:" + s.Name, s.Name, Devices(s.On)); }); };
+            deploy.CountClicked += delegate (int k) { Safe.Run(delegate { CountList(k); }); };
+            deploy.RowClicked += delegate (TileRow r) { Safe.Run(delegate { RepeatList(r.Tag as RepeatDevice); }); };
+            deploy.FooterClicked += Safe.Wrap(delegate { AllRepeats(); });
             period.StatClicked += delegate (int row, bool week) { Safe.Run(delegate { Stat(row, week); }); };
             recent.RowClicked += delegate (TileRow r) { Safe.Run(delegate { if (OpenFound != null && r.Tag is FoundDevice) OpenFound((FoundDevice)r.Tag); }); };
             recent.FooterClicked += Safe.Wrap(delegate { if (AllRecent != null) AllRecent(this, EventArgs.Empty); });
@@ -367,7 +428,7 @@ namespace TrackVice
 
         OverviewTile[] Tiles
         {
-            get { return new OverviewTile[] { now, attention, period, recent, setup }; }
+            get { return new OverviewTile[] { now, attention, deploy, period, recent, setup }; }
         }
 
         public string StatusText
@@ -432,6 +493,43 @@ namespace TrackVice
             string when = week ? "in the last 7 days" : "today";
             if (row == 1) List("finished:" + week, "Finished " + when, Devices(p.FinishedDevices));
             else if (row == 2) List("failedp:" + week, "Failed " + when, Devices(p.FailedDevices));
+        }
+
+        // Customer and side of the filter, for the title of a list: " · Contoso · SCCM".
+        string FilterText()
+        {
+            string t = "";
+            if (!string.IsNullOrEmpty(Filter.Customer)) t += " \u00b7 " + Filter.Customer;
+            if (Filter.Side == DeviceSides.Intune) t += " \u00b7 Intune";
+            else if (Filter.Side == DeviceSides.Sccm) t += " \u00b7 SCCM";
+            return t;
+        }
+
+        string FilterId()
+        {
+            return (Filter.Customer ?? "").ToLowerInvariant() + ":" + Filter.Side;
+        }
+
+        void CountList(int k)
+        {
+            if (data == null || k < 0 || k >= data.Counts.Windows.Count) return;
+            DeployWindow w = data.Counts.Windows[k];
+            string title = w.Id == DeployCounts.Today ? "Deployments today" : w.Id == DeployCounts.Week ? "Deployments in the last 7 days" : w.Id == DeployCounts.Month ? "Deployments in the last 30 days" : "All deployments";
+            List("runs:" + w.Id + ":" + FilterId(), title + FilterText(), Devices(w.Rows));
+        }
+
+        void RepeatList(RepeatDevice r)
+        {
+            if (r == null) return;
+            List("runs-of:" + (r.Customer ?? "").ToLowerInvariant() + ":" + r.Device.ToLowerInvariant(), "Deployments of " + r.Device + (string.IsNullOrEmpty(r.Customer) ? "" : " \u00b7 " + r.Customer), Devices(r.Runs));
+        }
+
+        void AllRepeats()
+        {
+            if (data == null) return;
+            List<OverviewDevice> all = new List<OverviewDevice>();
+            foreach (RepeatDevice r in data.Counts.Repeats) all.AddRange(r.Runs);
+            List("repeats:" + FilterId(), "Deployed more than once" + FilterText(), Devices(all));
         }
 
         public void SetCustomers(List<string> names)
@@ -533,6 +631,45 @@ namespace TrackVice
             }
             Empty(period, d.HasSources, nothing, "Finished and failed devices, the success rate, the average time, and the apps and steps that take longest or fail most.", null, emptyAction, emptyId);
 
+            // Deployments: every run, also repeats on one device
+            deploy.Rows.Clear();
+            deploy.Counts.Clear();
+            deploy.Footer = null;
+            deploy.Visible = d.HasSources;
+            deploy.Note = d.HasSccm && d.HasSources ? "SCCM: the last 12 months" : null;
+            if (d.HasSources)
+            {
+                foreach (DeployWindow w in d.Counts.Windows)
+                {
+                    CountCell c = new CountCell();
+                    c.Label = w.Label;
+                    c.Value = N(w.Runs);
+                    c.Sub = w.Runs == 0 ? "none" : "on " + w.Devices + (w.Devices == 1 ? " device" : " devices");
+                    c.Link = w.Runs > 0;
+                    deploy.Counts.Add(c);
+                }
+                deploy.Rows.Add(Head(d.Counts.Repeats.Count == 0 ? "No device was deployed more than once" : "Deployed more than once"));
+                for (int k = 0; k < d.Counts.Repeats.Count && k < OverviewCounts.TopRepeats; k++)
+                {
+                    RepeatDevice rd = d.Counts.Repeats[k];
+                    OverviewDevice last = rd.Last;
+                    TileRow r = new TileRow();
+                    r.Text = rd.Device;
+                    List<string> sub = new List<string>();
+                    if (!string.IsNullOrEmpty(rd.Customer)) sub.Add(rd.Customer);
+                    sub.Add("last result: " + States.Label(last.D.State).ToLowerInvariant());
+                    sub.Add(Txt.Ago(OverviewCounts.StartOf(last), nowUtc));
+                    r.Sub = string.Join(" \u00b7 ", sub.ToArray());
+                    r.HasState = true;
+                    r.State = last.D.State;
+                    r.Right = OverviewCounts.Times(rd.Times);
+                    r.Level = last.D.State == State.Failed ? 2 : 0;
+                    r.Tag = rd;
+                    deploy.Rows.Add(r);
+                }
+                if (d.Counts.Repeats.Count > OverviewCounts.TopRepeats) deploy.Footer = "Show all " + d.Counts.Repeats.Count + " devices";
+            }
+
             // Recent and pinned devices
             recent.Rows.Clear();
             List<FoundDevice> found = DeviceSearch.Merge(recentList, d.Devices);
@@ -633,7 +770,7 @@ namespace TrackVice
             int avail = Width - SystemInformation.VerticalScrollBarWidth;
             int w = Math.Min(Dpi.S(1280), Math.Max(Dpi.S(320), avail - pad * 2));
             int gap = Dpi.S(14);
-            bool two = w >= Dpi.S(860);
+            bool two = NarrowFit.TwoColumns(w, Dpi.S(400), gap, 56);
             int left = two ? (w - gap) * 56 / 100 : w;
             int right = two ? w - left - gap : w;
             int y = 0;
@@ -653,12 +790,23 @@ namespace TrackVice
             if (two)
             {
                 y = Pair(now, attention, y, left, right, gap);
-                y = Pair(period, recent, y, left, right, gap);
+                if (deploy.Visible)
+                {
+                    // The long tile on the left, the deployment counts and the recent devices stacked beside it.
+                    int dh = deploy.Measure(right), rh = recent.Measure(right), lh = period.Measure(left);
+                    int h = Math.Max(lh, dh + gap + rh);
+                    period.SetBounds(0, y, left, h);
+                    deploy.SetBounds(left + gap, y, right, dh);
+                    recent.SetBounds(left + gap, y + dh + gap, right, h - dh - gap);
+                    y += h + gap;
+                }
+                else y = Pair(period, recent, y, left, right, gap);
             }
             else
             {
-                foreach (OverviewTile t in new OverviewTile[] { now, attention, period, recent })
+                foreach (OverviewTile t in new OverviewTile[] { now, attention, deploy, period, recent })
                 {
+                    if (!t.Visible) continue;
                     int th = t.Measure(w);
                     t.SetBounds(0, y, w, th);
                     y += th + gap;

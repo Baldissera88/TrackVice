@@ -51,7 +51,7 @@ namespace TrackVice
         }
 
         // A week of finished enrollments, with whole sessions so the slowest and failing apps can be worked out.
-        sealed class HistorySource : IOverviewSource
+        sealed class HistorySource : IOverviewSource, IOverviewRuns
         {
             readonly string customer;
             readonly List<RemoteDeployment> rows = new List<RemoteDeployment>();
@@ -69,6 +69,7 @@ namespace TrackVice
             public HistorySource(string customer, DateTime nowUtc)
             {
                 this.customer = customer;
+                now = nowUtc;
                 for (int n = 0; n < 14; n++)
                 {
                     string name = "FAB-LT" + (n + 1).ToString("0000", CultureInfo.InvariantCulture);
@@ -135,6 +136,38 @@ namespace TrackVice
             {
                 List<RemoteDeployment> l = new List<RemoteDeployment>();
                 foreach (RemoteDeployment d in rows) if (d.LastUtc >= sinceUtc) l.Add(d);
+                return l;
+            }
+
+            // Older enrollments, some on devices of the week, so a few devices were deployed more than once.
+            static readonly object[][] Older =
+            {
+                new object[] { "FAB-LT0002", 9.0, true }, new object[] { "FAB-LT0002", 31.0, true }, new object[] { "FAB-LT0007", 15.0, false },
+                new object[] { "FAB-LT0004", 12.0, false }, new object[] { "FAB-LT0021", 18.0, false }, new object[] { "FAB-LT0022", 22.0, true },
+                new object[] { "FAB-LT0023", 27.0, false }, new object[] { "FAB-LT0024", 44.0, false }, new object[] { "FAB-LT0007", 61.0, true },
+                new object[] { "FAB-LT0025", 75.0, false }, new object[] { "FAB-LT0026", 120.0, false }, new object[] { "FAB-LT0021", 140.0, true },
+            };
+            readonly DateTime now;
+
+            public List<RemoteDeployment> Runs(DateTime sinceUtc)
+            {
+                List<RemoteDeployment> l = new List<RemoteDeployment>(rows);
+                for (int k = 0; k < Older.Length; k++)
+                {
+                    RemoteDeployment d = new RemoteDeployment();
+                    string name = (string)Older[k][0];
+                    bool failed = (bool)Older[k][2];
+                    d.Key = AgentData.BlobName(name.ToLowerInvariant() + "-" + k.ToString(CultureInfo.InvariantCulture));
+                    d.Device = name;
+                    d.User = "Autopilot";
+                    d.Profile = "Fabrikam user-driven";
+                    d.StartUtc = now.AddDays(-(double)Older[k][1]);
+                    d.EndUtc = d.StartUtc.Value.AddMinutes(52);
+                    d.LastUtc = d.EndUtc.Value;
+                    d.State = failed ? State.Failed : State.Succeeded;
+                    d.StateText = failed ? "1 failed, 4 of 5 done" : "Done, 5 items";
+                    if (d.LastUtc >= sinceUtc) l.Add(d);
+                }
                 return l;
             }
 

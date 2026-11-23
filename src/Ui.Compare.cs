@@ -55,6 +55,7 @@ namespace TrackVice
             MinimizeBox = false;
             Size = new Size(Dpi.S(1180), Dpi.S(780));
             MinimumSize = new Size(Dpi.S(760), Dpi.S(540));
+            DialogFit.Keep(this);
 
             head.Dock = DockStyle.Top;
             head.Height = Dpi.S(72);
@@ -458,7 +459,7 @@ namespace TrackVice
 
         void Side(Graphics g, Rectangle r, int k)
         {
-            int x = r.X + Dpi.S(16), y = Dpi.S(12), lw = Dpi.S(96);
+            int x = r.X + Dpi.S(16), y = Dpi.S(12), lw = Draw.Measure("Deployment", Fonts.Small).Width + Dpi.S(12), lw2 = Draw.Measure("Started", Fonts.Small).Width + Dpi.S(12);
             int badge = Dpi.S(22);
             RectangleF br = new RectangleF(x, y + Dpi.S(1), badge, badge);
             Shapes.Fill(g, br, Dpi.S(4), T.AccentSoft);
@@ -468,11 +469,11 @@ namespace TrackVice
             y += Dpi.S(32);
             int col2 = r.Width / 2;
             Pair(g, x, y, lw, col2 - Dpi.S(24), "Deployment", kind[k]);
-            Pair(g, r.X + col2, y, Dpi.S(70), col2 - Dpi.S(16), "Took", Txt.Duration(total[k]));
+            Pair(g, r.X + col2, y, lw2, col2 - Dpi.S(16), "Took", Txt.Duration(total[k]));
             y += Dpi.S(24);
             Pair(g, x, y, lw, col2 - Dpi.S(24), "Started", start[k].HasValue ? Txt.Local(start[k].Value).Substring(0, 16) : "");
-            Pair(g, r.X + col2, y, Dpi.S(70), col2 - Dpi.S(16), "Items", done[k] + " done, ");
-            int off = Draw.Measure(done[k] + " done,", Fonts.Ui).Width + Draw.Measure("a a", Fonts.Ui).Width - Draw.Measure("aa", Fonts.Ui).Width, fx = r.X + col2 + Dpi.S(70) + off;
+            Pair(g, r.X + col2, y, lw2, col2 - Dpi.S(16), "Items", done[k] + " done, ");
+            int off = Draw.Measure(done[k] + " done,", Fonts.Ui).Width + Draw.Measure("a a", Fonts.Ui).Width - Draw.Measure("aa", Fonts.Ui).Width, fx = r.X + col2 + lw2 + off;
             Draw.Text(g, failed[k] + " failed", Fonts.Ui, new Rectangle(fx, y, Math.Max(0, r.Right - fx - Dpi.S(12)), Dpi.S(22)), failed[k] > 0 ? T.ErrFg : T.Text, Draw.Line);
         }
 

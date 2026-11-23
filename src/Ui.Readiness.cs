@@ -122,7 +122,8 @@ namespace TrackVice
             ShowInTaskbar = false;
             MinimizeBox = false;
             Size = new Size(Dpi.S(1180), Dpi.S(760));
-            MinimumSize = new Size(Dpi.S(860), Dpi.S(520));
+            MinimumSize = new Size(Dpi.S(940), Dpi.S(520));
+            DialogFit.Keep(this);
 
             head.Dock = DockStyle.Top;
             head.Height = Dpi.S(78);
@@ -568,6 +569,7 @@ namespace TrackVice
             MinimizeBox = false;
             Size = new Size(Dpi.S(980), Dpi.S(620));
             MinimumSize = new Size(Dpi.S(700), Dpi.S(420));
+            DialogFit.Keep(this);
 
             head.Dock = DockStyle.Top;
             head.Height = Dpi.S(52);
