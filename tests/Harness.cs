@@ -82,6 +82,8 @@ namespace TrackVice.Tests
             AppRegistrationTests.Run();
             MailTests.Run();
             NarrowTests.Run();
+            SccmPlanTests.Run();
+            TsAgentSetupTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

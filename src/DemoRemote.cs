@@ -142,7 +142,7 @@ namespace TrackVice
         }
     }
 
-    public sealed class DemoSccm : ISccmQuery
+    public sealed partial class DemoSccm : ISccmQuery
     {
         readonly DateTime t0;
         readonly DateTime opened = DateTime.UtcNow;

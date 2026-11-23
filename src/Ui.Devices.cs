@@ -332,7 +332,7 @@ namespace TrackVice
                 case DeviceMenu.TsAgents: OpenAgents(DeviceSides.Sccm); break;
                 case DeviceMenu.Sccm: OpenRemote(RemoteDialog.Sccm); break;
                 case DeviceMenu.SmsProvider: OpenSccmSetup(false); break;
-                case DeviceMenu.TsAgent: OpenSccmSetup(true); break;
+                case DeviceMenu.TsAgent: OpenTsAgent(); break;
                 case DeviceMenu.Readiness: OpenReadiness(false); break;
                 case DeviceMenu.Names: NamesFromIntune(); break;
                 case DeviceMenu.NewCustomer: OpenNewCustomer(false); break;
@@ -357,6 +357,14 @@ namespace TrackVice
             get { return DevicesSide == DeviceSides.Sccm ? DeviceSides.Sccm : DeviceSides.Both; }
         }
 
+        void OpenTsAgent()
+        {
+            string[] tc = TestCode();
+            Customer cur = CustomerUi.Book.Current;
+            TsAgentDialog.Open(this, theme, tc != null ? tc[0] : cur != null ? cur.Name : null, tc != null ? tc[1] : null);
+            sccmCatalog = null;
+        }
+
         void OpenSccmSetup(bool agentFirst)
         {
             string[] tc = TestCode();
@@ -374,10 +382,16 @@ namespace TrackVice
         }
 
         // --page devices-intune and devices-sccm show the Devices menu on that side, --select empty its empty state.
-        public static readonly string[] DevicePages = { "devices-intune", "devices-sccm", "sccmsetup", "tsagent" };
+        public static readonly string[] DevicePages = { "devices-intune", "devices-sccm", "sccmsetup", "tsagent", "tsagent-setup" };
 
         Form ShotDevices()
         {
+            if (start.Page == "tsagent-setup")
+            {
+                TsAgentDialog d = new TsAgentDialog(theme, "Contoso", "tv1:made-up-code-for-the-demo", true, start.Select);
+                if (!start.Size.IsEmpty) d.Size = start.Size;
+                return d;
+            }
             if (start.Page == "sccmsetup" || start.Page == "tsagent")
                 return new SccmSetupDialog(theme, start.Page == "tsagent", "Contoso", "tv1:made-up-code-for-the-demo", true);
             shotSide = start.Page == "devices-sccm" ? DeviceSides.Sccm : DeviceSides.Intune;

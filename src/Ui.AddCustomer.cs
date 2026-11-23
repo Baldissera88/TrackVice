@@ -866,7 +866,7 @@ namespace TrackVice
                 case "storagesecurity": return StorageSecurityDialog.ForDemo(theme);
                 case "removecustomer": return RemoveCustomerDialog.ForDemo(theme);
                 case "appregistration": return AppRegistrationDialog.ForDemo(theme, start.Tab);
-                default: ShowPublishNote(YourStorageUi.RunningVersion); return null;
+                default: ShowPublishNote(YourStorageUi.RunningVersion); if (start.Select == "tspackage") ShotTsPackageLine(); return null;
             }
         }
     }
