@@ -55,7 +55,9 @@ namespace TrackVice
 
         public static AppRegistrationDialog ForLive(Theme t, string tenant, Action<string> onClient)
         {
-            return new AppRegistrationDialog(t, YourStorageUi.Web, false, tenant, onClient);
+            AppRegistrationDialog d = new AppRegistrationDialog(t, YourStorageUi.Web, false, tenant, onClient);
+            d.Shown += delegate { if (SignIns.Has(d.web, null, d.tTenant.Text, AppRegistrationMaker.SignInScope)) d.SignInGraph(); };
+            return d;
         }
 
         // tab 0: before the sign-in, 1: signed in, 2: made, 3: signed in, and the app is there already.
@@ -89,7 +91,7 @@ namespace TrackVice
         {
             if (busy && pending != null && signIn != null && !signIn.SignedIn) { ShowCode(pending); return; }
             if (busy) return;
-            WebSignIn s = new WebSignIn(web, null, tTenant.Text, AppRegistrationMaker.SignInScope);
+            WebSignIn s = SignIns.Get(web, null, tTenant.Text, AppRegistrationMaker.SignInScope);
             signIn = s;
             found = null;
             SignIn(s, delegate (string t) { signText = t; }, delegate { found = new AppRegistrationMaker(web, s.Token).Find(AppName); }, null, delegate { signText = ""; signIn = null; });

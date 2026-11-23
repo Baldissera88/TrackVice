@@ -180,19 +180,23 @@ namespace TrackVice
         // A device code sign-in. The code is copied and the page opened; pressing the button again does it again.
         protected void SignIn(WebSignIn s, Action<string> say, Action extra, Action done, Action failed)
         {
-            say("Asking for a sign-in code...");
+            say(s.SignedIn ? "Signed in" + (string.IsNullOrEmpty(s.Account) ? "." : " as " + s.Account + ".") : "Asking for a sign-in code...");
             Rebuild();
             Work("Signing in...", delegate
             {
-                DeviceCode d = s.Start();
-                Ui(delegate
+                // A sign-in made earlier in this run is used again, with a token for more scopes when they are needed.
+                if (!s.SignedIn && !s.Quiet())
                 {
-                    pending = d;
-                    say("Open " + d.VerificationUri + " and enter the code " + d.UserCode + ". TrackVice waits for the sign-in.");
-                    Rebuild();
-                    if (!demo) ShowCode(d);
-                });
-                s.Wait(d, cancel);
+                    DeviceCode d = s.Start();
+                    Ui(delegate
+                    {
+                        pending = d;
+                        say("Open " + d.VerificationUri + " and enter the code " + d.UserCode + ". TrackVice waits for the sign-in.");
+                        Rebuild();
+                        if (!demo) ShowCode(d);
+                    });
+                    s.Wait(d, cancel);
+                }
                 if (extra != null) extra();
             }, delegate
             {
@@ -630,7 +634,9 @@ namespace TrackVice
 
         public static YourStorageDialog ForLive(Theme t)
         {
-            return new YourStorageDialog(t, YourStorageUi.Web, YourStorageUi.Secrets, YourStorageUi.Keys, delegate { return File.ReadAllBytes(Program.Location); }, YourStorageUi.RunningVersion, false, CustomerUi.Book.All);
+            YourStorageDialog d = new YourStorageDialog(t, YourStorageUi.Web, YourStorageUi.Secrets, YourStorageUi.Keys, delegate { return File.ReadAllBytes(Program.Location); }, YourStorageUi.RunningVersion, false, CustomerUi.Book.All);
+            d.Shown += delegate { if (SignIns.Has(d.web, Arm.ClientId, d.tTenant.Text, Arm.Scope)) d.SignInAzure(); };
+            return d;
         }
 
         // tab 0: before the sign-in, 1: signed in, 2: set up.
@@ -754,7 +760,7 @@ namespace TrackVice
         {
             if (busy && pending != null) { ShowCode(pending); return; }
             if (busy) return;
-            WebSignIn s = new WebSignIn(web, Arm.ClientId, tTenant.Text, Arm.Scope);
+            WebSignIn s = SignIns.Get(web, Arm.ClientId, tTenant.Text, Arm.Scope);
             armIn = s;
             subs = new List<AzureSubscription>();
             List<AzureSubscription> got = null;

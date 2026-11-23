@@ -194,6 +194,16 @@ namespace TrackVice
         public string Account;
         string access, refresh;
         DateTime expires;
+        // A view takes its tokens from the sign-in it was made from. Scopes that were added later are kept here.
+        readonly WebSignIn root;
+        readonly Dictionary<string, ScopeToken> more = new Dictionary<string, ScopeToken>();
+
+        sealed class ScopeToken
+        {
+            public string Access;
+            public DateTime Expires;
+            public string[] Set;
+        }
 
         public WebSignIn(IWeb web, string clientId, string tenant, string scopes)
         {
@@ -203,9 +213,69 @@ namespace TrackVice
             Scopes = scopes;
         }
 
+        WebSignIn(WebSignIn from, string scopes)
+        {
+            web = from.web;
+            ClientId = from.ClientId;
+            Tenant = from.Tenant;
+            Scopes = scopes;
+            root = from;
+            Account = from.Account;
+        }
+
         public bool SignedIn
         {
-            get { return access != null; }
+            get { return root != null ? root.Has(Scopes) : access != null; }
+        }
+
+        public bool UsesWeb(IWeb w)
+        {
+            return ReferenceEquals(web, w);
+        }
+
+        static string[] SplitScopes(string scopes)
+        {
+            List<string> l = new List<string>();
+            foreach (string x in (scopes ?? "").Split(' ')) if (x.Length > 0 && !l.Contains(x.ToLowerInvariant())) l.Add(x.ToLowerInvariant());
+            return l.ToArray();
+        }
+
+        static bool Covers(string[] have, string[] want)
+        {
+            foreach (string w in want) if (Array.IndexOf(have, w) < 0) return false;
+            return true;
+        }
+
+        // True when a token for all of these scopes is there.
+        public bool Has(string scopes)
+        {
+            WebSignIn r = root ?? this;
+            if (r.access == null) return false;
+            string[] want = SplitScopes(scopes);
+            if (Covers(SplitScopes(r.Scopes), want)) return true;
+            lock (r.more) foreach (ScopeToken t in r.more.Values) if (Covers(t.Set, want)) return true;
+            return false;
+        }
+
+        // The same sign-in for other scopes. It has a token when one is there, or after Quiet or a device code.
+        public WebSignIn For(string scopes)
+        {
+            return new WebSignIn(root ?? this, scopes);
+        }
+
+        // Asks for a token for this view's scopes with the refresh token, without the person. False when a device code is needed.
+        public bool Quiet()
+        {
+            if (SignedIn) return true;
+            WebSignIn r = root ?? this;
+            if (root == null || r.refresh == null) return false;
+            try
+            {
+                Dictionary<string, object> a = Post(Authority + "token",
+                    "grant_type=refresh_token&client_id=" + Uri.EscapeDataString(ClientId) + "&refresh_token=" + Uri.EscapeDataString(r.refresh) + "&scope=" + Uri.EscapeDataString(Scopes + " offline_access"));
+                return Take(a);
+            }
+            catch (Exception) { return false; }
         }
 
         string Authority
@@ -272,6 +342,12 @@ namespace TrackVice
         {
             string token = Http.Str(r, "access_token");
             if (string.IsNullOrEmpty(token)) return false;
+            if (root != null)
+            {
+                root.Put(Scopes, token, Http.Str(r, "refresh_token"), ImeJson.Long(ImeJson.Get(r, "expires_in")));
+                if (Account == null) Account = root.Account;
+                return true;
+            }
             access = token;
             string rt = Http.Str(r, "refresh_token");
             if (!string.IsNullOrEmpty(rt)) refresh = rt;
@@ -281,9 +357,38 @@ namespace TrackVice
             return true;
         }
 
+        void Put(string scopes, string token, string rt, long? e)
+        {
+            if (!string.IsNullOrEmpty(rt)) refresh = rt;
+            ScopeToken t = new ScopeToken();
+            t.Access = token;
+            t.Set = SplitScopes(scopes);
+            t.Expires = DateTime.UtcNow.AddSeconds((e ?? 3600) - 120);
+            lock (more) more[string.Join(" ", t.Set)] = t;
+            if (Account == null) Account = AccountOf(token);
+        }
+
+        // The token of a view: the first sign-in's token, or the one that was added for its scopes.
+        string TokenFor(string scopes)
+        {
+            string[] want = SplitScopes(scopes);
+            if (access != null && Covers(SplitScopes(Scopes), want)) return Token();
+            ScopeToken t = null;
+            lock (more) foreach (ScopeToken x in more.Values) if (Covers(x.Set, want)) { t = x; break; }
+            if (t == null) throw new SetupException("Not signed in.");
+            if (DateTime.UtcNow < t.Expires || refresh == null) return t.Access;
+            Dictionary<string, object> r = Post(Authority + "token",
+                "grant_type=refresh_token&client_id=" + Uri.EscapeDataString(ClientId) + "&refresh_token=" + Uri.EscapeDataString(refresh) + "&scope=" + Uri.EscapeDataString(scopes + " offline_access"));
+            string token = Http.Str(r, "access_token");
+            if (string.IsNullOrEmpty(token)) throw new SetupException("The sign-in has expired. Sign in again.");
+            Put(scopes, token, Http.Str(r, "refresh_token"), ImeJson.Long(ImeJson.Get(r, "expires_in")));
+            return token;
+        }
+
         // The current access token, renewed with the refresh token when it is about to expire.
         public string Token()
         {
+            if (root != null) return root.TokenFor(Scopes);
             if (access == null) throw new SetupException("Not signed in.");
             if (DateTime.UtcNow < expires || refresh == null) return access;
             Dictionary<string, object> r = Post(Authority + "token",

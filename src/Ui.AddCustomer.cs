@@ -367,7 +367,7 @@ namespace TrackVice
             if (armIn != null && !armIn.SignedIn) armIn = null;
             if (ownIn != null && !ownIn.SignedIn) ownIn = null;
             Customer have = book.Find(run.Customer);
-            WebSignIn s = new WebSignIn(web, have != null ? have.GraphClientId : null, tTenant.Text, IntuneSetup.Scopes);
+            WebSignIn s = SignIns.Get(web, have != null ? have.GraphClientId : null, tTenant.Text, IntuneSetup.Scopes);
             graphIn = s;
             skipped = false;
             // Groups found in another tenant do not apply.
@@ -384,7 +384,7 @@ namespace TrackVice
         {
             if (busy && pending != null && armIn != null) { ShowCode(pending); return; }
             if (busy) return;
-            WebSignIn s = new WebSignIn(web, Arm.ClientId, tTenant.Text, Arm.Scope);
+            WebSignIn s = SignIns.Get(web, Arm.ClientId, tTenant.Text, Arm.Scope);
             armIn = s;
             subs = new List<AzureSubscription>();
             List<AzureSubscription> got = null;
@@ -641,7 +641,11 @@ namespace TrackVice
 
         public static void Open(IWin32Window owner, Theme t, Customer c)
         {
-            using (CustomerCodeDialog d = new CustomerCodeDialog(t, c, CustomerUi.Book, YourStorageUi.Web, YourStorageUi.Secrets, AddCustomerUi.ScriptFolder, YourStorageUi.Demo)) d.ShowDialog(owner);
+            using (CustomerCodeDialog d = new CustomerCodeDialog(t, c, CustomerUi.Book, YourStorageUi.Web, YourStorageUi.Secrets, AddCustomerUi.ScriptFolder, YourStorageUi.Demo))
+            {
+                d.Shown += delegate { if (SignIns.Has(d.web, d.customer.GraphClientId, d.customer.Tenant, IntuneScripts.ScriptScope)) d.SignInIntune(); };
+                d.ShowDialog(owner);
+            }
         }
 
         // A made-up customer with a code, for screenshots.
@@ -758,7 +762,7 @@ namespace TrackVice
         {
             if (busy && pending != null) { ShowCode(pending); return; }
             if (busy) return;
-            WebSignIn s = new WebSignIn(web, customer.GraphClientId, customer.Tenant, IntuneScripts.ScriptScope);
+            WebSignIn s = SignIns.Get(web, customer.GraphClientId, customer.Tenant, IntuneScripts.ScriptScope);
             graphIn = s;
             SignIn(s, delegate (string text) { graphText = text; }, null, null, delegate { graphText = ""; graphIn = null; });
         }

@@ -208,6 +208,7 @@ namespace TrackVice
             Prefs.Set("GraphScopes|" + key, null);
             Prefs.Set("GraphAccount|" + key, null);
             new NameCache(NameCache.DefaultFolder).Delete(key);
+            SignIns.Clear();
             SignedOut = true;
         }
 

@@ -64,6 +64,7 @@ namespace TrackVice
             ToPrefs(c);
             bool keep = Customer.SameSignIn(before, c);
             bool other = before == null || !string.Equals(before.Name, c.Name, StringComparison.OrdinalIgnoreCase);
+            if (other) SignIns.ClearGraph();
             if ((other || !keep) && Switched != null)
             {
                 CustomerSwitch e = new CustomerSwitch();

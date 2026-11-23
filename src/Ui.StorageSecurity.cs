@@ -32,7 +32,7 @@ namespace TrackVice
         {
             if (busy && pending != null && ownIn != null && !ownIn.SignedIn) { ShowCode(pending); return; }
             if (busy) return;
-            WebSignIn s = new WebSignIn(web, Arm.ClientId, ownTenant, Arm.Scope);
+            WebSignIn s = SignIns.Get(web, Arm.ClientId, ownTenant, Arm.Scope);
             ownIn = s;
             SignIn(s, delegate (string t) { ownText = t; }, null, null, delegate { ownText = ""; ownIn = null; });
         }
@@ -134,7 +134,13 @@ namespace TrackVice
 
         public static StorageSecurityDialog ForLive(Theme t)
         {
-            return new StorageSecurityDialog(t, YourStorageUi.Web, YourStorageUi.Secrets, false);
+            StorageSecurityDialog d = new StorageSecurityDialog(t, YourStorageUi.Web, YourStorageUi.Secrets, false);
+            d.Shown += delegate
+            {
+                OwnStorage own = OwnStorage.Load(YourStorageUi.Secrets);
+                if (SignIns.Has(d.web, Arm.ClientId, own != null ? own.Tenant : "", Arm.Scope)) d.SignInOwn();
+            };
+            return d;
         }
 
         public static StorageSecurityDialog ForDemo(Theme t)

@@ -301,7 +301,7 @@ namespace TrackVice
 
         public static NewCustomerDialog ForLive(Theme t)
         {
-            NewCustomerDialog d = new NewCustomerDialog(t, CustomerUi.Book, new HttpWeb(), false);
+            NewCustomerDialog d = new NewCustomerDialog(t, CustomerUi.Book, YourStorageUi.Web, false);
             d.UpdateKey = delegate
             {
                 try
@@ -668,34 +668,37 @@ namespace TrackVice
             {
                 string id = tClient.Text.Trim();
                 if (id.Length > 0 && !GraphClient.IsGuid(id)) { note.Say("The client ID is a GUID, such as 1950a258-227b-4e31-a9cf-717495945fc2.", true); return; }
-                s = new WebSignIn(web, id.Length > 0 ? id : Arm.ClientId, tAzTenant.Text, Arm.Scope);
+                s = SignIns.Get(web, id.Length > 0 ? id : Arm.ClientId, tAzTenant.Text, Arm.Scope);
                 armIn = s;
                 armCode = null;
                 subs = new List<AzureSubscription>();
-                armText = "Asking for a sign-in code...";
+                armText = s.SignedIn ? "Signed in" + (string.IsNullOrEmpty(s.Account) ? "." : " as " + s.Account + ".") : "Asking for a sign-in code...";
             }
             else
             {
                 Customer c = book.Find(run.Customer);
-                s = new WebSignIn(web, c != null ? c.GraphClientId : null, run.Tenant, IntuneScripts.ScriptScope + " " + IntuneScripts.GroupScope);
+                s = SignIns.Get(web, c != null ? c.GraphClientId : null, run.Tenant, IntuneScripts.ScriptScope + " " + IntuneScripts.GroupScope);
                 graphIn = s;
                 graphCode = null;
                 found = new List<DirectoryGroup>();
-                graphText = "Asking for a sign-in code...";
+                graphText = s.SignedIn ? "Signed in" + (string.IsNullOrEmpty(s.Account) ? "." : " as " + s.Account + ".") : "Asking for a sign-in code...";
             }
             Rebuild();
             List<AzureSubscription> got = null;
             Work("Signing in...", delegate
             {
-                DeviceCode d = s.Start();
-                Ui(delegate
+                if (!s.SignedIn && !s.Quiet())
                 {
-                    string text = "Open " + d.VerificationUri + " and enter the code " + d.UserCode + ". TrackVice waits for the sign-in.";
-                    if (azure) { armCode = d; armText = text; } else { graphCode = d; graphText = text; }
-                    Rebuild();
-                    if (!demo) SignIn(azure);
-                });
-                s.Wait(d, cancel);
+                    DeviceCode d = s.Start();
+                    Ui(delegate
+                    {
+                        string text = "Open " + d.VerificationUri + " and enter the code " + d.UserCode + ". TrackVice waits for the sign-in.";
+                        if (azure) { armCode = d; armText = text; } else { graphCode = d; graphText = text; }
+                        Rebuild();
+                        if (!demo) SignIn(azure);
+                    });
+                    s.Wait(d, cancel);
+                }
                 if (azure) got = new Arm(web, s.Token).Subscriptions();
             }, delegate
             {
