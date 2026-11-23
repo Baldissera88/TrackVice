@@ -19,7 +19,8 @@ Wishes are welcome: in TrackVice, Help > Suggest a feature, or [Discussions](htt
 
 Install TrackVice on a laptop or lab PC, sign in with Entra ID, and your customers, storage and customer codes are there, without setting anything up again.
 
-- The customer list, with the codes and links, is kept in your own storage account as one encrypted file. Signing in with Entra ID (Storage Blob Data Reader on your storage account) is what lets a PC read it. No link is typed in or copied around.
-- The file is encrypted with a key that is only released to a signed-in user with that role, so someone who gets the file cannot read it. Removing the role removes access from that PC and user.
-- Changes made on one PC (a new customer, a changed code) show up on the others. Each PC can also work offline from its saved copy.
-- Without Entra ID or Azure, the same list can be exported to an encrypted file with a password and imported on the other PC.
+- The customers are kept in an Azure Key Vault in your own subscription, one secret per customer. Nothing is encrypted by TrackVice itself, and no password or link is typed in or copied.
+- Access is the Key Vault role Key Vault Secrets User (read) or Officer (add and change). Remove the role and that user and PC lose access. Key Vault logs who read what, and Conditional Access and MFA apply to the sign-in.
+- Sign-in uses your Entra account in the browser, so an existing session signs you in without typing a password again. TrackVice asks once for the app registration it already makes and uses the delegated Key Vault permission.
+- Changes on one PC show up on the others. Each PC keeps a copy for offline use, encrypted for the Windows account as today.
+- Without Azure, the same list can be exported to a password-protected file and imported on the other PC.
