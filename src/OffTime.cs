@@ -158,6 +158,16 @@ namespace TrackVice
             return d < TimeSpan.Zero ? TimeSpan.Zero : d;
         }
 
+        // The time of a phase: the time off is left out, but a shutdown's own time stays with the phase of its restart item.
+        public static TimeSpan Active(OffSpans spans, DateTime fromUtc, DateTime toUtc, Phase p)
+        {
+            TimeSpan d = Active(spans, fromUtc, toUtc);
+            if (spans == null || p == null) return d;
+            foreach (OffSpan o in spans.List)
+                if (o.ToUtc.HasValue && o.Counts(toUtc) && o.FromUtc >= fromUtc && o.ToUtc.Value <= toUtc && p.Items.Exists(delegate (Item i) { return i.Key == o.ItemKey; })) d += o.Own;
+            return d;
+        }
+
         // The overall time: "26 min", or "26 min · off 9 h 01 min" when the device was off.
         public static string Elapsed(Session s, DateTime nowUtc)
         {

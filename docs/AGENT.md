@@ -687,6 +687,23 @@ Assign it to devices, not users, so it runs during device setup before anyone si
 
 Enroll or reset the test device and keep the list open on your PC, as in [Follow the devices](#follow-the-devices). The viewer link is saved encrypted for your Windows account, so you only paste it once.
 
+## Time zone and clock
+
+TrackVice shows the device's time zone and whether its clock is off, and a finding when the zone changed during the deployment or the clock is more than 2 minutes off.
+
+Where one time zone fits all devices, set it with an Intune setting. This is better than the agent's tick **Turn on automatic time zone on new devices**, which changes a device setting.
+
+In the Intune settings catalog, or as a custom profile with OMA-URI, use the Policy CSP TimeLanguageSettings setting `ConfigureTimeZone`:
+
+| | |
+|---|---|
+| OMA-URI | `./Device/Vendor/MSFT/Policy/Config/TimeLanguageSettings/ConfigureTimeZone` |
+| Data type | String |
+| Value | The standard Windows name of the time zone, for example `Romance Standard Time`. `Get-TimeZone -ListAvailable` lists the names |
+| Windows | Windows 10 version 1903 and later, in Pro, Enterprise, Education and IoT Enterprise |
+
+The tick in Add customer and Customer code is off by default. When it is on, the agent does what Microsoft documents for Set time zone automatically. It sets `Start` of the `tzautoupdate` service under `HKLM\SYSTEM\CurrentControlSet\Services` to 3, sets `Value` under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location` to `Allow`. Then it runs `w32tm /resync`, which is not part of that setting, to sync the clock. Each change is written to `agent.log`. A policy that turns location off takes precedence. With the classic links script it is only done with `/auto-timezone`.
+
 ## Maintenance
 
 | When | Do this |

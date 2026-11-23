@@ -126,8 +126,14 @@ namespace TrackVice.Tests
             T.Eq(At(0, 43, 30), first, "Off time: the deployment starts 00:43:30");
             T.Eq(TimeSpan.FromSeconds(9 * 3600 + 70), OffTime.Off(s, first, end), "Off time: off from 00:56:10 to 09:57:20");
             T.Eq(TimeSpan.FromSeconds(26 * 60 + 20), OffTime.Active(s, first, end), "Off time: 26 min 20 s of deployment time");
+            Phase rp = s.Phases.Find(delegate (Phase x) { return x.Key == Phases.Restarts; });
+            T.Eq(RestartOf(s).Duration(end), rp.Duration(end).Value, "Off time: the Restarts phase takes the shutdown and the start, not the night");
+            foreach (GanttRow gr in GanttLayout.Rows(s, end, true, false))
+                if (gr.Item == null ? gr.Phase == rp : gr.Item == RestartOf(s)) T.Eq(RestartOf(s).Duration(end), gr.Duration, "Off time: the Gantt row of the restart shows its own time");
             Item office = s.Find(IntuneKeys.App(Office));
             T.Eq(TimeSpan.FromSeconds(11 * 60 + 50), office.Duration(end), "Off time: an app that ran across the night took 11 min 50 s");
+            foreach (GanttRow gr in GanttLayout.Rows(s, end, true, false))
+                if (gr.Item == office) T.Eq(TimeSpan.FromSeconds(11 * 60 + 50), gr.Duration, "Off time: the Gantt bar label leaves the night out");
             Phase p = s.FindPhase(Phases.DeviceSetup);
             T.Eq(TimeSpan.FromSeconds(26 * 60 + 20), p.Duration(end), "Off time: the phase time leaves the night out");
             // A restart of a few minutes is not time off.

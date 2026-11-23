@@ -475,7 +475,7 @@ namespace TrackVice
             DateTime? s = StartUtc;
             if (s == null) return null;
             DateTime e = EndUtc ?? nowUtc;
-            if (e > s.Value && Items[0].Off != null) return OffTime.Active(Items[0].Off, s.Value, e);
+            if (e > s.Value && Items[0].Off != null) return OffTime.Active(Items[0].Off, s.Value, e, this);
             return e < s.Value ? TimeSpan.Zero : e - s.Value;
         }
     }

@@ -25,7 +25,13 @@ namespace TrackVice
 
         public TimeSpan Duration
         {
-            get { return EndUtc - StartUtc; }
+            get
+            {
+                TimeSpan d = EndUtc - StartUtc;
+                if (Item != null && Item.Off != null) return Item.Off.Active(Item, StartUtc, EndUtc, d);
+                if (Item == null && Phase != null && Phase.Items.Count > 0 && Phase.Items[0].Off != null) return OffTime.Active(Phase.Items[0].Off, StartUtc, EndUtc, Phase);
+                return d;
+            }
         }
     }
 
