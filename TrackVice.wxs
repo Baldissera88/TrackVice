@@ -4,7 +4,7 @@
            Name="TrackVice"
            Language="1033"
            Codepage="1252"
-           Version="1.9.1"
+           Version="1.9.0"
            Manufacturer="Daniel L. Baldissera"
            UpgradeCode="6635DE95-B38E-46BA-A802-22FD5E781A74">
 
@@ -14,7 +14,7 @@
              Description="TrackVice deployment tracker"
              Comments="Follows SCCM and Intune deployments on one device" />
 
-    <MajorUpgrade Schedule="afterInstallFinalize" DowngradeErrorMessage="A newer version of TrackVice is already installed." />
+    <MajorUpgrade AllowSameVersionUpgrades="yes" Schedule="afterInstallFinalize" DowngradeErrorMessage="A newer version of TrackVice is already installed." />
 
     <!-- A running TrackVice holds TrackVice.exe open, so an upgrade or uninstall would stall on files in use.
          Close it first, as SYSTEM, which also ends a copy running as administrator, before the files are installed.
@@ -43,7 +43,7 @@
         <Directory Id="INSTALLDIR" Name="TrackVice">
 
           <Component Id="TrackViceExe" Guid="A4093A12-3626-44B2-ADE3-16608812B61F" Win64="yes">
-            <File Id="TrackViceExe" Name="TrackVice.exe" Source="TrackVice.exe" KeyPath="yes" DefaultVersion="1.9.1.0">
+            <File Id="TrackViceExe" Name="TrackVice.exe" Source="TrackVice.exe" KeyPath="yes" DefaultVersion="1.9.0.0">
               <Shortcut Id="StartMenuShortcut"
                         Directory="ProgramMenuFolder"
                         Name="TrackVice"
