@@ -77,6 +77,7 @@ namespace TrackVice.Tests
             SupportTests.Run();
             OffTimeTests.Run();
             DeviceTimeTests.Run();
+            ServerEventTests.Run();
             LogViceGetTests.Run();
             AgentVersionTests.Run();
             SetupNeedsTests.Run();

@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.9.1
+
+23 November 2026.
+
+- Fixed: on a Windows Server, such as the SCCM site server, TrackVice no longer shows a "Hybrid Entra join" item as a deployment because of repeating device registration events. A server is not followed as an Autopilot enrollment; its task sequences are still followed.
+
 ## TrackVice 1.9.0
 
 23 November 2026.

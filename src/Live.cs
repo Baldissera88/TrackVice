@@ -268,7 +268,11 @@ namespace TrackVice
                     try { foreach (string id in EventWatch.ReadEnrollments(reg)) events.Enrollments.Add(id); }
                     catch (Exception) { }
                 }
-                if (reads == 1) events.RestartFloor = RestartFloor(b.Obs, nowUtc);
+                if (reads == 1)
+                {
+                    events.RestartFloor = RestartFloor(b.Obs, nowUtc);
+                    try { events.Server = EventWatch.IsServer(reg); } catch (Exception) { }
+                }
                 try { b.Obs.AddRange(events.Read(reads == 1 ? SinceUtc : (DateTime?)null)); }
                 catch (Exception) { }
             }
@@ -497,6 +501,17 @@ namespace TrackVice
         // The device's MDM enrollments. Policies set by anything else, such as the Windows image, are left out.
         public readonly HashSet<string> Enrollments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // A Windows Server does not enroll with Autopilot or register for Hybrid Entra join as a deployment, so its
+        // Autopilot and device registration events stay on the timeline and do not become items.
+        public bool Server;
+
+        public static bool IsServer(IRegSource reg)
+        {
+            RegValue v = reg.Get(@"HKLM\SYSTEM\CurrentControlSet\Control\ProductOptions", "ProductType");
+            string t = v == null ? "" : (v.Data ?? "").Trim();
+            return t.Equals("ServerNT", StringComparison.OrdinalIgnoreCase) || t.Equals("LanmanNT", StringComparison.OrdinalIgnoreCase);
+        }
+
         public const string EnrollmentsKey = @"HKLM\SOFTWARE\Microsoft\Enrollments";
 
         public static List<string> ReadEnrollments(IRegSource reg)
@@ -571,7 +586,7 @@ namespace TrackVice
                         {
                             List<object> props = new List<object>();
                             foreach (EventProperty p in e.Properties) props.Add(p.Value);
-                            ap = AutopilotEvents.Map(channel, e.Id, props, msg, e.TimeCreated.HasValue ? e.TimeCreated.Value.ToUniversalTime() : DateTime.UtcNow, rec);
+                            ap = Server ? null : AutopilotEvents.Map(channel, e.Id, props, msg, e.TimeCreated.HasValue ? e.TimeCreated.Value.ToUniversalTime() : DateTime.UtcNow, rec);
                         }
                         catch (Exception) { }
                         if (ap != null && ap.Count > 0) { list.AddRange(ap); continue; }
