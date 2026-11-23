@@ -289,6 +289,7 @@ namespace TrackVice
         bool quiet;
         SettingRow logViceRow, customersRow, codeRow, signRow;
         TextBox client, tenant, server, site;
+        readonly DownloadSettingsUi downloadUi = new DownloadSettingsUi();
 
         public SettingsDialog(Theme t) : this(t, null)
         {
@@ -712,6 +713,7 @@ namespace TrackVice
             codeRow = Bind("customercode", new SettingRow(Glyphs.Shield, "Customer code", null, bCode));
             l.Add(customersRow);
             l.Add(codeRow);
+            l.AddRange(downloadUi.Build(Bind, delegate (string text, EventHandler click) { return SmallButton(text, click); }));
             UpdateCustomers();
         }
 
@@ -727,6 +729,7 @@ namespace TrackVice
             codeRow.Accessory.Enabled = has;
             customersRow.Invalidate();
             codeRow.Invalidate();
+            downloadUi.Refresh();
             Relayout();
         }
 

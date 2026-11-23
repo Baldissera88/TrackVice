@@ -18,6 +18,10 @@ namespace TrackVice
         public string SccmServer = "";
         public string SccmSite = "";
         public string Notes = "";
+        // Allows the Download item for scripts and app details. Off until it is turned on for this customer.
+        public bool AllowDownloads;
+        // Download without the question first. Off means TrackVice asks before each download.
+        public bool DownloadsWithoutAsking;
 
         public Customer Copy()
         {
@@ -111,6 +115,8 @@ namespace TrackVice
         [DataMember(Order = 6, EmitDefaultValue = false)] public string AgentLocation;
         [DataMember(Order = 7, EmitDefaultValue = false)] public string AgentLocationProtected;
         [DataMember(Order = 8, EmitDefaultValue = false)] public string Notes;
+        [DataMember(Order = 9, EmitDefaultValue = false)] public bool AllowDownloads;
+        [DataMember(Order = 10, EmitDefaultValue = false)] public bool DownloadsWithoutAsking;
     }
 
     [DataContract(Name = "Customers", Namespace = "")]
@@ -231,6 +237,8 @@ namespace TrackVice
             c.SccmServer = d.SccmServer;
             c.SccmSite = d.SccmSite;
             c.Notes = d.Notes;
+            c.AllowDownloads = d.AllowDownloads;
+            c.DownloadsWithoutAsking = d.DownloadsWithoutAsking;
             if (wasCurrent) current = c.Name;
             return c;
         }
@@ -328,6 +336,9 @@ namespace TrackVice
             {
                 Customer c = FromRecord(r);
                 if (c.Name.Length == 0 || c.Name.Length > 80) continue;
+                // A file never turns downloads on. It is turned on in Settings on this PC.
+                c.AllowDownloads = false;
+                c.DownloadsWithoutAsking = false;
                 if (c.AgentLocation.Length > 0) res.HadLinks = true;
                 Customer have = Find(c.Name);
                 if (have == null)
@@ -398,6 +409,8 @@ namespace TrackVice
             r.SccmServer = Empty(c.SccmServer);
             r.SccmSite = Empty(c.SccmSite);
             r.Notes = Empty(c.Notes);
+            r.AllowDownloads = c.AllowDownloads;
+            r.DownloadsWithoutAsking = c.DownloadsWithoutAsking;
             return r;
         }
 
@@ -413,6 +426,8 @@ namespace TrackVice
                 c.SccmSite = r.SccmSite;
                 c.AgentLocation = r.AgentLocation;
                 c.Notes = r.Notes;
+                c.AllowDownloads = r.AllowDownloads;
+                c.DownloadsWithoutAsking = r.DownloadsWithoutAsking;
             }
             c.Fix();
             return c;

@@ -128,6 +128,12 @@ namespace TrackVice
         readonly string server;
         public Func<DateTime, string> Dmtf = SccmWmi.Dmtf;
 
+        // The connection to the site, for reading one application or task sequence.
+        public ISccmQuery Query
+        {
+            get { return q; }
+        }
+
         public SccmCatalog(ISccmQuery query, string serverName)
         {
             q = query;

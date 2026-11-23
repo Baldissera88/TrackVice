@@ -145,6 +145,16 @@ namespace TrackVice
             D("customercode", Customers, "Customer code", "The code that installs the agent for the customer in use.",
                 "It holds the link that uploads to the customer's container, so keep it like a password. From it you can also update the platform script in Intune.",
                 "agent install platform script"),
+            D("downloads", Customers, "Allow downloading scripts and app details", "Adds Download to the right-click menu of a script, task sequence step or app in a deployment. Off until you turn it on, and kept with the customer in use.",
+                "It saves the text of a platform script, a remediation or a task sequence step, or the details of an app: commands, detection rules, requirements, return codes and assignments. App files are not downloaded. The text is read with the same sign-in or site connection as the rest of TrackVice, so it can only read what that account can read.",
+                "download save script app details permission"),
+            D("downloads.ask", Customers, "Ask before each download", "TrackVice says what it will save and asks first. It is on unless you turn it off.",
+                null, "download confirm question"),
+            D("downloads.mask", Customers, "Hide secrets in downloads", "Passwords, keys and tokens in a downloaded text are hidden, as they are in a session.",
+                "The save window says when something was hidden. The hiding looks for names such as password, secret, token and key, so it can miss a secret that has another name.",
+                "download mask secrets passwords"),
+            D("downloads.log", Customers, "Download log", "Every download adds a line: the time, your Windows user, the customer, the item and the file name. The text is not logged.",
+                null, "download log history who"),
 
             // Intune / cloud
             D("signin", Intune, "Intune sign-in", "The sign-in kept for the customer in use. Sign out deletes it and the kept names.",
