@@ -46,7 +46,7 @@ The welcome does not show on a device that deploys: in Windows PE, during Window
 | The agent | One storage account in your own Azure for all customers, and outbound HTTPS (port 443) from the devices to `<account>.blob.core.windows.net`. See [docs/AGENT.md](docs/AGENT.md#what-you-need) |
 | Your storage | Once: Contributor on the subscription for a new storage account, or Storage Account Contributor on an existing one |
 | Add customer | No Azure role. For the Intune part: in the customer's tenant, a role that can add and assign platform scripts and one that can make groups, and consent to `DeviceManagementScripts.ReadWrite.All` and `Group.ReadWrite.All`, which also lists the groups to choose from. See [docs/AGENT.md](docs/AGENT.md#who-signs-in-and-what-they-need) |
-| Setup with links | For existing setups: the roles above in the customer's subscription, and `Group.ReadBasic.All` instead of `Group.ReadWrite.All`. `New-TrackViceCustomer.ps1` needs PowerShell 5.1 with Az.Accounts and Az.Storage |
+| Setup with links | For existing setups: the roles above in the customer's subscription, and `GroupMember.Read.All` instead of `Group.ReadWrite.All`. `New-TrackViceCustomer.ps1` needs PowerShell 5.1 with Az.Accounts and Az.Storage |
 | Updates | Outbound HTTPS to `api.github.com` once a day, and to `github.com` to download an update. Turned off in Settings > Updates, or for everyone with the policy value `DisableUpdateCheck`, see [Updates](#updates) |
 | LogVice | Optional. When it is not found, its button asks you to locate the exe and keeps your choice. Nothing else needs it |
 

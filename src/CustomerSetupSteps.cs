@@ -65,7 +65,7 @@ namespace TrackVice
     public sealed class IntuneScripts
     {
         public const string ScriptScope = "https://graph.microsoft.com/DeviceManagementScripts.ReadWrite.All";
-        public const string GroupScope = "https://graph.microsoft.com/Group.ReadBasic.All";
+        public const string GroupScope = "https://graph.microsoft.com/GroupMember.Read.All";
         public const string ScriptsUrl = "https://graph.microsoft.com/beta/deviceManagement/deviceManagementScripts";
         public const string Description = "Installs the TrackVice agent during enrollment. It uploads the device's deployment progress to the trackvice storage container until 48 hours after the deployment is done, then removes itself.";
 

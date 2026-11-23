@@ -919,7 +919,7 @@ namespace TrackVice
             l.Add(new SectionTitle("Intune (optional)"));
             l.Add(Row(Glyphs.Info, "This changes Intune", "It is the only step that does, and it is optional. It adds the platform script TrackVice agent (system context, no signature check, 64-bit PowerShell) and assigns it to the device group you pick. Or skip it and add the saved script by hand, as step 6 in docs/AGENT.md says.", null));
             bGraph.Text = graphCode != null && graphIn != null && !graphIn.SignedIn ? "Copy code and open" : graphIn != null && graphIn.SignedIn ? "Sign in again" : "Sign in";
-            l.Add(Row(Glyphs2.Sync, "Sign in to Intune", graphText.Length > 0 ? graphText : "To " + run.Tenant + " with DeviceManagementScripts.ReadWrite.All and Group.ReadBasic.All. Signing in changes nothing.", bGraph));
+            l.Add(Row(Glyphs2.Sync, "Sign in to Intune", graphText.Length > 0 ? graphText : "To " + run.Tenant + " with DeviceManagementScripts.ReadWrite.All and GroupMember.Read.All. Signing in changes nothing.", bGraph));
             if (graphIn == null || !graphIn.SignedIn) return;
             l.Add(Row(Glyphs.Search, "Device group", "Search by name, then pick the group. Start with a group that has one test device.", Strip(tSearch, bSearch)));
             if (found.Count > 0) l.Add(Row(Glyphs2.Device, "Group", "", cFound));

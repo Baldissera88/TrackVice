@@ -45,7 +45,7 @@ namespace TrackVice
             Need("own-azure", "Add customer with the customer's own Azure", "An account in the customer's tenant",
                 "Contributor on a subscription or resource group for a new account, or Storage Account Contributor on an existing one", "None to ask for", "An Owner of the customer's subscription gives the role"),
             Need("links-guide", "The guide with links, the Intune part", "An account in the customer's tenant",
-                IntuneRole, "Admin consent for DeviceManagementScripts.ReadWrite.All and Group.ReadBasic.All", ConsentWho + " gives the consent. " + IntuneRoleWho),
+                IntuneRole, "Admin consent for DeviceManagementScripts.ReadWrite.All and GroupMember.Read.All", ConsentWho + " gives the consent. " + IntuneRoleWho),
         };
 
         static SignInNeed Need(string id, string used, string account, string role, string consent, string who)
@@ -109,7 +109,7 @@ namespace TrackVice
             List<NeedItem> l = new List<NeedItem>();
             l.Add(Item("azure", "For the storage account: your Azure account with Contributor or Owner on a subscription, or Storage Account Contributor on an account that exists."));
             l.Add(Item("intune-role", "Only for the platform script in step 6: an account in the customer's tenant with the Intune Administrator role, or an Intune role that can add and assign platform scripts."));
-            l.Add(Item("consent", "Also for step 6: admin consent in the customer's tenant for DeviceManagementScripts.ReadWrite.All and Group.ReadBasic.All. A Global Administrator, Privileged Role Administrator, Cloud Application Administrator or Application Administrator can give it."));
+            l.Add(Item("consent", "Also for step 6: admin consent in the customer's tenant for DeviceManagementScripts.ReadWrite.All and GroupMember.Read.All. A Global Administrator, Privileged Role Administrator, Cloud Application Administrator or Application Administrator can give it."));
             l.Add(Item("browser", "A browser on this PC for each sign-in. TrackVice shows a code to enter there."));
             return l;
         }
