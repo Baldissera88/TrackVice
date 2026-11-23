@@ -100,7 +100,7 @@ namespace TrackVice.Tests
         {
             T.Eq("tv-contoso", BlobContainers.NameFor("Contoso"), "container: simple name");
             T.Eq("tv-northwind-traders", BlobContainers.NameFor("  Northwind  Traders "), "container: spaces become one hyphen");
-            T.Eq("tv-solrod-kobenhavn", BlobContainers.NameFor("Sølrød København"), "container: letters with marks are kept as plain letters");
+            T.Eq("tv-fabrikam-mobler", BlobContainers.NameFor("Fabrikam Møbler"), "container: letters with marks are kept as plain letters");
             T.Eq("tv-a-b", BlobContainers.NameFor("A & B!"), "container: no hyphen at the end");
             T.Eq("tv-customer", BlobContainers.NameFor("!!!"), "container: a name without letters");
             string longName = BlobContainers.NameFor(new string('x', 100));
