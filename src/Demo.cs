@@ -285,6 +285,7 @@ namespace TrackVice
             d.Info.Add(new Pair("Tenant", "contoso.onmicrosoft.com"));
             d.Info.Add(new Pair("Join type", "Entra join"));
             d.Info.Add(new Pair("ESP time limit (min)", "60"));
+            DemoFacts.Autopilot(d.Info);
             d.Paths["AppWorkload"] = Ime + "AppWorkload.log";
             d.Paths["IntuneManagementExtension"] = Ime + "IntuneManagementExtension.log";
 
@@ -456,6 +457,7 @@ namespace TrackVice
             d.Computer = "CONTOSO-PC117";
             d.User = "SYSTEM";
             d.Os = "Windows 11 Enterprise 24H2 (26100.7171)";
+            DemoFacts.Osd(d.Info);
             d.Paths["smsts-pe"] = @"X:\Windows\Temp\SMSTSLog\smsts.log";
             d.Paths["smsts-os"] = @"C:\_SMSTaskSequence\Logs\Smstslog\smsts.log";
             d.Paths["smsts"] = Ccm + @"SMSTSLog\smsts.log";

@@ -278,6 +278,8 @@ namespace TrackVice
         public string Elapsed = "";
         public State State = State.Unknown;
         public string Label = "Overall";
+        // The estimate of the time left, such as "about 25 min left", or empty.
+        public string Remaining = "";
 
         public OverallChip()
         {
@@ -298,6 +300,12 @@ namespace TrackVice
             int pw = TextRenderer.MeasureText(pct, T.Num(Fonts.Title), Size.Empty, TextFormatFlags.NoPadding).Width;
             string st = State == State.Unknown ? "" : States.Label(State);
             if (st.Length > 0) TextRenderer.DrawText(g, st, Fonts.SmallSemibold, new Rectangle(pad + pw + Dpi.S(10), Dpi.S(12), Width - pw - pad * 2, Dpi.S(18)), StateLook.Color(State, T), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            if (!string.IsNullOrEmpty(Remaining))
+            {
+                int sw = st.Length > 0 ? TextRenderer.MeasureText(st, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width + Dpi.S(8) : 0;
+                int lx = pad + pw + Dpi.S(10) + sw;
+                TextRenderer.DrawText(g, (st.Length > 0 ? "· " : "") + Remaining, Fonts.Small, new Rectangle(lx, Dpi.S(12), Math.Max(0, Width - lx - pad), Dpi.S(18)), T.Text2, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+            }
             TextRenderer.DrawText(g, Label + (Elapsed.Length > 0 ? " · " + Elapsed : ""), Fonts.Small, new Rectangle(pad, Dpi.S(34), Width - pad * 2, Dpi.S(14)), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             StateLook.Bar(g, new RectangleF(pad, Height - Dpi.S(10), Width - pad * 2, Dpi.S(3)), Progress, State == State.Failed ? T.ErrFg : State == State.Succeeded ? T.OkFg : T.Accent, T.Divider);
         }

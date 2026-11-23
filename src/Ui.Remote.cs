@@ -135,6 +135,7 @@ namespace TrackVice
                 table.Col("Task sequence", 220, delegate (RemoteDeployment d) { return d.Profile; }).Fill = true;
                 table.Col("Deployment", 100, delegate (RemoteDeployment d) { return d.User; });
             }
+            AddSupportColumns(kind);
             table.Col("Started", 128, delegate (RemoteDeployment d) { return d.StartUtc.HasValue ? Txt.Local(d.StartUtc.Value).Substring(0, 16) : ""; });
             table.Col("Duration", 92, delegate (RemoteDeployment d) { return Txt.Duration(d.Duration(DateTime.UtcNow)); });
             table.Col(kind == Intune ? "Last report" : kind == Agents ? "Last upload" : "Last status", 100, delegate (RemoteDeployment d) { return Txt.Ago(d.LastUtc, DateTime.UtcNow); });
@@ -634,7 +635,7 @@ namespace TrackVice
             List<RemoteDeployment> rows = new List<RemoteDeployment>();
             foreach (RemoteDeployment d in all)
             {
-                if (q.Length > 0 && !Has(d.Device, q) && !Has(d.User, q) && !Has(d.Profile, q) && !Has(d.Serial, q) && !Has(d.StateText, q) && !Has(d.Version, q)) continue;
+                if (q.Length > 0 && !Has(d.Device, q) && !Has(d.User, q) && !Has(d.Profile, q) && !Has(d.Serial, q) && !Has(d.StateText, q) && !HasNote(d, q) && !Has(d.Version, q)) continue;
                 if (!SideShows(d)) continue;
                 rows.Add(d);
             }

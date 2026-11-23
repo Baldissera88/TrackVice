@@ -22,6 +22,8 @@ namespace TrackVice
         public DateTime LastUtc;
         public string Detail;
         public string Serial;
+        // The user who enrolls or signed in, where the source knows it: "Anna Hansen (anna.hansen@contoso.com)".
+        public string EnrollUser;
         // The TrackVice version of the agent that uploaded, for devices with the agent.
         public string Version;
 
@@ -482,6 +484,7 @@ namespace TrackVice
             d.Serial = Http.Str(e, "deviceSerialNumber");
             if (string.IsNullOrEmpty(d.Device)) d.Device = d.Serial ?? id;
             d.User = Http.Str(e, "userPrincipalName");
+            d.EnrollUser = d.User;
             d.Profile = Http.Str(e, "windowsAutopilotDeploymentProfileDisplayName");
             string st = Http.Str(e, "deploymentState");
             d.State = DeploymentState(st);

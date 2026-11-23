@@ -24,7 +24,7 @@ namespace TrackVice
     // One device on the wall, made from the metadata of its upload only.
     public sealed class WallTile
     {
-        public string Key, Device, Kind, Profile, Current, Names;
+        public string Key, Device, Kind, Profile, Current, Names, User;
         public string Version;
         public int Items, Done, FailedCount, Active;
         public DateTime? StartUtc, EndUtc;
@@ -94,7 +94,7 @@ namespace TrackVice
         public bool Matches(string q)
         {
             if (string.IsNullOrEmpty(q)) return true;
-            foreach (string s in new string[] { Device, Kind, Profile, Current, Names, Version })
+            foreach (string s in new string[] { Device, Kind, Profile, Current, Names, User, Version })
                 if (s != null && s.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return false;
         }
@@ -217,6 +217,7 @@ namespace TrackVice
             t.Profile = Str(e, "profile");
             t.Current = Str(e, "current");
             t.Names = Str(e, "names");
+            t.User = Str(e, "username") ?? Str(e, "user");
             t.Version = Str(e, "version");
             t.Items = Int(e, "items");
             t.Done = Int(e, "done");
@@ -354,6 +355,7 @@ namespace TrackVice
             e.Apply(e.DemoTo(seconds));
             Session s = e.S;
             s.Computer = computer;
+            DemoFacts.Vary(s, computer);
             AgentVersions.Demo(s, computer, DateTime.UtcNow);
             if (allDone)
             {

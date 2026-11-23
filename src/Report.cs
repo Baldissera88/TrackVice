@@ -167,7 +167,7 @@ namespace TrackVice
                 if (!string.IsNullOrEmpty(o.Title)) b.Append(H(s.Computer)).Append(" &middot; ");
                 b.Append(H(s.Kind));
                 if (!string.IsNullOrEmpty(s.OsVersion)) b.Append(" &middot; ").Append(H(s.OsVersion));
-                if (!string.IsNullOrEmpty(s.User)) b.Append(" &middot; ").Append(H(s.User));
+                if (!string.IsNullOrEmpty(Who.Label(s) ?? s.User)) b.Append(" &middot; ").Append(H(Who.Label(s) ?? s.User));
             }
             b.Append("</div></header>");
 

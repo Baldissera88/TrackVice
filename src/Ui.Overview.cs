@@ -463,6 +463,8 @@ namespace TrackVice
                 r.Text = n.Dev.D.Device;
                 List<string> sub = new List<string>();
                 if (!string.IsNullOrEmpty(n.Dev.Customer)) sub.Add(n.Dev.Customer);
+                string who = Who.Short(n.Dev.S) ?? n.Dev.D.EnrollUser;
+                if (!string.IsNullOrEmpty(who)) sub.Add(who);
                 if (!string.IsNullOrEmpty(n.Phase)) sub.Add(n.Phase);
                 if (!string.IsNullOrEmpty(n.WaitsFor)) sub.Add(n.WaitsFor);
                 r.Sub = string.Join(" · ", sub.ToArray());
@@ -545,7 +547,9 @@ namespace TrackVice
                 if (f.Pinned) sub.Add("Pinned");
                 sub.Add(RecentSources.Name(f.Source));
                 if (!string.IsNullOrEmpty(f.Customer)) sub.Add(f.Customer);
+                if (!string.IsNullOrEmpty(f.User)) sub.Add(f.User);
                 if (!string.IsNullOrEmpty(f.StateText)) sub.Add(f.StateText);
+                if (!string.IsNullOrEmpty(f.Note)) sub.Add("Note: " + f.Note);
                 r.Sub = string.Join(" · ", sub.ToArray());
                 r.HasState = true;
                 r.State = f.State;
@@ -749,6 +753,7 @@ namespace TrackVice
             table.Col("Profile or task sequence", 200, delegate (FoundDevice f) { return f.Profile; }).Fill = true;
             table.Col("User", 170, delegate (FoundDevice f) { return f.User; });
             table.Col("Serial number", 120, delegate (FoundDevice f) { return f.Serial; });
+            table.Col("Note", 160, delegate (FoundDevice f) { return f.Note; });
             Column<FoundDevice> seen = table.Col("Last seen", 110, delegate (FoundDevice f) { return f.LastUtc.Year > 2000 ? Txt.Ago(f.LastUtc, DateTime.UtcNow) : ""; });
             seen.SortKey = delegate (FoundDevice f) { return (DateTime.UtcNow - f.LastUtc).TotalSeconds.ToString("0", System.Globalization.CultureInfo.InvariantCulture); };
             table.Col("Pinned", 70, delegate (FoundDevice f) { return f.Pinned ? "Pinned" : ""; });

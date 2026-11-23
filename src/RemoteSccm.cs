@@ -529,6 +529,8 @@ namespace TrackVice
                 b.Info.Add(new Pair("Device", device));
                 if (!string.IsNullOrEmpty(tsName)) b.Info.Add(new Pair("Task sequence", tsName));
                 if (!string.IsNullOrEmpty(deployment)) b.Info.Add(new Pair("Deployment ID", deployment));
+                string siteUser = SiteUser.Of(q, resourceId);
+                if (siteUser != null) b.Info.Add(new Pair(DeviceFacts.SiteUser, siteUser));
                 b.Notes.Add("This task sequence is read from the status messages it sends to the site. They arrive a little after each step, and only steps that report are shown. Run TrackVice on the device to see smsts.log line by line.");
                 first = false;
             }

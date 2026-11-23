@@ -95,6 +95,7 @@ namespace TrackVice
             BuildHeader();
             BuildNav();
             BuildReference();
+            BuildSupport();
             BuildViews();
             Controls.Add(content);
             Controls.Add(tabs);
@@ -758,7 +759,7 @@ namespace TrackVice
             if (s.Items.Count > 0) sub.Add(s.Kind);
             string profile = s.GetInfo("Task sequence") ?? s.GetInfo("Autopilot profile");
             if (profile != null) sub.Add(profile);
-            if (!string.IsNullOrEmpty(s.User) && engine.Mode != Modes.Folder) sub.Add(s.User);
+            if (HeaderUser(s) != null) sub.Add(HeaderUser(s));
             if (!string.IsNullOrEmpty(s.OsVersion)) sub.Add(s.OsVersion);
             DateTime? f = s.FirstUtc;
             if (f.HasValue) sub.Add("started " + Txt.Local(f.Value));
@@ -777,6 +778,7 @@ namespace TrackVice
             overall.State = os;
             overall.Elapsed = Elapsed();
             overall.Invalidate();
+            BindSupport();
             cItems.Count = s.Items.Count;
             cActive.Count = s.CountActive;
             cWaiting.Count = s.Count(State.Pending) + s.Count(State.Unknown);
@@ -1169,9 +1171,10 @@ namespace TrackVice
             Begin(r);
             Heading(r, s.Computer);
             Line(r, engine.Mode == Modes.Live ? "This device" : engine.Mode == Modes.Demo ? "Demo" : engine.Mode == Modes.File ? "Saved session" : engine.Mode == Modes.Intune ? "Intune" : engine.Mode == Modes.Sccm ? "SCCM" : engine.Mode == Modes.Agent ? "Uploaded by the TrackVice agent" : "Log folder", theme.Accent, s.Kind, theme.Text3);
+            WriteSupport(r, s);
             Section(r, "Device");
             Field(r, "Windows", s.OsVersion, false);
-            Field(r, "User", s.User, false);
+            Field(r, "TrackVice runs as", engine.Mode == Modes.Live || engine.Mode == Modes.File ? s.User : null, false);
             Field(r, "Administrator", engine.Mode == Modes.Live ? (s.Elevated ? "Yes" : "No: some logs and keys may be missing") : null, false);
             if (engine.Mode == Modes.Live) Field(r, "History read", "Since " + Txt.Local(s.SinceUtc) + " (" + Settings.HoursText(Hours) + ")", false);
             if (engine.Mode == Modes.File) Field(r, "File", s.SourcePath, true);
@@ -1180,7 +1183,7 @@ namespace TrackVice
             if (s.Info.Count > 0)
             {
                 Section(r, "Deployment");
-                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended" && !AgentVersions.IsKey(p.Key)) Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
+                foreach (Pair p in s.Info) if (p.Key != "Task sequence ended" && !DeviceFacts.Is(p.Key) && !AgentVersions.IsKey(p.Key)) Field(r, p.Key, p.Value, p.Key.EndsWith("ID"));
             }
             List<string> src = engine.Sources;
             if (src.Count > 0)
@@ -1679,6 +1682,7 @@ namespace TrackVice
             Form page = null;
             if (SettingsDialog.IsShotPage(start.Page)) page = SettingsDialog.ForShot(theme, start.Page, start.Select);
             else if (start.Page == "about") page = new AboutDialog(theme);
+            else if (start.Page == NotePage) page = ShotNote();
             else if (Array.IndexOf(WelcomePages, start.Page) >= 0) page = ShotWelcome();
             else if (Array.IndexOf(OverviewPages, start.Page) >= 0) ShotOverview();
             else if (Array.IndexOf(DevicePages, start.Page) >= 0) page = ShotDevices();

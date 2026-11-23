@@ -623,7 +623,7 @@ namespace TrackVice
             State st;
             string text;
             RecentStore.StateOf(engine.S, out st, out text);
-            string sig = st + "|" + text + "|" + engine.S.Computer;
+            string sig = st + "|" + text + "|" + engine.S.Computer + "|" + Who.Label(engine.S);
             if (sig == savedState) return;
             if (st == currentTarget.State && DateTime.UtcNow - savedAt < TimeSpan.FromSeconds(30) && savedState != null) return;
             savedState = sig;
@@ -634,7 +634,8 @@ namespace TrackVice
             if (!string.IsNullOrEmpty(engine.S.Computer)) currentTarget.Device = engine.S.Computer;
             string profile = engine.S.GetInfo("Task sequence") ?? engine.S.GetInfo("Autopilot profile");
             if (!string.IsNullOrEmpty(profile)) currentTarget.Profile = profile;
-            if (!string.IsNullOrEmpty(engine.S.User)) currentTarget.User = engine.S.User;
+            if (Who.Label(engine.S) != null) currentTarget.User = Who.Label(engine.S);
+            if (engine.S.GetInfo(DeviceFacts.Serial) != null && currentTarget.Source != RecentSources.Agent) currentTarget.Serial = engine.S.GetInfo(DeviceFacts.Serial);
             RecentDevice kept = Recent.Touch(currentTarget);
             if (kept != null) currentTarget = kept;
         }

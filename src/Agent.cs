@@ -367,6 +367,8 @@ namespace TrackVice
             m["version"] = s.AppVersion;
             AgentVersions.AddMeta(s, m);
             if (s.GetInfo("Earlier names") != null) m["names"] = s.GetInfo("Earlier names");
+            m["user"] = Who.Upn(s);
+            m["username"] = Who.Name(s);
             return m;
         }
 
@@ -380,6 +382,7 @@ namespace TrackVice
             d.Detail = Str(e, "tenant");
             // The agent has no serial number to show. Earlier computer names go there, so searching for one finds the device.
             d.Serial = Str(e, "names");
+            d.EnrollUser = Who.Join(Str(e, "username"), Str(e, "user"));
             d.Version = Str(e, "version");
             d.StartUtc = Time(e, "started");
             d.LastUtc = Time(e, "updated") ?? e.ModifiedUtc;
@@ -1000,6 +1003,7 @@ namespace TrackVice
             d.Engine.DemoSpeed = 6;
             d.Engine.Apply(d.Engine.DemoTo(seconds));
             d.Engine.S.Computer = computer;
+            DemoFacts.Vary(d.Engine.S, computer);
             AgentVersions.Demo(d.Engine.S, computer, DateTime.UtcNow);
             devices.Add(d);
         }

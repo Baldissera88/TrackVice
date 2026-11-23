@@ -45,6 +45,7 @@ namespace TrackVice
         readonly RemediationWatch remediations = new RemediationWatch();
         readonly WmiWatch wmi = new WmiWatch();
         readonly EventWatch events = new EventWatch();
+        readonly FactWatch facts = new FactWatch();
         readonly LiveRegistry reg = new LiveRegistry();
         readonly Dictionary<string, string> names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         int reads;
@@ -246,6 +247,7 @@ namespace TrackVice
                     b.Info.AddRange(info);
                 }
             }
+            b.Info.AddRange(facts.Read(reg, reads, UseWmi));
             if (UseWmi && (reads == 1 || reads % 3 == 0))
             {
                 Exception err;

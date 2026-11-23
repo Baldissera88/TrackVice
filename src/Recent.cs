@@ -314,6 +314,8 @@ namespace TrackVice
     public sealed class FoundDevice
     {
         public string Source = "", Customer = "", Device = "", Id = "", Serial = "", User = "", Profile = "", StateText = "";
+        // The note kept on this PC for the device, or "".
+        public string Note = "";
         public State State;
         public DateTime LastUtc;
         public bool Pinned, Recent;
@@ -352,7 +354,8 @@ namespace TrackVice
             f.Device = d.Device ?? "";
             f.Id = d.Key ?? "";
             f.Serial = d.Serial ?? "";
-            f.User = o.S != null && !string.IsNullOrEmpty(o.S.User) ? o.S.User : "";
+            f.User = Who.Label(o.S) ?? d.EnrollUser ?? "";
+            if (f.Serial.Length == 0 && o.S != null) f.Serial = o.S.GetInfo(DeviceFacts.Serial) ?? "";
             f.Profile = d.Profile ?? "";
             f.State = d.State;
             f.StateText = d.StateText ?? "";
@@ -387,7 +390,7 @@ namespace TrackVice
             if (string.IsNullOrEmpty(query) || query.Trim().Length == 0) return true;
             foreach (string w in query.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                if (!Has(f.Device, w) && !Has(f.Serial, w) && !Has(f.User, w) && !Has(f.Profile, w) && !Has(f.Customer, w)) return false;
+                if (!Has(f.Device, w) && !Has(f.Serial, w) && !Has(f.User, w) && !Has(f.Profile, w) && !Has(f.Customer, w) && !Has(f.Note, w)) return false;
             }
             return true;
         }
@@ -429,6 +432,7 @@ namespace TrackVice
                     byKey[f.Key] = f;
                     all.Add(f);
                 }
+            foreach (FoundDevice f in all) f.Note = DeviceNotes.Of(f.Device);
             return all;
         }
 

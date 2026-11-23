@@ -542,7 +542,7 @@ namespace TrackVice
             StateLook.Icon(g, IconState(t.State), new RectangleF(ic.X + 2, ic.Y + 2, ic.Width - 4, ic.Height - 4), T, spin);
             Draw.Text(g, t.Device, name, new Rectangle(x, y, ic.X - Dpi.S(10) - x, name.Height + 2), T.Text, Draw.Line);
             y += name.Height + Dpi.S(2);
-            Draw.Text(g, t.Deployment, mid, new Rectangle(x, y, w, mid.Height + 2), T.Text2, Draw.Line);
+            Draw.Text(g, (t.User != null ? t.User + " · " : "") + t.Deployment, mid, new Rectangle(x, y, w, mid.Height + 2), T.Text2, Draw.Line);
             y += mid.Height;
 
             // The bar, its percent and how many of the items are done, spread over what is left above the bottom line.

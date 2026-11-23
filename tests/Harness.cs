@@ -73,6 +73,7 @@ namespace TrackVice.Tests
             ThemeTests.Run();
             FeedbackTests.Run();
             OverviewTests.Run();
+            SupportTests.Run();
             LogViceGetTests.Run();
             AgentVersionTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
