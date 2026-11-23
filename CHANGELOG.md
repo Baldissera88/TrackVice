@@ -1,11 +1,5 @@
 # Changelog
 
-## TrackVice 1.9.1
-
-23 November 2026.
-
-- Fixed: when TrackVice follows a deployment (or a task sequence or Windows setup runs), Update now no longer offers to install and then fails with "could not be installed automatically". It says at once that the update waits until the deployment is done, because the update restarts TrackVice, and offers the release page.
-
 ## TrackVice 1.9.0
 
 23 November 2026.
@@ -13,6 +7,7 @@
 - **Download scripts and app details from a deployment**: right-click an Intune script or remediation, an app, an SCCM task sequence step or an SCCM application and choose Download. You get the script text and command lines, and for an app its details (install command, detection rule, requirements, assignments), not its installer files. It is off until you turn it on per customer, asks before each download, hides secrets, and every download is written to a log with who, what and when.
 - **Customers in your own Key Vault**: Settings > Customers > Key Vault keeps your customers in an Azure Key Vault, one secret per customer. On a new PC you sign in with Entra ID and get them. It uses the Key Vault roles (Secrets User to read, Secrets Officer to add and change), and only adds and updates, never deletes.
 - **A password-protected customers file**: exporting with the storage links needs a password and makes a .tvcustomers file. Import reads it and the older JSON.
+- Fixed: when TrackVice follows a deployment (or a task sequence or Windows setup runs), Update now no longer offers to install and then fails with "could not be installed automatically". It says at once that the update waits until the deployment is done, because the update restarts TrackVice, and offers the release page.
 
 ## TrackVice 1.8.0
 
