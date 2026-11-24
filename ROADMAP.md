@@ -27,4 +27,13 @@ New users should not have to think about Azure storage. During setup the default
 - **Second choice: your own storage**, set up with one click as Your storage does today, for organizations whose security rules keep logs inside their own tenant. You can move from hosted to your own storage later.
 - **If the service is down,** TrackVice says so and offers to switch to your own storage.
 
+## 3. Signed files: no "unknown publisher" warning
+
+Today the files are not code signed, so Windows SmartScreen and the UAC prompt warn about an unknown publisher.
+
+- **Sign every file** that is released or published to storage: TrackVice.exe, TrackVice.msi, the agent and the PowerShell scripts, with a timestamp so the signature stays valid after the certificate expires.
+- **Microsoft Artifact Signing** (formerly Trusted Signing) in Azure. It is a monthly fee, the keys stay in Azure, and the signature gives a base reputation in SmartScreen. Public Trust is open to organizations in the EU, but individual developers only in the USA and Canada, so the publisher must be a company (for example MANSOFT A/S, if it can and wants to be the publisher). The other choice is an OV code signing certificate from a certificate authority, which today must be kept on a hardware token or in a cloud HSM.
+- **Signing in the build**, so no unsigned file is ever released, and a check in TrackVice that an update is signed by the same publisher before it is installed.
+- **What it changes:** the publisher name is shown instead of "Unknown publisher". SmartScreen may still warn for a short time after the first signed release while reputation builds up. Files deployed by Intune or SCCM are not checked by SmartScreen, so devices are not affected either way.
+
 Wishes are welcome: in TrackVice, Help > Suggest a feature, or [Discussions](https://github.com/Baldissera88/TrackVice/discussions).
