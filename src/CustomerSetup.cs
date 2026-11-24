@@ -572,14 +572,6 @@ namespace TrackVice
             return a;
         }
 
-        // One account by name and resource group, for when the subscription cannot be listed.
-        public AzureAccount GetAccount(string sub, string group, string name)
-        {
-            WebReply r = Call("GET", AccountId(sub, group, name) + "?api-version=" + StorageApi, null);
-            if (r.Status == 200) return ToAccount(r.Json);
-            throw Fail(r, "read the storage account " + name);
-        }
-
         public static string AccountId(string sub, string group, string name)
         {
             return "/subscriptions/" + Esc(sub) + "/resourceGroups/" + Esc(group) + "/providers/Microsoft.Storage/storageAccounts/" + Esc(name);

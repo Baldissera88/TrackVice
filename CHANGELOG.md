@@ -1,12 +1,5 @@
 # Changelog
 
-## TrackVice 1.11.6
-
-24 November 2026.
-
-- New: in Your storage, when the list of existing accounts is empty (the account cannot list storage accounts in the subscription), you can type the account name and its resource group. TrackVice reads that one account directly, so it needs rights only on that account.
-- Fixed: the subscription ID line and the account list now follow the subscription shown in the box.
-
 ## TrackVice 1.11.5
 
 24 November 2026.
