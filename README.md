@@ -1,8 +1,21 @@
-<p align="center"><img src="docs/images/logo.png" width="96" alt="TrackVice logo"></p>
+<p align="center">
+  <img src="docs/images/logo.png" alt="TrackVice logo" width="112">
+</p>
 
-# TrackVice
+<h1 align="center">TrackVice</h1>
 
-**Version 2.0.0**
+<p align="center">
+  Follow SCCM task sequences and Intune Autopilot deployments while they happen, on the device or from your own PC.
+</p>
+
+<p align="center">
+  <img alt="Version 2.0.1" src="https://img.shields.io/badge/version-2.0.1-005fb8">
+  <a href="../../actions/workflows/build.yml"><img alt="Build" src="../../actions/workflows/build.yml/badge.svg"></a>
+  <img alt="Windows 10, 11 and Server 2016 or later" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078d4">
+  <img alt=".NET Framework 4.5 or later, included in Windows" src="https://img.shields.io/badge/.NET%20Framework-4.5%2B%20(in%20Windows)-512bd4">
+  <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-0f7b0f">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-6b4fbb"></a>
+</p>
 
 TrackVice follows a Windows deployment while it happens: an SCCM task sequence, SCCM applications and updates, Windows Autopilot with the Enrollment Status Page, and Intune Win32 apps. It shows every phase and every step, app, update and policy, what each one is doing now, and the log line behind it.
 

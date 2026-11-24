@@ -1,5 +1,5 @@
 #!/bin/sh
-# Sets a new TrackVice version: TrackVice.wxs (with a new product code), src/AssemblyInfo.cs and tests/Stubs.cs,
+# Sets a new TrackVice version: TrackVice.wxs (with a new product code), src/AssemblyInfo.cs, tests/Stubs.cs and the README badge,
 # and adds an empty dated section for it at the top of CHANGELOG.md.
 # Usage: ./bump.sh <major.minor.patch>
 set -e
@@ -46,6 +46,11 @@ sed -i \
   -e "s/AssemblyInformationalVersion(\"[^\"]*\")/AssemblyInformationalVersion(\"$new\")/" \
   src/AssemblyInfo.cs
 sed -i -e "s/\(string Version { get { return \"\)[^\"]*\"/\1$new\"/" tests/Stubs.cs
+# The version badge at the top of README.md.
+sed -i \
+  -e "s/alt=\"Version [0-9.]*\"/alt=\"Version $new\"/" \
+  -e "s#badge/version-[0-9.]*-#badge/version-$new-#" \
+  README.md
 
 date=$(LC_ALL=C date +'%-d %B %Y')
 awk -v v="$new" -v d="$date" '
@@ -54,7 +59,7 @@ awk -v v="$new" -v d="$date" '
 ' CHANGELOG.md > CHANGELOG.md.new
 mv CHANGELOG.md.new CHANGELOG.md
 
-for f in TrackVice.wxs src/AssemblyInfo.cs tests/Stubs.cs; do
+for f in TrackVice.wxs src/AssemblyInfo.cs tests/Stubs.cs README.md; do
   if ! grep -q "$new" "$f"; then
     echo "$f was not changed. Check it by hand." >&2
     exit 1
@@ -62,5 +67,5 @@ for f in TrackVice.wxs src/AssemblyInfo.cs tests/Stubs.cs; do
 done
 
 echo "TrackVice $current -> $new, product code {$guid}"
-echo "Changed TrackVice.wxs, src/AssemblyInfo.cs, tests/Stubs.cs and CHANGELOG.md."
+echo "Changed TrackVice.wxs, src/AssemblyInfo.cs, tests/Stubs.cs, the README badge and CHANGELOG.md."
 echo "Write the changes in CHANGELOG.md, then build, test and commit."
