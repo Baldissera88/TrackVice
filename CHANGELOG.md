@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.8
+
+24 November 2026.
+
+- Fixed: in Your storage the subscription you pick is now remembered by TrackVice itself and the box is set back to it after every step, so the box, the ID line and the storage accounts that are read always belong to the same subscription.
+
 ## TrackVice 1.11.7
 
 24 November 2026.

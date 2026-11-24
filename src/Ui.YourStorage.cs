@@ -626,7 +626,8 @@ namespace TrackVice
             bArm = Button("Sign in", delegate { SignInAzure(); });
             bSetUp = Button("Set up", delegate { SetUp(); });
             bSetUp.Primary = true;
-            cSub.SelectedIndexChanged += delegate { if (!filling) LoadSubscription(); };
+            cSub.SelectedIndexChanged += delegate { if (!filling) { chosenSub = cSub.SelectedItem as AzureSubscription; LoadSubscription(); } };
+            cSub.SelectionChangeCommitted += delegate { chosenSub = cSub.SelectedItem as AzureSubscription; LoadSubscription(); };
             sKind.Changed += delegate { run.NewAccount = sKind.Selected == 0; Rebuild(); };
             foreach (Control c in new Control[] { cGroup, cRegion, tAccount }) c.TextChanged += delegate { if (!filling) Plan(); };
             cAccount.SelectedIndexChanged += delegate { if (!filling) { Plan(); Rebuild(); } };
@@ -794,15 +795,18 @@ namespace TrackVice
                 cSub.Items.Clear();
                 foreach (AzureSubscription x in subs) cSub.Items.Add(x);
                 filling = false;
+                chosenSub = subs.Count > 0 ? subs[pick] : null;
                 if (subs.Count > 0) cSub.SelectedIndex = pick;
             }, delegate { armText = ""; armIn = null; });
         }
 
+        AzureSubscription chosenSub;
         string diag = "";
         bool reloadSub;
 
         protected override void AfterFinish()
         {
+            SyncSubscriptionBox();
             if (!reloadSub) return;
             reloadSub = false;
             LoadSubscription();
@@ -811,9 +815,18 @@ namespace TrackVice
         // The subscription the box shows: its text is what the person sees, so that decides.
         AzureSubscription ShownSubscription()
         {
-            string t = cSub.Text ?? "";
-            foreach (AzureSubscription x in subs) if (x.ToString() == t) return x;
+            if (chosenSub != null) return chosenSub;
             return cSub.SelectedItem as AzureSubscription;
+        }
+
+        // The box must show the subscription that is read.
+        void SyncSubscriptionBox()
+        {
+            if (chosenSub == null || cSub.SelectedItem == chosenSub) return;
+            bool was = filling;
+            filling = true;
+            cSub.SelectedItem = chosenSub;
+            filling = was;
         }
 
         void LoadSubscription()
