@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.2
+
+24 November 2026.
+
+- Fixed: a long message at the bottom of a setup window, such as the one that says which Azure role is missing, was cut off after one line. It now wraps and the footer grows to show all of it.
+
 ## TrackVice 1.11.1
 
 24 November 2026.

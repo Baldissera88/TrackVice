@@ -217,18 +217,41 @@ namespace TrackVice
     public sealed class FooterNote : FlatControl
     {
         public bool IsError;
+        const int MinFooter = 60, MaxFooter = 150;
 
         public void Say(string text, bool error)
         {
             Text = text ?? "";
             IsError = error;
+            Fit();
+            Invalidate();
+        }
+
+        // A long message wraps onto more lines, and the footer it sits in grows to show all of it.
+        void Fit()
+        {
+            Panel p = Parent as Panel;
+            if (p == null || Width < Dpi.S(80)) return;
+            int lines = 0;
+            if (Text.Length > 0)
+                lines = TextRenderer.MeasureText(Text, Fonts.Ui, new Size(Width, 0), Draw.Wrap).Height;
+            int want = Math.Max(Dpi.S(MinFooter), lines + p.Padding.Vertical + Dpi.S(4));
+            want = Math.Min(want, Dpi.S(MaxFooter));
+            if (p.Height != want) p.Height = want;
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            Fit();
             Invalidate();
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(T.Bg);
-            Draw.Text(e.Graphics, Text, Fonts.Ui, ClientRectangle, IsError ? T.ErrFg : T.Text3, Draw.Line);
+            int need = Text.Length == 0 ? 0 : TextRenderer.MeasureText(Text, Fonts.Ui, new Size(Width, 0), Draw.Wrap).Height;
+            Draw.Text(e.Graphics, Text, Fonts.Ui, ClientRectangle, IsError ? T.ErrFg : T.Text3, need > Fonts.Ui.Height * 3 / 2 ? Draw.Wrap : Draw.Line);
         }
     }
 

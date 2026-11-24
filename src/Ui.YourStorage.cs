@@ -645,8 +645,10 @@ namespace TrackVice
             MemoryKeyStore k = new MemoryKeyStore();
             YourStorageDialog d = new YourStorageDialog(t, new DemoStorageWeb(true), new MemorySecrets(), k, delegate { return Encoding.ASCII.GetBytes("MZ TrackVice demo"); }, YourStorageUi.RunningVersion, true, DemoStorageWeb.Customers());
             if (tab >= 1) d.SignInAzure();
-            if (tab >= 2) d.SetUp();
+            if (tab >= 2 && tab < 4) d.SetUp();
             d.note.Say("", false);
+            // tab 4: a long message in the footer, as when a role is missing.
+            if (tab == 4) d.note.Say("Your account may not create the resource group rg-contoso. It needs the Azure role Contributor (or Owner) on the subscription. An Owner of the subscription can give it: in the Azure portal, open the subscription, then Access control (IAM) and Add role assignment. A role given a minute ago can take a few minutes to work.", true);
             return d;
         }
 
