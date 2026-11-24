@@ -577,7 +577,7 @@ namespace TrackVice
         readonly Func<byte[]> exe;
         readonly string version;
         readonly OwnStorageRun run = new OwnStorageRun();
-        readonly TextBox tTenant, tAccount;
+        readonly TextBox tTenant, tAccount, tOwnAccount;
         readonly ComboBox cSub, cGroup, cRegion, cAccount;
         readonly Segmented sKind;
         readonly FlatButton bArm, bSetUp;
@@ -612,6 +612,9 @@ namespace TrackVice
             Size = new Size(Dpi.S(860), Dpi.S(760));
             tTenant = Field(300, false);
             tAccount = Field(220, true);
+            tOwnAccount = Field(220, true);
+            tOwnAccount.MaxLength = 24;
+            tOwnAccount.CharacterCasing = CharacterCasing.Lower;
             tAccount.MaxLength = 24;
             tAccount.CharacterCasing = CharacterCasing.Lower;
             if (demo) tAccount.Text = "contosotrackvice";
@@ -685,7 +688,7 @@ namespace TrackVice
             l.Add(Row(Glyphs2.Sync, "Sign in to Azure", armText.Length > 0 ? armText : "With a code in the browser. Reads your subscriptions; nothing is changed.", bArm));
             if (armIn == null || !armIn.SignedIn || subs.Count == 0) return;
             l.Add(new SectionTitle("Storage account"));
-            AzureSubscription sub = cSub.SelectedItem as AzureSubscription;
+            AzureSubscription sub = ShownSubscription();
             l.Add(Row(Glyphs2.Settings, "Subscription", sub != null ? "ID " + sub.Id : "", cSub));
             l.Add(Row(Glyphs2.Folder, "Account", "A new account just for TrackVice, or an existing one that gets the container " + Arm.AgentFiles + ".", sKind));
             if (run.NewAccount)
@@ -694,7 +697,12 @@ namespace TrackVice
                 l.Add(Row(Glyphs2.Apps, "Name", "3 to 24 lowercase letters and digits, unique in all of Azure. Checked with Azure before it is made.", tAccount));
                 l.Add(Row(Glyphs.Info, "Region", "Where the data of your customers is kept.", cRegion));
             }
-            else l.Add(Row(Glyphs2.Folder, "Existing account", accounts.Count == 0 ? "This subscription has no storage accounts." : (UsedText() + " Its settings are kept. Account key access must be on.").Trim(), cAccount));
+            else if (accounts.Count == 0)
+            {
+                l.Add(Row(Glyphs2.Folder, "Account name", "No accounts could be listed (this needs Reader on the subscription). Type the name of the account instead.", tOwnAccount));
+                l.Add(Row(Glyphs2.Folder, "Resource group", "The resource group the account is in.", cGroup));
+            }
+            else l.Add(Row(Glyphs2.Folder, "Existing account", ( UsedText() + " Its settings are kept. Account key access must be on.").Trim(), cAccount));
             l.Add(Row(Glyphs2.Calendar, "Delete uploads after", "The lifecycle rule " + StorageSecurity.RuleName + " deletes blobs in the containers tv-... this many days after they last changed. Other rules on the account are kept.", sDays));
             l.Add(Row(Glyphs.Shield, "Ask for Azure sign-in when adding a customer instead of keeping the account key on this PC", "Off: the account key is kept on this PC, encrypted for your Windows account. On: it is not kept, and Add customer and Publish sign in to Azure to read it.", gAsk));
             l.Add(Row(Glyphs.Save, "Set up", PlanText(), bSetUp));
@@ -798,7 +806,7 @@ namespace TrackVice
             }, delegate { armText = ""; armIn = null; });
         }
 
-        bool reloadSub;
+        bool reloadSub, typedAccount;
 
         protected override void AfterFinish()
         {
@@ -807,9 +815,17 @@ namespace TrackVice
             LoadSubscription();
         }
 
+        // The subscription the box shows: its text is what the person sees, so that decides.
+        AzureSubscription ShownSubscription()
+        {
+            string t = cSub.Text ?? "";
+            foreach (AzureSubscription x in subs) if (x.ToString() == t) return x;
+            return cSub.SelectedItem as AzureSubscription;
+        }
+
         void LoadSubscription()
         {
-            AzureSubscription s = cSub.SelectedItem as AzureSubscription;
+            AzureSubscription s = ShownSubscription();
             if (s == null || armIn == null || !armIn.SignedIn) return;
             // Another step is running: the subscription is read when it has ended, so the choice is not lost.
             if (busy) { reloadSub = true; return; }
@@ -863,8 +879,22 @@ namespace TrackVice
             }
             else
             {
-                if (!(cAccount.SelectedItem is AzureAccount)) { note.Say("Pick a storage account.", true); return; }
-                run.Account = (AzureAccount)cAccount.SelectedItem;
+                if (accounts.Count == 0)
+                {
+                    string typed = tOwnAccount.Text.Trim();
+                    if (Arm.NameRule(typed) != null) { note.Say("Type the name of the storage account.", true); return; }
+                    if (GroupName.Length == 0) { note.Say("Type the resource group of the account.", true); return; }
+                    run.Account = null;
+                    run.ResourceGroup = GroupName;
+                    run.AccountName = typed;
+                    typedAccount = true;
+                }
+                else
+                {
+                    if (!(cAccount.SelectedItem is AzureAccount)) { note.Say("Pick a storage account.", true); return; }
+                    run.Account = (AzureAccount)cAccount.SelectedItem;
+                    typedAccount = false;
+                }
             }
             if (!demo && MessageBox.Show(this, PlanText() + "\n\nSet this up in " + run.Subscription.Name + "?", "Your storage", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             run.AskKey = gAsk.On;
@@ -875,6 +905,7 @@ namespace TrackVice
             Arm arm = ArmApi();
             Work("Setting up...", delegate
             {
+                if (typedAccount && !run.NewAccount) run.Account = arm.GetAccount(run.Subscription.Id, run.ResourceGroup, run.AccountName);
                 run.Run(arm, web, keys, secrets, file, version, DateTime.UtcNow, delegate (string p) { Ui(delegate { note.Say(p, false); }); });
                 Ui(delegate { note.Say("Checking the security of " + run.Account.Name + "...", false); });
                 try
