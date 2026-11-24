@@ -167,7 +167,11 @@ namespace TrackVice
             }
             Rebuild();
             Nav();
+            AfterFinish();
         }
+
+        // Called when a step has ended and the page is rebuilt. A choice made while it ran can be acted on here.
+        protected virtual void AfterFinish() { }
 
         // Posts to the window from a step that is still running.
         protected void Ui(Action a)
@@ -794,10 +798,21 @@ namespace TrackVice
             }, delegate { armText = ""; armIn = null; });
         }
 
+        bool reloadSub;
+
+        protected override void AfterFinish()
+        {
+            if (!reloadSub) return;
+            reloadSub = false;
+            LoadSubscription();
+        }
+
         void LoadSubscription()
         {
             AzureSubscription s = cSub.SelectedItem as AzureSubscription;
             if (s == null || armIn == null || !armIn.SignedIn) return;
+            // Another step is running: the subscription is read when it has ended, so the choice is not lost.
+            if (busy) { reloadSub = true; return; }
             run.Subscription = s;
             // An error about the subscription chosen before no longer applies.
             note.Say("", false);

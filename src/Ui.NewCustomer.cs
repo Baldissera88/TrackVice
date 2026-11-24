@@ -505,6 +505,11 @@ namespace TrackVice
             }
             Rebuild();
             Nav();
+            if (reloadSub)
+            {
+                reloadSub = false;
+                LoadSubscription();
+            }
         }
 
         // Posts to the window from a step that is still running.
@@ -722,10 +727,14 @@ namespace TrackVice
         }
 
         // Reads the resource groups and accounts of the subscription picked.
+        bool reloadSub;
+
         void LoadSubscription()
         {
             AzureSubscription s = cSub.SelectedItem as AzureSubscription;
             if (s == null || armIn == null || !armIn.SignedIn) return;
+            // Another step is running: the subscription is read when it has ended, so the choice is not lost.
+            if (busy) { reloadSub = true; return; }
             run.Subscription = s;
             note.Say("", false);
             List<KeyValuePair<string, string>> groups = null;

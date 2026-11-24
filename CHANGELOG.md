@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.5
+
+24 November 2026.
+
+- Fixed: in Your storage and Add customer, picking another subscription while the window was still busy (for example right after signing in) was ignored. The box showed the new subscription, but the ID line and the list of storage accounts still belonged to the old one, so the account you wanted was not listed. The choice is now read as soon as the window is free.
+
 ## TrackVice 1.11.4
 
 24 November 2026.
