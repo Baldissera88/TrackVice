@@ -1331,12 +1331,21 @@ namespace TrackVice
             if (i == null || i.LogFile == null) { Status("This item has no log line behind it."); return; }
             Evidence ev = null;
             for (int k = i.Events.Count - 1; k >= 0 && ev == null; k--) if (i.Events[k].Evidence != null && i.Events[k].Evidence.IsLogFile) ev = i.Events[k].Evidence;
+            string file = ev != null && ev.Line > 0 && !string.IsNullOrEmpty(ev.Path) ? ev.Path : i.LogFile;
+            int line = ev != null && ev.Line > 0 ? ev.Line : 0;
             if (engine != null && engine.Mode == Modes.Agent) { OpenFromDevice(new string[] { ev != null ? ev.Path : i.LogFile }, ev != null ? ev.Line : 0); return; }
-            OpenInLogVice(i.LogFile);
-            if (ev != null && ev.Line > 0) Status("Opened " + Txt.FileName(ev.Path) + " in LogVice. The newest line about " + i.DisplayName + " is line " + ev.Line + ".");
+            OpenInLogViceAt(line, i.DisplayName, file);
         }
 
         void OpenInLogVice(params string[] targets)
+        {
+            OpenInLogViceAt(0, null, targets);
+        }
+
+        const string OldLogViceHint = " LogVice 2.0 or later opens at the line; Settings > LogVice can download it.";
+
+        // Opens the targets in LogVice, at the line when there is one file and a LogVice that knows how. "about" names the item the line belongs to.
+        void OpenInLogViceAt(int line, string about, params string[] targets)
         {
             if (targets == null || targets.Length == 0) return;
             if (engine != null && engine.Mode == Modes.Demo && !targets[0].StartsWith("evt:"))
@@ -1346,7 +1355,7 @@ namespace TrackVice
             }
             if (engine != null && engine.Mode == Modes.Agent && !openingDeviceCopy)
             {
-                OpenFromDevice(targets, 0);
+                OpenFromDevice(targets, line);
                 return;
             }
             string exe = LogViceLink.Find();
@@ -1354,10 +1363,14 @@ namespace TrackVice
             if (exe == null) return;
             try
             {
-                LogViceLink.Open(exe, targets);
+                LogViceLink.Open(exe, new LogViceJump(line, null), targets);
                 List<string> names = new List<string>();
                 foreach (string t in targets) names.Add(t.StartsWith("evt:") ? t.Substring(4) : Txt.FileName(t));
-                Status("Opened in LogVice: " + string.Join(", ", names.ToArray()));
+                bool one = line > 0 && targets.Length == 1 && !targets[0].StartsWith("evt:");
+                if (one && LogViceLink.CanJump(exe)) Status("Opened " + names[0] + " in LogVice at line " + line + ".");
+                else if (one && about != null) Status("Opened " + names[0] + " in LogVice. The newest line about " + about + " is line " + line + "." + OldLogViceHint);
+                else if (one) Status("Opened in LogVice: " + names[0] + "." + OldLogViceHint);
+                else Status("Opened in LogVice: " + string.Join(", ", names.ToArray()));
             }
             catch (Exception ex) { Fail(ex); }
         }
@@ -1370,7 +1383,7 @@ namespace TrackVice
         void OpenEvidence(Evidence ev)
         {
             if (engine != null && engine.Mode == Modes.Agent) OpenFromDevice(new string[] { ev.Path }, ev.Line);
-            else OpenInLogVice(ev.Path);
+            else OpenInLogViceAt(ev.Line, null, ev.Path);
         }
 
         // Downloads the logs the device uploaded, in the background. Then opens the targets in LogVice, or the folder when there are none.
@@ -1434,12 +1447,15 @@ namespace TrackVice
                 return;
             }
             openingDeviceCopy = true;
-            try { OpenInLogVice(files.ToArray()); }
+            try { OpenInLogViceAt(files.Count == 1 ? line : 0, null, files.ToArray()); }
             finally { openingDeviceCopy = false; }
-            if (LogViceLink.Find() == null) return;
+            string exe = LogViceLink.Find();
+            if (exe == null) return;
             string what = files.Count == 1 ? Txt.FileName(targets[0]) : files.Count + " logs";
-            string text = "Opened " + what + " from " + computer + " in LogVice, as uploaded " + Txt.LocalTime(c.UploadedUtc) + ".";
-            if (line > 0 && files.Count == 1) text += " The line is line " + line + ".";
+            bool at = line > 0 && files.Count == 1;
+            bool jumped = at && LogViceLink.CanJump(exe);
+            string text = "Opened " + what + " from " + computer + " in LogVice" + (jumped ? " at line " + line : "") + ", as uploaded " + Txt.LocalTime(c.UploadedUtc) + ".";
+            if (at && !jumped) text += " The line is line " + line + "." + OldLogViceHint;
             if (missing.Count > 0) text += " Not in the upload: " + string.Join(", ", missing.ToArray()) + ".";
             Status(text);
         }

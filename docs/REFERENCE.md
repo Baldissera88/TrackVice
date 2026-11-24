@@ -434,7 +434,7 @@ What the agent sends:
 - Microsoft does not document the log formats of the Intune Management Extension and HealthScripts.log, the ESP registry layout, or the fields of the Autopilot events. TrackVice follows them as they are today, and they can change.
 - Autopilot device preparation keeps the progress of its own page in no documented place, so that progress is not shown.
 - Configuration profiles from Names from Intune are what the device last reported to Intune, not what it has right now.
-- LogVice opens a log file but cannot yet jump to a line, so TrackVice says in the status bar which line to look for.
+- LogVice 1.5 and older cannot open a log at a line, so TrackVice says in the status bar which line to look for. LogVice 2.0 or later opens at the line.
 - The Intune Management Extension log format changes between IME versions. Lines TrackVice does not recognise are left out, and the ESP and Win32Apps registry keys still give the state.
 - The Windows PE part of a task sequence needs WinPE-NetFx in the boot image for TrackVice to start there.
 - User-targeted SCCM applications are only fully visible from the user's own session.

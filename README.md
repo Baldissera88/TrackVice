@@ -6,7 +6,7 @@
 
 TrackVice follows a Windows deployment while it happens: an SCCM task sequence, SCCM applications and updates, Windows Autopilot with the Enrollment Status Page, and Intune Win32 apps. It shows every phase and every step, app, update and policy, what each one is doing now, and the log line behind it.
 
-It can also follow **other devices** from your own PC: Autopilot deployments as Intune reports them, task sequences from your SCCM site, and, with the small [TrackVice agent](docs/AGENT.md) on the devices, everything each device sees while it deploys. It is one portable exe with no install. The log behind any step opens in [LogVice](https://github.com/Baldissera88/LogVice) with one click.
+It can also follow **other devices** from your own PC: Autopilot deployments as Intune reports them, task sequences from your SCCM site, and, with the small [TrackVice agent](docs/AGENT.md) on the devices, everything each device sees while it deploys. It is one portable exe with no install. The log behind any step opens in [LogVice](https://github.com/Baldissera88/LogVice) with one click, and LogVice 2.0 or later opens it at the line, in the same theme.
 
 ![TrackVice following an Autopilot deployment](docs/images/trackvice-autopilot.png)
 

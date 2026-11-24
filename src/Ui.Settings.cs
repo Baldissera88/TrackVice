@@ -857,7 +857,7 @@ namespace TrackVice
             if (!string.IsNullOrEmpty(custom)) where = "Chosen: " + custom + (found == custom ? "." + has : " (not found)");
             else if (found != null) where = "Found: " + found + "." + has;
             else where = "Not found. Download gets it from GitHub, Browse chooses it.";
-            logViceRow.Desc = SettingsCatalog.Find("logvice").Summary + " " + where;
+            logViceRow.Desc = SettingsCatalog.Find("logvice").Summary + " " + where + " LogVice 2.0 or later opens at the line behind a step and in TrackVice's theme.";
             logViceRow.Invalidate();
             RefreshMarks();
             Relayout();

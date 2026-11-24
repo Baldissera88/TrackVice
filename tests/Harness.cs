@@ -74,6 +74,7 @@ namespace TrackVice.Tests
             AppUpdateTests.Run();
             WelcomeTests.Run();
             ThemeTests.Run();
+            LogViceJumpTests.Run();
             FeedbackTests.Run();
             OverviewTests.Run();
             SupportTests.Run();

@@ -8,7 +8,7 @@ namespace TrackVice
     using Microsoft.Win32;
 
     // Opens logs in LogVice. LogVice takes file paths and event channels ("evt:<channel>") on its command line.
-    public static class LogViceLink
+    public static partial class LogViceLink
     {
         public const string MdmAdmin = "evt:Microsoft-Windows-DeviceManagement-Enterprise-Diagnostics-Provider/Admin";
         public const string MdmOperational = "evt:Microsoft-Windows-DeviceManagement-Enterprise-Diagnostics-Provider/Operational";
@@ -91,17 +91,31 @@ namespace TrackVice
             return false;
         }
 
+        // The version of a LogVice.exe, or null when it cannot be read.
+        public static string VersionOf(string exe)
+        {
+            return LogViceGet.VersionOf(exe);
+        }
+
+        // True when this LogVice.exe knows the line, time, find and theme options.
+        public static bool CanJump(string exe)
+        {
+            return SupportsJump(VersionOf(exe));
+        }
+
+        // Opens targets with the theme only. Callers with a place to land in use the overload with a jump.
         public static bool Open(string exe, params string[] targets)
         {
+            return Open(exe, null, targets);
+        }
+
+        public static bool Open(string exe, LogViceJump jump, string[] targets)
+        {
             if (string.IsNullOrEmpty(exe)) return false;
-            StringBuilder args = new StringBuilder();
-            foreach (string t in targets)
-            {
-                if (string.IsNullOrEmpty(t)) continue;
-                if (args.Length > 0) args.Append(' ');
-                args.Append('"').Append(t.TrimEnd('\\')).Append('"');
-            }
-            ProcessStartInfo psi = new ProcessStartInfo(exe, args.ToString());
+            LogViceJump use = new LogViceJump();
+            if (jump != null) { use.Line = jump.Line; use.Time = jump.Time; use.Find = jump.Find; use.Theme = jump.Theme; }
+            if (use.Theme == null) use.Theme = Theme.SavedName();
+            ProcessStartInfo psi = new ProcessStartInfo(exe, BuildArguments(targets, use, VersionOf(exe)));
             psi.UseShellExecute = false;
             Process.Start(psi);
             return true;

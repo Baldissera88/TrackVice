@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 2.0.1
+
+24 November 2026.
+
+- **Open in LogVice at the line**: with LogVice 2.0 or later, the log behind a step opens on its line, in the same theme as TrackVice. An older LogVice opens the log as before, and the status bar says that LogVice 2.0 can open at the line.
+
 ## TrackVice 2.0.0
 
 24 November 2026.
