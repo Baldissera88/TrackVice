@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.7
+
+24 November 2026.
+
+- Fixed: in Your storage the storage accounts were read for another subscription than the one shown in the box. The subscription named in the box is now the one that is read.
+
 ## TrackVice 1.11.6
 
 24 November 2026.

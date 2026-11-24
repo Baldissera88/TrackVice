@@ -685,7 +685,7 @@ namespace TrackVice
             l.Add(Row(Glyphs2.Sync, "Sign in to Azure", armText.Length > 0 ? armText : "With a code in the browser. Reads your subscriptions; nothing is changed.", bArm));
             if (armIn == null || !armIn.SignedIn || subs.Count == 0) return;
             l.Add(new SectionTitle("Storage account"));
-            AzureSubscription sub = cSub.SelectedItem as AzureSubscription;
+            AzureSubscription sub = ShownSubscription();
             l.Add(Row(Glyphs2.Settings, "Subscription", sub != null ? "ID " + sub.Id : "", cSub));
             l.Add(Row(Glyphs2.Folder, "Account", "A new account just for TrackVice, or an existing one that gets the container " + Arm.AgentFiles + ".", sKind));
             if (run.NewAccount)
@@ -808,9 +808,17 @@ namespace TrackVice
             LoadSubscription();
         }
 
+        // The subscription the box shows: its text is what the person sees, so that decides.
+        AzureSubscription ShownSubscription()
+        {
+            string t = cSub.Text ?? "";
+            foreach (AzureSubscription x in subs) if (x.ToString() == t) return x;
+            return cSub.SelectedItem as AzureSubscription;
+        }
+
         void LoadSubscription()
         {
-            AzureSubscription s = cSub.SelectedItem as AzureSubscription;
+            AzureSubscription s = ShownSubscription();
             if (s == null || armIn == null || !armIn.SignedIn) return;
             // Another step is running: the subscription is read when it has ended, so the choice is not lost.
             if (busy) { reloadSub = true; return; }
