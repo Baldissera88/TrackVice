@@ -129,6 +129,10 @@ namespace TrackVice
             gScript.Changed += delegate { run.AddScript = gScript.On; Rebuild(); };
             sKind.Changed += delegate { Rebuild(); Nav(); };
             cSub.SelectedIndexChanged += delegate { if (!filling) LoadSubscription(); };
+            watch.Interval = 400;
+            watch.Tick += delegate { WatchSubscription(); };
+            watch.Start();
+            FormClosed += delegate { watch.Stop(); watch.Dispose(); };
             cAccount.SelectedIndexChanged += delegate { if (!filling) Nav(); };
 
             Add(rail);
@@ -407,10 +411,24 @@ namespace TrackVice
             return a;
         }
 
+        readonly System.Windows.Forms.Timer watch = new System.Windows.Forms.Timer();
+        string loadedSub = "";
+
+        // Does not depend on the box raising its events: what the box shows is read when the window is free.
+        void WatchSubscription()
+        {
+            if (busy || armIn == null || !armIn.SignedIn || subs.Count == 0) return;
+            AzureSubscription s = cSub.SelectedItem as AzureSubscription;
+            if (s == null || s.Id == loadedSub) return;
+            LoadSubscription();
+        }
+
         void LoadSubscription()
         {
             AzureSubscription s = cSub.SelectedItem as AzureSubscription;
             if (s == null || armIn == null || !armIn.SignedIn) return;
+            if (busy) return;
+            loadedSub = s.Id;
             List<KeyValuePair<string, string>> groups = null;
             List<AzureAccount> accts = null;
             Work("Reading " + s.Name + "...", delegate

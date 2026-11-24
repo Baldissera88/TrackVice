@@ -250,6 +250,10 @@ namespace TrackVice
             bIntune = Button("Add to Intune", delegate { AddToIntune(); });
 
             cSub.SelectedIndexChanged += delegate { if (!filling) LoadSubscription(); };
+            watch.Interval = 400;
+            watch.Tick += delegate { WatchSubscription(); };
+            watch.Start();
+            FormClosed += delegate { watch.Stop(); watch.Dispose(); };
             sKind.Changed += delegate { run.NewAccount = sKind.Selected == 0; Rebuild(); };
             cGroup.TextChanged += delegate { if (!filling) Plan(); };
             cRegion.TextChanged += delegate { if (!filling) Plan(); };
@@ -728,6 +732,17 @@ namespace TrackVice
 
         // Reads the resource groups and accounts of the subscription picked.
         bool reloadSub;
+        readonly System.Windows.Forms.Timer watch = new System.Windows.Forms.Timer();
+        string loadedSub = "";
+
+        // Does not depend on the box raising its events: what the box shows is read when the window is free.
+        void WatchSubscription()
+        {
+            if (busy || armIn == null || !armIn.SignedIn || subs.Count == 0) return;
+            AzureSubscription s = cSub.SelectedItem as AzureSubscription;
+            if (s == null || s.Id == loadedSub) return;
+            LoadSubscription();
+        }
 
         void LoadSubscription()
         {
@@ -736,6 +751,7 @@ namespace TrackVice
             // Another step is running: the subscription is read when it has ended, so the choice is not lost.
             if (busy) { reloadSub = true; return; }
             run.Subscription = s;
+            loadedSub = s.Id;
             note.Say("", false);
             List<KeyValuePair<string, string>> groups = null;
             List<AzureAccount> accts = null;
@@ -774,6 +790,8 @@ namespace TrackVice
         void CreateStorage()
         {
             if (busy) return;
+            AzureSubscription shown = cSub.SelectedItem as AzureSubscription;
+            if (shown != null) run.Subscription = shown;
             run.NewAccount = sKind.Selected == 0;
             run.RetentionDays = (int)nDays.Value;
             if (run.NewAccount)
@@ -787,7 +805,7 @@ namespace TrackVice
                 run.Region = RegionName.Length > 0 ? RegionName : Arm.DefaultRegion;
             }
             else if (!(cAccount.SelectedItem is AzureAccount)) { note.Say("Pick a storage account.", true); return; }
-            if (!demo && MessageBox.Show(this, PlanText() + "\n\nCreate this in " + (run.Subscription != null ? run.Subscription.Name : "the subscription") + "?", "Azure storage", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (!demo && MessageBox.Show(this, PlanText() + "\n\nCreate this in " + (run.Subscription != null ? run.Subscription.Name + " (" + run.Subscription.Id + ")" : "the subscription") + "?", "Azure storage", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             if (!run.NewAccount) run.Account = (AzureAccount)cAccount.SelectedItem;
             int from = run.Done.Count;
             Arm a = ArmApi();

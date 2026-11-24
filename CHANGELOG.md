@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.11
+
+24 November 2026.
+
+- Fixed: New customer and Add customer had the same subscription problem as Your storage. The box showed one subscription while the storage accounts and the resource group belonged to another, so an old error stayed and the account list was empty. They now read the subscription the box shows, and Create names the subscription with its full ID.
+
 ## TrackVice 1.11.10
 
 24 November 2026.
