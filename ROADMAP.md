@@ -2,7 +2,7 @@
 
 What is planned for the next version of TrackVice.
 
-Everything released so far is in CHANGELOG.md (latest: TrackVice 1.11.11).
+Everything released so far is in CHANGELOG.md (latest: TrackVice 2.0.0).
 
 ## 1. First use in a few minutes: Quick start
 

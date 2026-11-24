@@ -1,5 +1,20 @@
 # Changelog
 
+## TrackVice 2.0.0
+
+24 November 2026.
+
+A new major version, in line with LogVice 2.0. It brings together everything since 1.10.0:
+
+- Your storage in one step: sign in to Azure, pick the subscription, make or choose the storage account and set it up. The subscription box, the ID line and the account list always belong to the same subscription, also in New customer and Add customer.
+- The same setup on every PC: customers, Your storage and the update key are saved to your Key Vault and fetched on another PC after an Entra ID sign-in.
+- Names from Intune for platform scripts, apps, remediations and configuration profiles.
+- Downloads of a deployment's scripts and apps, by permission.
+- The overview fits a narrow window: tiles shrink and wrap instead of disappearing.
+- Errors wrap in the footer, and subscriptions show the start of their ID.
+
+See 1.11.12 and older below for each change.
+
 ## TrackVice 1.11.12
 
 24 November 2026.

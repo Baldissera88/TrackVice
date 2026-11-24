@@ -1,5 +1,7 @@
 # Testing TrackVice on a real device
 
+For TrackVice 2.0.0.
+
 This checklist compares what it shows with the logs themselves during real deployments. Note anything it misses or gets wrong, together with the log lines around it, so the parsers can be fixed.
 
 Everything TrackVice does is read-only.
@@ -377,6 +379,17 @@ Use a PC where the previous release is installed with the MSI, and a copy of the
 3. **Assign to a group I choose**: searching a word of a group's name lists security groups, each marked dynamic or assigned. Create assigns the script to that group and makes no group.
 4. **Do not assign**: the script is in Intune without an assignment, and no group is made. The result page says to assign it.
 5. Put the customer's name in `$Customer` and run the script: it says the value looks like a customer name and where to copy the code.
+
+## 31. TrackVice 2.0.0: Your storage, Key Vault, names, downloads and the narrow overview
+
+1. **Your storage, the subscription.** Sign in to Azure with an account that has more than one subscription. Pick another subscription: the box, the **ID** line under it, the resource groups and the storage accounts all change to that subscription. **Existing account** lists its accounts, or says "This subscription has no storage accounts." with what Azure answered. Repeat in **Add customer** and **New customer with links**.
+2. **Your storage, a new account.** With Reader only, **New account** fails with a message that names Contributor or Owner. With Contributor it makes the account.
+3. **Key Vault, customers.** On a vault with Azure RBAC, **Sign in**, **Save customers to the vault** needs Key Vault Secrets Officer, **Get customers from the vault** needs Key Vault Secrets User. A secret changed after your last sync asks before it is overwritten. Nothing is deleted in the vault.
+4. **Key Vault, my setup.** **Save my setup to the vault** makes `trackvice-setup-storage` and `trackvice-setup-updatekey`. On a second PC (or Windows user), **Get my setup from the vault** gives Your storage and the key, and Publish works there. With User on the first secret only, TrackVice says the update key is denied and still gets the rest.
+5. **Publish with another key.** Publish a version from PC A. On PC B, which has its own key, Publish says it is signed with another update key and offers **Get my setup from the vault**.
+6. **Names from Intune.** Each switch alone: a script, a remediation, an app and a configuration profile show their name. A switch without its permission fails alone.
+7. **Downloads.** With **Allow downloading scripts and app details** off, there is no **Download…** in the right-click menu. Turn it on: a platform script, a remediation and an app can be downloaded after the question, secrets are hidden, and `downloads.log` has one line each, without the content.
+8. **The narrow overview.** Make the window 700 pixels wide: Overview and a followed deployment keep all their tiles, which shrink and wrap, and all phases stay visible.
 
 ## What to send back
 

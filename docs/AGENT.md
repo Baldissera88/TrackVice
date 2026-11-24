@@ -1,42 +1,95 @@
 # The TrackVice agent
 
-Intune and SCCM only know what a device has reported. The agent is TrackVice itself, running on the device without a window while it deploys. It reads the device the way the window does and uploads the whole session as it changes: every app, policy and task sequence step, with the log lines, registry values and events behind them.
+**TrackVice 2.0.0.** Intune and SCCM only know what a device has reported. The agent is TrackVice itself, running on the device without a window while it deploys. It reads the device the way the window does and uploads the whole session as it changes: every app, policy and task sequence step, with the log lines, registry values and events behind them.
 
 On your own PC, **Devices > Intune / cloud > Devices with the TrackVice agent** lists every device that has uploaded and follows one live, and **Devices > Wall view** shows them all on one screen. For task sequences, **Devices > SCCM / on-premises** has the same list for devices with the agent in a task sequence. The switch at the top of the Devices menu chooses the side.
 
-Setting up takes two parts. You set up [Your storage](#set-up-once-your-storage) once: one storage account in your own Azure for all customers. Then you [add each customer in three steps](#add-a-customer-in-three-steps). The platform script for a customer holds one line, the customer code, and never needs a new hash when TrackVice changes.
-
-Setups made before this, with a storage account and links per customer, keep working. They are described in [Setup with links](#setup-with-links-existing-setups).
-
 ![Devices with the TrackVice agent](images/trackvice-agent-list.png)
 
+## The big picture
+
+```text
+ YOUR PC (TrackVice 2.0.0)             YOUR AZURE                         THE DEVICE
+ -------------------------             ----------                         ----------
+ 1. Your storage (once)  ----------->  storage account
+ 2. Publish TrackVice    ----------->    trackvice-agent/                 (downloads TrackVice from here,
+    signed with your                       agent/latest.json               checks the signature)
+    update key                             agent/TrackVice-<version>.exe
+ 3. Add customer (per customer)  ---->    tv-<customer>/  (private)
+        makes the customer code
+                  |
+                  |  Intune platform script  or  SCCM task sequence step
+                  +-------------------------------------------------->  4. Installs / starts the agent
+                                                                           with the customer code
+                                         tv-<customer>/sessions/<id>.json.gz  <---- 5. Uploads while it deploys
+                                         tv-<customer>/logs/<id>.zip
+ 6. Devices with the TrackVice agent  <---- reads with the viewer link
+```
+
+In words:
+
+1. You set up **Your storage** once: one storage account in your own Azure for all customers.
+2. You **publish** TrackVice to it. Devices download only a TrackVice signed with the update key on your PC.
+3. For each customer you **add a customer**. That makes a private container, two links and one **customer code**.
+4. The **customer code** goes into an Intune platform script (Autopilot) or a task sequence step (SCCM). It is the only value in the script, so the script never needs a new hash.
+5. The agent on the device **uploads** its session to the customer's container while it deploys, and removes itself when it is done.
+6. You **follow** the devices from your PC with a viewer link that only you have.
+
+## Which part do I read?
+
+| I want to | Read |
+|---|---|
+| Set this up for the first time | [Set up once: Your storage](#set-up-once-your-storage), then [Add a customer in three steps](#add-a-customer-in-three-steps), then [Test on one device first](#test-on-one-device-first) |
+| Use the same setup on a second PC | [Same setup on every PC: Key Vault](#same-setup-on-every-pc-key-vault) |
+| Follow SCCM task sequences | [SCCM task sequences](#sccm-task-sequences) |
+| Send a new TrackVice version to the devices | [New TrackVice versions](#new-trackvice-versions) |
+| Fix a problem | [Troubleshooting](#troubleshooting), and [Where the logs are](#where-the-logs-are) |
+| Know who needs which role | [What you need](#what-you-need) |
+
+Setups made before customer codes, with a storage account and links per customer, keep working. They are described in [Setup with links](#setup-with-links-existing-setups).
+
 ## Contents
+
+**Start here**
 
 - [How it works](#how-it-works)
 - [What you need](#what-you-need)
 - [Set up once: Your storage](#set-up-once-your-storage)
+- [Same setup on every PC: Key Vault](#same-setup-on-every-pc-key-vault)
 - [Add a customer in three steps](#add-a-customer-in-three-steps)
 - [App registration](#app-registration)
 - [The customer code](#the-customer-code)
 - [Test on one device first](#test-on-one-device-first)
 - [Follow the devices](#follow-the-devices)
+
+**Storage and updates**
+
+- [What is where: the storage layout](#what-is-where-the-storage-layout)
 - [New TrackVice versions](#new-trackvice-versions)
   - [What does Publish do?](#what-does-publish-do)
-- [The settings in the code](#the-settings-in-the-code)
+- [Agent updates](#agent-updates)
 - [Data in the customer's own Azure](#data-in-the-customers-own-azure)
 - [Change a customer later](#change-a-customer-later)
+
+**On the device**
+
+- [The settings in the code](#the-settings-in-the-code)
 - [Assigning it to all devices](#assigning-it-to-all-devices)
 - [Alerts in Teams](#alerts-in-teams)
 - [Masking of secrets](#masking-of-secrets)
 - [Logs from the device](#logs-from-the-device)
 - [Statistics and Compare](#statistics-and-compare)
 - [SCCM task sequences](#sccm-task-sequences)
-- [Agent updates](#agent-updates)
 - [Alternative: a Win32 app](#alternative-a-win32-app)
 - [Alternative: a folder instead of a storage account](#alternative-a-folder-instead-of-a-storage-account)
+- [Time zone and clock](#time-zone-and-clock)
+
+**Older setups, upkeep and problems**
+
 - [Setup with links (existing setups)](#setup-with-links-existing-setups)
 - [Maintenance](#maintenance)
 - [Troubleshooting](#troubleshooting)
+- [Where the logs are](#where-the-logs-are)
 - [What is uploaded, and security](#what-is-uploaded-and-security)
 
 ## How it works
@@ -110,6 +163,12 @@ The roles and the consent were checked against Microsoft's documentation: [Azure
 3. **Pick the account**. When customers you set up with links already upload to an account, TrackVice finds it in the subscriptions and selects it, with the names of those customers. You can also pick another existing account, or make a new one just for TrackVice with a resource group (pick one or type a new name), a name and a region.
 4. **Set up.** TrackVice shows what it will make and asks before it starts.
 
+<img src="images/trackvice-your-storage.png" width="620" alt="Your storage: what you need, then sign in to Azure">
+
+When it is done, the page lists what was made and what to do next, and **Check security** shows the state of the account:
+
+<img src="images/trackvice-your-storage-done.png" width="620" alt="Your storage after Set up: what was made, and Check security">
+
 **What it makes and keeps**
 
 | Where | What |
@@ -140,9 +199,54 @@ After you add the rule, check in the portal under **Lifecycle management** that 
 
 Settings shows the account, the date the links expire, and the version published for the devices. **Publish** publishes the running TrackVice when it is newer. **Set up again** signs new links, for example before they expire. **Remove** forgets the key and the links on this PC only. Nothing in Azure is deleted, and devices keep working.
 
+## Same setup on every PC: Key Vault
+
+Your storage, the update key and your customers live on one PC and one Windows user. With an **Azure Key Vault** in your own subscription, another PC gets the same setup after one Entra ID sign-in, and can then publish and add customers like the first one.
+
+**What you need**
+
+| | |
+|---|---|
+| The vault | In your own subscription, with **Azure role-based access control** as its permission model |
+| To read | The role **Key Vault Secrets User** on the vault |
+| To add or change | The role **Key Vault Secrets Officer** on the vault |
+| The sign-in | Entra ID, with a code in the browser, for the Azure Key Vault permission `user_impersonation`. If the tenant blocks it, an administrator can give admin consent for it |
+
+TrackVice says it plainly when the role is missing: "Your account needs the role Key Vault Secrets User on this vault (Secrets Officer to add or change)."
+
+**On the first PC**
+
+1. Open **Settings > Customers > Key Vault**. Enter the name of the vault or its address (`https://<name>.vault.azure.net`) and press **Sign in**.
+2. Press **Save customers to the vault** and pick the customers. One secret is made for each.
+3. In **My setup in the vault**, press **Save my setup to the vault**. That saves Your storage (the account, the links and the account key) and the update key, as two secrets: `trackvice-setup-storage` and `trackvice-setup-updatekey`.
+
+<img src="images/trackvice-key-vault.png" width="620" alt="Customers in the Key Vault">
+
+<img src="images/trackvice-vault-setup.png" width="620" alt="My setup in the vault">
+
+**On another PC**
+
+1. Enter the same vault and press **Sign in**.
+2. Press **Get customers from the vault**, then **Get my setup from the vault**. It is also in **Publish**, when TrackVice finds that the published version was signed with another update key, and on **Get started**.
+
+**Check the vault** shows what it holds: the storage account and the fingerprint of the update key.
+
+**Safe by design**
+
+- TrackVice only adds and updates. It never deletes anything in the vault.
+- It asks before it overwrites a secret that changed after your last sync.
+- It never replaces a key on the PC without asking.
+- The update key is the one secret that lets someone sign updates for every device. Give **Key Vault Secrets User** on that one secret only to the people who may publish. Azure RBAC can be set per secret. If an account can read the customers but not the update key (the vault answers 403), TrackVice says so and gets the rest. Then publish from a PC that has the key.
+- Key Vault encrypts the secrets and logs who read them. Conditional Access and MFA apply to the sign-in.
+- Each PC keeps its own copy of the setup, so it works offline.
+
+See also [Maintenance](#maintenance), A new PC or Windows user.
+
 ## Add a customer in three steps
 
 **Devices > Intune / cloud > Add customer…** Nothing is created until you press **Create** in step 3. **Devices > Demos > Add customer** shows it with made-up data. **Getting started** on the welcome page leads to the same steps.
+
+<img src="images/trackvice-add-customer.png" width="620" alt="Add customer, step 1">
 
 **1. Customer**
 
@@ -155,6 +259,8 @@ Settings shows the account, the date the links expire, and the version published
 **2. Sign in**
 
 Sign in to the customer's tenant for Intune, with a code in the browser. Tenant is optional: the tenant ID or a domain such as `contoso.onmicrosoft.com`. Signing in changes nothing.
+
+<img src="images/trackvice-add-customer-signin.png" width="620" alt="Add customer, step 2: sign in to the customer's tenant">
 
 **Skip: I add the script to Intune myself** goes on without Intune. Create then makes the storage, the customer code and the script, and saves the script on this PC.
 
@@ -171,6 +277,8 @@ When the script is assigned, the assignments it has are kept.
 **In a production tenant, start with a small test group**, then change the assignment to all Autopilot devices. A platform script runs on every device it is assigned to, so a group you choose lets you check the agent on a few devices first.
 
 Press **Create**. The result page lists what was made, with **Copy** for the customer code and the script, and **Open** for the saved script.
+
+<img src="images/trackvice-add-customer-create.png" width="620" alt="Add customer, step 3: what Create makes and who gets the script">
 
 **What Create makes**
 
@@ -336,13 +444,45 @@ Keep the list open on your PC. The device appears during device setup. The list 
 
 Add customer saves the viewer link with the customer, encrypted for your Windows account, so there is nothing to paste.
 
+Select a device and choose **Watch this device** to see it as if you sat at it, with the log line behind every event:
+
+![One device with the agent](images/trackvice-agent-device.png)
+
 **Devices > Demos > Devices with the agent** shows the view with made-up devices.
+
+## What is where: the storage layout
+
+```text
+Your storage account
+|  New account: StorageV2, Standard_LRS, HTTPS only, TLS 1.2, no anonymous blob access
+|
++-- trackvice-agent                  private. What the devices download.
+|     agent/latest.json              signed with your update key
+|     agent/TrackVice-<version>.exe
+|
++-- tv-contoso                       private. One container per customer.
+|     sessions/<id>.json.gz          one file per device session
+|     logs/<id>.zip                  the device's logs
+|
++-- tv-northwind-traders             another customer
+```
+
+| Part | Detail |
+|---|---|
+| `trackvice-agent` | Written by Publish. The devices read it with the **Read link** in the customer code |
+| `tv-<customer>` | Lowercase letters, digits and single hyphens. The devices write with the **upload link** (Create, Write). You read with the **viewer link** (Read, List). Each customer has its own two stored access policies, `upload` and `viewer`, so one customer's links can be stopped without touching the others |
+| Lifecycle rule `trackvice-customers` | Deletes blobs in containers that start with `tv-` 30 days after they last changed. Add it in **Check security** |
+| Soft delete | Container soft delete is on for 7 days, so a deleted customer container can be brought back |
+| The customer's own Azure | Containers `trackvice` and `trackvice-agent` in their account, with the rule `trackvice-cleanup`. See [Data in the customer's own Azure](#data-in-the-customers-own-azure) |
+| On your PC | The account name and key, the links, the update key and the customer codes, encrypted for your Windows account. Optionally also in your [Key Vault](#same-setup-on-every-pc-key-vault) |
 
 ## New TrackVice versions
 
 You publish a version once, to your storage. Every customer gets it from there.
 
 **Publish.** When TrackVice starts and the version in your storage is older than the one running, a banner at the top of the window says "TrackVice <new> is installed. Your devices still get <old>." with **Publish**, **What does Publish do?** and **Later**, which hides it until the next start. The status bar says "TrackVice <version> is not published to your storage." with **Publish**, also when nothing is published yet. Nothing is published until you click it. After an update from GitHub, TrackVice opens with the banner. **Settings > Your storage > Publish** does the same. TrackVice uploads `agent/TrackVice-<version>.exe` first and `agent/latest.json` last, signed with the update key. To publish another version, publish from that version of TrackVice.
+
+<img src="images/trackvice-publish.png" width="620" alt="Publish: the update key, the version and where it goes">
 
 **New devices** download the newest published version when the script runs.
 
@@ -501,8 +641,8 @@ The demo devices under **Devices > Demos > Devices with the agent** have logs to
 
 The uploads also feed two views on your PC. Both read the location you connected to in **Devices with the TrackVice agent**, or ask for it. Both are in the Devices menu on either side, and Statistics has a filter for Intune, SCCM or both.
 
-- **Devices > Statistics for devices with the agent** goes over every session uploaded in the last 24 hours, 7, 30 or 90 days: how long enrollments take, and which apps, scripts and steps are slow or fail. Double-click an enrollment to watch it. See [Statistics](../README.md#statistics) in the README.
-- **Devices > Compare with another enrollment > A device with the agent** puts the session you watch beside one from the uploads. See [Compare](../README.md#compare) in the README.
+- **Devices > Statistics for devices with the agent** goes over every session uploaded in the last 24 hours, 7, 30 or 90 days: how long enrollments take, and which apps, scripts and steps are slow or fail. Double-click an enrollment to watch it. See [Statistics](REFERENCE.md#statistics).
+- **Devices > Compare with another enrollment > A device with the agent** puts the session you watch beside one from the uploads. See [Compare](REFERENCE.md#compare).
 
 The same uploads make a report from the command line, for example every enrollment of the last week:
 
@@ -523,11 +663,15 @@ The agent can also follow an SCCM task sequence, from Windows PE to the end, as 
 
 **Devices > SCCM / on-premises > Add the agent to a task sequence** shows the command with the customer code of the customer in use, with **Copy**, and where the steps go. **Devices with the agent in a task sequence** on the same side lists these devices.
 
+<img src="images/trackvice-ts-agent.png" width="620" alt="The agent in a task sequence: the command and where the steps go">
+
 **Let TrackVice do it.** In **Add the agent to a task sequence**, connect to the SMS Provider (the server saved in **SMS Provider connection**). TrackVice then:
 
 - Makes the package **TrackVice agent** from a source folder you give, a share the site server can read. It copies TrackVice.exe there, makes a package without a program, and adds it to the distribution point groups you tick. Next time it updates the package content instead.
 - Adds a step **TrackVice agent (WinPE)** after Partition Disk and a step **TrackVice agent (Windows)** after Setup Windows and ConfigMgr to the task sequence you pick. Both have Continue on error and the customer code of the customer in use. A step that is there already is set again, not added twice.
 - Says whether the boot image has WinPE-NetFx. It does not change boot images.
+
+<img src="images/trackvice-ts-agent-setup.png" width="620" alt="Add the agent to a task sequence: the package">
 
 It shows what it will change and asks first. Before a change it keeps a copy of the task sequence in `%LOCALAPPDATA%\TrackVice\task-sequence-copies`, and **Undo** puts the last copy back. It needs the right to change packages and task sequences in the console, as a security role that can modify packages and task sequences. When the Publish banner shows and the package holds an older TrackVice than this PC, a second line offers **Update the TrackVice package**.
 
@@ -631,6 +775,8 @@ The agent writes as the device's computer account, so the share has to allow tha
 Before customer codes, each customer had its own storage account, and the platform script held the links and the SHA-256 of TrackVice.exe. Those setups keep working. Their script is `agent/Install-TrackViceAgent-Links.ps1`, with `$Download`, `$Sha256`, `$Upload`, `$KeepHours`, `$MaxAgeHours`, `$Alert`, `$UpdateKey` and `$UpdateLink`. For a new customer, use [Add customer](#add-a-customer-in-three-steps) instead.
 
 ### New customer with links
+
+<img src="images/trackvice-new-customer.png" width="620" alt="New customer with links, step 1">
 
 **Devices > Intune / cloud > New customer with links…** does the work of steps 1 to 6 below. It goes through Customer, Storage, Links, Upload, Alerts and Script, and nothing is created until you press a step's button. **Devices > Demos > New customer** shows it with made-up data.
 
@@ -831,6 +977,20 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 
 ## Troubleshooting
 
+**Your storage, publishing and the vault**
+
+| What you see | Why, and what to do |
+|---|---|
+| Your storage: the **Existing account** list is empty, and the line says "This subscription has no storage accounts." | The line under it says what Azure answered: the subscription, how many resource groups and storage accounts it found, and the account you are signed in as. Check the **Subscription** box and the **ID** line under it: it must be the subscription that holds the account. Your account needs read access on that subscription (Reader, Contributor or Owner). If the subscription is in another tenant, enter that tenant in **Azure tenant** and sign in again |
+| "Your account may not create the resource group ..." (Azure: not authorized to perform `Microsoft.Resources/subscriptions/resourcegroups/write`) | You chose **New account**. Either the box shows the wrong subscription (check the ID line), or your account lacks **Contributor** or **Owner** on it. An Owner of the subscription gives the role in the Azure portal: Access control (IAM), Add role assignment. Or choose **Existing account**, which makes no resource group and needs only **Storage Account Contributor** on the account |
+| Publish: "Not published: latest.json in ... is signed with another update key than the one on this PC, so devices would refuse what this PC makes." | The version in `trackvice-agent` was signed with another key, usually from the first PC. Press **Get my setup from the vault** in Publish, or publish from the first PC. Do not make a new key: every customer code holds the old public key, so devices would refuse the new version |
+| Vault: "Your account needs the role Key Vault Secrets User on this vault (Secrets Officer to add or change)." | Ask an owner of the vault to give the role. The vault must use Azure role-based access control |
+| Vault: "This account can read the setup but not the update key (the vault answered 403)." | The role on the secret `trackvice-setup-updatekey` is missing. Ask for **Key Vault Secrets User** on that secret, or publish from a PC that has the key |
+
+<img src="images/trackvice-publish-vault.png" width="620" alt="Publish when the published version is signed with another update key">
+
+**The agent, the script and Add customer**
+
 | What you see | Why, and what to do |
 |---|---|
 | The script stops with "cannot be run because it contains a #requires statement" | PowerShell is not running as administrator |
@@ -870,6 +1030,17 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 | `agent.log` says "No update information in" | Nothing is published there yet, or the link lacks Read or points at another container |
 | The agent stays on its version | It checks every 6 hours. A version that is not newer than the one it runs is not installed. `agent.log` says "Update check:" with the reason |
 | The script is blocked | `TrackVice.exe` is not code signed. WDAC, AppLocker or Smart App Control can block it. Sign it with your own certificate or allow it by hash |
+
+## Where the logs are
+
+| Where | Path | What it says |
+|---|---|---|
+| The installed agent, on the device | `C:\Program Files\TrackVice Agent\agent.log` | The agent started, each upload and why one failed, alerts ("Alert sent" or why not), and self-update ("Update check:", "Self-update is off", the signature messages) |
+| The agent in a task sequence | `%WINDIR%\Temp\TrackVice\agent.log` | The same. In Windows PE this is on `X:` and is gone after the restart. Open it with F8 |
+| The platform script, on the device | `IntuneManagementExtension.log` of the Intune Management Extension | The output of the script and its exit code |
+| Alerts already sent, on the device | `alerts.txt` in the agent's folder | So a restart does not send them again |
+| The device's logs, on your PC | `%LOCALAPPDATA%\TrackVice\Logs\<device>-<id>` | The zip from **LogVice > Logs from the device**, unpacked |
+| Copies of task sequences, on your PC | `%LOCALAPPDATA%\TrackVice\task-sequence-copies` | What **Undo** puts back |
 
 ## What is uploaded, and security
 

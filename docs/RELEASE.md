@@ -107,9 +107,23 @@ How a release is made, on the author's Windows PC. `release.ps1` does the build,
 
     It writes the version, installer and en-US locale manifests (schema 1.12.0) for `DanielBaldissera.TrackVice`, with the MSI's SHA-256 and the product code from `TrackVice.wxs`, and validates them with `winget validate`. Install from the manifest on a test device before submitting. `-Submit` opens a pull request to microsoft/winget-pkgs with `wingetcreate submit`; give `-Token` or store a token once with `wingetcreate token --store`. On Linux, `winget/manifests.sh <version> TrackVice.msi <notes file> out/winget` writes the same files. Do not submit pre-releases.
 
+## Screenshots for the documentation
+
+The pictures in `docs/images/` come from the demos, so they hold no real data. Retake them when the look of a window changes, and for every major version, so the version in the status bar is right (the current ones show TrackVice 2.0.0).
+
+Each picture is one command. `--page` chooses the window (the names are in the `--page` comments in `src/`, for example `overview`, `getstarted`, `yourstorage`, `addcustomer`, `keyvault`, `vaultsetup`, `names`, `downloads-confirm`, `publish`, `stats`, `compare`, `wall`, `tsagent`), `--tab` the step or tab, `--size` the size of the window and `--theme` the theme:
+
+```sh
+cd /tmp
+xvfb-run -a -s "-screen 0 1600x1000x24" mono /path/to/TrackVice.exe --demo --at 40 --size 1400x900 --theme vice --shot docs/images/trackvice-autopilot.png
+xvfb-run -a -s "-screen 0 1600x1000x24" mono /path/to/TrackVice.exe --size 900x700 --theme vice --page yourstorage --tab 0 --shot docs/images/trackvice-your-storage.png
+```
+
+Look at every picture before you keep it. On Linux the window leaves a dark strip along the bottom, so crop it off. Leave out `--demo` for dialogs, so that no tooltip of the main window shows in the picture, and run the exe from a short path, because pages like Publish show it. Keep the pictures as PNG with at most 256 colors, which keeps them small.
+
 ## Before a release: device checklist
 
-Go through [docs/TESTING.md](TESTING.md) on real devices for the parts the release changes, and at least:
+Go through [TESTING.md](TESTING.md) on real devices for the parts the release changes, and at least:
 
 - [ ] The idle device test (1) on Windows 10 and Windows 11.
 - [ ] The parts the changelog mentions, with their test from TESTING.md.
@@ -117,4 +131,5 @@ Go through [docs/TESTING.md](TESTING.md) on real devices for the parts the relea
 - [ ] The MSI: a clean install, an upgrade over the previous release with TrackVice open, an uninstall.
 - [ ] The update from the previous release, once published: Settings > Updates > Check now, then Install, with the MSI install and with a copy in a folder. TrackVice opens again in the new version and offers to publish it to Your storage.
 - [ ] The signed exe and MSI show the publisher in the file properties and the UAC prompt.
+- [ ] The pictures in `docs/images/` show this version, see Screenshots for the documentation.
 - [ ] Anything that failed is in the changelog or fixed before the release.
