@@ -18,4 +18,13 @@ A first-time user goes from install to watching a first deployment in four steps
 - **An account button in the header on every page**: your name and account. It opens a panel that says what the sign-in is used for (Your storage, the Key Vault, Intune for each customer, Intune names) with Ready, In sync or Needs consent, and buttons for Give consent, Switch account and Sign out. It replaces the separate sign-in buttons in the dialogs.
 - **A checklist at the top** shows the missing role or consent for a step and who can give it, and the next step to do. Nothing is hidden: each part can still be set up by hand.
 
+## 2. TrackVice-hosted storage as the default
+
+New users should not have to think about Azure storage. During setup the default choice is storage hosted by TrackVice; your own storage stays as the second choice.
+
+- **Default: TrackVice-hosted storage.** You sign in with Entra ID (a multi-tenant app registration), and a small service (an Azure Function) gives TrackVice a short-lived SAS link to a container that belongs only to your tenant. No key is ever built into the app or the repo, and no tenant can read another tenant's data.
+- **Data:** stored in the EU, deleted after 7 days, with a quota per tenant against misuse. The uploads hold device names, user names, the tenant ID and logs, so this is not anonymous: setup asks for clear consent, and a privacy policy and a data processing agreement come with it.
+- **Second choice: your own storage**, set up with one click as Your storage does today, for organizations whose security rules keep logs inside their own tenant. You can move from hosted to your own storage later.
+- **If the service is down,** TrackVice says so and offers to switch to your own storage.
+
 Wishes are welcome: in TrackVice, Help > Suggest a feature, or [Discussions](https://github.com/Baldissera88/TrackVice/discussions).
