@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.6
+
+24 November 2026.
+
+- New: when Your storage finds no storage accounts, the line under Existing account says what Azure answered: the subscription, how many resource groups and storage accounts it returned, and the account you are signed in as.
+
 ## TrackVice 1.11.5
 
 24 November 2026.

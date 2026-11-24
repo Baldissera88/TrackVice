@@ -694,7 +694,7 @@ namespace TrackVice
                 l.Add(Row(Glyphs2.Apps, "Name", "3 to 24 lowercase letters and digits, unique in all of Azure. Checked with Azure before it is made.", tAccount));
                 l.Add(Row(Glyphs.Info, "Region", "Where the data of your customers is kept.", cRegion));
             }
-            else l.Add(Row(Glyphs2.Folder, "Existing account", accounts.Count == 0 ? "This subscription has no storage accounts." : (UsedText() + " Its settings are kept. Account key access must be on.").Trim(), cAccount));
+            else l.Add(Row(Glyphs2.Folder, "Existing account", accounts.Count == 0 ? "This subscription has no storage accounts." + (diag.Length > 0 ? " " + diag : "") : (UsedText() + " Its settings are kept. Account key access must be on.").Trim(), cAccount));
             l.Add(Row(Glyphs2.Calendar, "Delete uploads after", "The lifecycle rule " + StorageSecurity.RuleName + " deletes blobs in the containers tv-... this many days after they last changed. Other rules on the account are kept.", sDays));
             l.Add(Row(Glyphs.Shield, "Ask for Azure sign-in when adding a customer instead of keeping the account key on this PC", "Off: the account key is kept on this PC, encrypted for your Windows account. On: it is not kept, and Add customer and Publish sign in to Azure to read it.", gAsk));
             l.Add(Row(Glyphs.Save, "Set up", PlanText(), bSetUp));
@@ -798,6 +798,7 @@ namespace TrackVice
             }, delegate { armText = ""; armIn = null; });
         }
 
+        string diag = "";
         bool reloadSub;
 
         protected override void AfterFinish()
@@ -825,6 +826,7 @@ namespace TrackVice
                 accts = a.StorageAccounts(s.Id);
             }, delegate
             {
+                diag = "Azure answered for " + s.Name + " (" + s.Id + "): " + groups.Count + " resource groups and " + accts.Count + " storage accounts, signed in as " + (string.IsNullOrEmpty(armIn.Account) ? "an unknown account" : armIn.Account) + ".";
                 filling = true;
                 string keep = cGroup.Text;
                 cGroup.Items.Clear();
