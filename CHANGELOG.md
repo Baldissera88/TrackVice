@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.1
+
+24 November 2026.
+
+- **Edit customer** has a **Get it from Your storage** button under Upload location. It makes the customer's container and viewer link from Your storage, the same way Add customer does, and fills the box in. It also shows the upload link for the devices, with Copy. The button is only there when Your storage is set up on this PC.
+
 ## TrackVice 1.11.0
 
 23 November 2026.
