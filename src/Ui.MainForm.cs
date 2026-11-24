@@ -224,7 +224,7 @@ namespace TrackVice
             chips.Padding = new Padding(Dpi.S(18), Dpi.S(8), Dpi.S(18), Dpi.S(4));
             chips.WrapContents = false;
             overall = new OverallChip();
-            overall.Margin = new Padding(0, 0, Dpi.S(10), 0);
+            overall.Margin = new Padding(0, 0, Dpi.S(10), Dpi.S(4));
             overall.Cursor = Cursors.Hand;
             overall.Click += Safe.Wrap(delegate { SetChip(null); });
             themed.Add(overall);
@@ -504,7 +504,7 @@ namespace TrackVice
         StatChip Chip(string label, int tone, EventHandler click)
         {
             StatChip c = new StatChip(label, tone);
-            c.Margin = new Padding(0, 0, Dpi.S(10), 0);
+            c.Margin = new Padding(0, 0, Dpi.S(10), Dpi.S(4));
             c.Click += Safe.Wrap(click);
             themed.Add(c);
             chips.Controls.Add(c);

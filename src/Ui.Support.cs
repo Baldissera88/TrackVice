@@ -131,8 +131,25 @@ namespace TrackVice
             return b;
         }
 
-        void LayoutSupport()
+        // On its own row in the chips the buttons stand side by side; next to the chips they stand in two lines.
+        bool supportRow;
+
+        void LayoutSupport() { LayoutSupport(supportRow); }
+
+        void LayoutSupport(bool row)
         {
+            supportRow = row;
+            bTicket.AutoWidth();
+            bNote.AutoWidth();
+            bIntune.AutoWidth();
+            supportBox.FlowDirection = row ? FlowDirection.LeftToRight : FlowDirection.TopDown;
+            supportBox.WrapContents = !row;
+            supportBox.Height = row ? bTicket.Height + Dpi.S(4) : Dpi.S(62);
+            if (row)
+            {
+                supportBox.Width = bTicket.Width + bNote.Width + Dpi.S(12) + (bIntune.Visible ? bIntune.Width + Dpi.S(6) : 0);
+                return;
+            }
             int col1 = Math.Max(bTicket.Width, bNote.Width);
             bTicket.Width = col1;
             bNote.Width = col1;
@@ -152,6 +169,7 @@ namespace TrackVice
             bool intune = PortalLinks.Intune(s.GetInfo(DeviceFacts.IntuneId)) != null;
             if (bIntune.Visible != intune) bIntune.Visible = intune;
             LayoutSupport();
+            chips.PerformLayout();
             timeLeft = null;
             try
             {
@@ -164,8 +182,8 @@ namespace TrackVice
             if (overall.Remaining != left)
             {
                 overall.Remaining = left;
-                overall.Width = Dpi.S(left.Length > 0 ? 300 : 220);
                 overall.Invalidate();
+                chips.PerformLayout();
             }
             tips.SetToolTip(overall, "How far the deployment has come, counting the items TrackVice has seen. Click to show everything." + (timeLeft != null ? "\n\nTime left: " + timeLeft.Basis : ""));
         }

@@ -12,9 +12,36 @@ namespace TrackVice.Tests
         {
             Fold();
             Columns();
+            ChipRows();
             Counting();
             Repeats();
             FiltersAndLoader();
+        }
+
+        static void ChipRows()
+        {
+            int[] nat = { 230, 134, 134, 134 };
+            int[] min = { 160, 82, 82, 82 };
+            NarrowFit.ChipPlan a = NarrowFit.Chips(nat, min, 200, 900);
+            T.Eq(1, a.RowCount, "chips: one row when the natural widths fit");
+            T.Eq(230, a.Widths[0], "chips: natural width kept");
+            NarrowFit.ChipPlan b = NarrowFit.Chips(nat, min, 200, 650);
+            int sum = 0;
+            for (int i = 0; i < 5; i++) sum += b.Widths[i];
+            T.Eq(1, b.RowCount, "chips: still one row when they can shrink");
+            T.Check(sum <= 650 && sum >= 649, "chips: shrunk to the room");
+            T.Eq(200, b.Widths[4], "chips: the support box does not shrink");
+            T.Check(b.Widths[0] >= 160 && b.Widths[1] >= 82 && b.Widths[0] < 230, "chips: shrunk, not under the minimum");
+            NarrowFit.ChipPlan c = NarrowFit.Chips(nat, min, 200, 500);
+            T.Eq(2, c.RowCount, "chips: the support box goes to a row of its own");
+            T.Eq(1, c.Rows[4], "chips: the support box is in the second row");
+            T.Eq(0, c.Rows[3], "chips: the chips stay in the first row");
+            NarrowFit.ChipPlan d = NarrowFit.Chips(nat, min, 200, 300);
+            T.Eq(3, d.RowCount, "chips: the chips wrap too when their minimums do not fit");
+            T.Eq(0, d.Rows[0], "chips: first chip in the first row");
+            T.Eq(1, d.Rows[2], "chips: second row starts when the minimums no longer fit");
+            T.Eq(2, d.Rows[4], "chips: the support box comes last");
+            for (int i = 0; i < 4; i++) T.Check(d.Widths[i] <= 300, "chips: a wrapped chip fits its row");
         }
 
         static void Fold()

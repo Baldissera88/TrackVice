@@ -69,23 +69,52 @@ namespace TrackVice
             finally { fitting = false; }
         }
 
-        // Chips that do not fit are left out, the least needed first. Failed and the overall progress stay.
+        int chipsHeight = Dpi.S(74);
+
+        // No chip is left out. They shrink to their minimum, then wrap into more rows, the support buttons last.
         void FitChips()
         {
-            if (fitting || cItems == null || chips.ClientSize.Width <= 0) return;
+            if (fitting || cItems == null || bTicket == null || chips.ClientSize.Width <= 0) return;
             fitting = true;
             try
             {
+                StatChip[] stats = new StatChip[] { cItems, cActive, cWaiting, cFailed, cFindings };
                 Control[] all = new Control[] { overall, cItems, cActive, cWaiting, cFailed, cFindings, supportBox };
-                Control[] fold = new Control[] { cWaiting, cFindings, cItems, cActive, supportBox };
-                int[] widths = new int[all.Length];
-                for (int i = 0; i < all.Length; i++) widths[i] = all[i].Width + all[i].Margin.Horizontal;
-                int[] order = new int[fold.Length];
-                for (int i = 0; i < order.Length; i++) order[i] = Array.IndexOf(all, fold[i]);
-                bool[] hidden = NarrowFit.Hidden(widths, order, 0, chips.ClientSize.Width - chips.Padding.Horizontal);
-                for (int i = 0; i < all.Length; i++) all[i].Visible = !hidden[i];
+                int n = all.Length - 1;
+                int[] nat = new int[n], min = new int[n];
+                nat[0] = overall.NaturalWidth + overall.Margin.Horizontal;
+                min[0] = overall.MinWidth + overall.Margin.Horizontal;
+                for (int i = 1; i < n; i++)
+                {
+                    nat[i] = stats[i - 1].NaturalWidth + all[i].Margin.Horizontal;
+                    min[i] = stats[i - 1].MinWidth + all[i].Margin.Horizontal;
+                }
+                supportBox.Margin = new Padding(Dpi.S(4), 0, 0, 0);
+                LayoutSupport(false);
+                int room = chips.ClientSize.Width - chips.Padding.Horizontal;
+                NarrowFit.ChipPlan plan = NarrowFit.Chips(nat, min, supportBox.Width + supportBox.Margin.Horizontal, room);
+                bool own = plan.Rows[n] > plan.Rows[n - 1];
+                chips.SuspendLayout();
+                if (own)
+                {
+                    supportBox.Margin = new Padding(0);
+                    LayoutSupport(true);
+                    supportBox.Width = Math.Min(supportBox.Width, Math.Max(room, 0));
+                }
+                chips.WrapContents = plan.RowCount > 1;
+                for (int i = 0; i < n; i++)
+                {
+                    all[i].Visible = true;
+                    all[i].Width = Math.Max(1, plan.Widths[i] - all[i].Margin.Horizontal);
+                    chips.SetFlowBreak(all[i], plan.Rows[i + 1] != plan.Rows[i]);
+                }
+                supportBox.Visible = true;
+                chips.SetFlowBreak(supportBox, false);
+                chipsHeight = chips.Padding.Vertical + (plan.Rows[n - 1] + 1) * Dpi.S(62) + (own ? supportBox.Height : 0);
+                chips.ResumeLayout(true);
             }
             finally { fitting = false; }
+            FitStack();
         }
 
         // In a low window the phases and then the chips make room for the list.
@@ -93,7 +122,8 @@ namespace TrackVice
         {
             int h = ClientSize.Height;
             rail.Height = h < Dpi.S(514) ? 0 : Dpi.S(84);
-            chips.Height = h < Dpi.S(440) ? 0 : Dpi.S(74);
+            int ch = h < Dpi.S(440) ? 0 : chipsHeight;
+            if (chips.Height != ch) chips.Height = ch;
         }
 
         ContextMenuStrip MoreMenu()

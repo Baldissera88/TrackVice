@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.12
+
+24 November 2026.
+
+- Fixed: in a narrow window the overview no longer removes tiles. Items, In progress, Waiting, Failed, Findings and the overall progress shrink first, then wrap to a second row; Copy for ticket, the note and Open in Intune move to their own row instead of disappearing. The phase tiles get narrower with shortened text, so all phases stay visible down to about 700 pixels.
+
 ## TrackVice 1.11.11
 
 24 November 2026.

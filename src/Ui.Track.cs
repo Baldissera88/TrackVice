@@ -179,7 +179,12 @@ namespace TrackVice
             }
             int n = phases.Count;
             float avail = Width - pad * 2 - gap * (n - 1);
-            float w = Math.Max(Dpi.S(170), Math.Min(Dpi.S(420), avail / n));
+            if (avail / n < Dpi.S(170))
+            {
+                gap = Dpi.S(16);
+                avail = Width - pad * 2 - gap * (n - 1);
+            }
+            float w = Math.Max(Dpi.S(108), Math.Min(Dpi.S(420), avail / n));
             float total = w * n + gap * (n - 1);
             int maxScroll = (int)Math.Max(0, total - (Width - pad * 2));
             scroll = Math.Max(0, Math.Min(scroll, maxScroll));
@@ -208,12 +213,24 @@ namespace TrackVice
                 int done = p.Done, failed = p.FailedCount;
                 string sub = done + " of " + p.Items.Count + " done";
                 int sx = (int)(ix + Dpi.S(24)), sy = (int)r.Y + Dpi.S(30);
-                TextRenderer.DrawText(g, sub, Fonts.Small, new Point(sx, sy), T.Text3, TextFormatFlags.NoPadding);
-                if (failed > 0)
+                int subRoom = Math.Max(0, (int)(r.Right - Dpi.S(12)) - sx);
+                const TextFormatFlags one = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+                int subW = TextRenderer.MeasureText(sub, Fonts.Small, Size.Empty, one).Width;
+                string bad = failed > 0 ? " · " + failed + " failed" : "";
+                int badW = bad.Length > 0 ? TextRenderer.MeasureText(bad, Fonts.SmallSemibold, Size.Empty, one).Width : 0;
+                if (subW + badW <= subRoom)
                 {
-                    int sw = TextRenderer.MeasureText(sub, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding).Width;
-                    TextRenderer.DrawText(g, " · " + failed + " failed", Fonts.SmallSemibold, new Point(sx + sw, sy), T.ErrFg, TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(g, sub, Fonts.Small, new Point(sx, sy), T.Text3, TextFormatFlags.NoPadding);
+                    if (bad.Length > 0) TextRenderer.DrawText(g, bad, Fonts.SmallSemibold, new Point(sx + subW, sy), T.ErrFg, TextFormatFlags.NoPadding);
                 }
+                else if (bad.Length > 0 && subRoom - badW >= Dpi.S(30))
+                {
+                    string cut = Fit.Text(sub, Fonts.Small, subRoom - badW);
+                    int cw = TextRenderer.MeasureText(cut, Fonts.Small, Size.Empty, one).Width;
+                    TextRenderer.DrawText(g, cut, Fonts.Small, new Point(sx, sy), T.Text3, TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(g, bad, Fonts.SmallSemibold, new Point(sx + cw, sy), T.ErrFg, TextFormatFlags.NoPadding);
+                }
+                else TextRenderer.DrawText(g, Fit.Text(sub + bad, Fonts.Small, subRoom), Fonts.Small, new Point(sx, sy), bad.Length > 0 ? T.ErrFg : T.Text3, TextFormatFlags.NoPadding);
                 StateLook.Bar(g, new RectangleF(r.X + Dpi.S(12), r.Bottom - Dpi.S(14), r.Width - Dpi.S(24), Dpi.S(4)), p.Progress, sc, Theme.Mix(T.Card, T.Divider, 0.9f));
                 if (i < n - 1)
                 {
@@ -290,6 +307,9 @@ namespace TrackVice
             TabStop = false;
         }
 
+        public int NaturalWidth { get { return Dpi.S(string.IsNullOrEmpty(Remaining) ? 220 : 300); } }
+        public int MinWidth { get { return Dpi.S(150); } }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
@@ -302,12 +322,20 @@ namespace TrackVice
             TextRenderer.DrawText(g, pct, T.Num(Fonts.Title), new Rectangle(pad, Dpi.S(6), Width - pad, Dpi.S(28)), T.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             int pw = TextRenderer.MeasureText(pct, T.Num(Fonts.Title), Size.Empty, TextFormatFlags.NoPadding).Width;
             string st = State == State.Unknown ? "" : States.Label(State);
-            if (st.Length > 0) TextRenderer.DrawText(g, st, Fonts.SmallSemibold, new Rectangle(pad + pw + Dpi.S(10), Dpi.S(12), Width - pw - pad * 2, Dpi.S(18)), StateLook.Color(State, T), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            int x0 = pad + pw + Dpi.S(10);
+            int sw = 0;
+            if (st.Length > 0)
+            {
+                st = Fit.Text(st, Fonts.SmallSemibold, Math.Max(0, Width - x0 - pad));
+                sw = TextRenderer.MeasureText(st, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width;
+                TextRenderer.DrawText(g, st, Fonts.SmallSemibold, new Rectangle(x0, Dpi.S(12), Math.Max(0, Width - x0 - pad), Dpi.S(18)), StateLook.Color(State, T), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                sw += Dpi.S(8);
+            }
             if (!string.IsNullOrEmpty(Remaining))
             {
-                int sw = st.Length > 0 ? TextRenderer.MeasureText(st, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width + Dpi.S(8) : 0;
-                int lx = pad + pw + Dpi.S(10) + sw;
-                TextRenderer.DrawText(g, (st.Length > 0 ? "· " : "") + Remaining, Fonts.Small, new Rectangle(lx, Dpi.S(12), Math.Max(0, Width - lx - pad), Dpi.S(18)), T.Text2, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+                int lx = x0 + sw;
+                if (Width - lx - pad > Dpi.S(40))
+                    TextRenderer.DrawText(g, (st.Length > 0 ? "· " : "") + Remaining, Fonts.Small, new Rectangle(lx, Dpi.S(12), Width - lx - pad, Dpi.S(18)), T.Text2, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             }
             TextRenderer.DrawText(g, Label + (Elapsed.Length > 0 ? " · " + Elapsed : ""), Fonts.Small, new Rectangle(pad, Dpi.S(34), Width - pad * 2, Dpi.S(14)), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             StateLook.Bar(g, new RectangleF(pad, Height - Dpi.S(10), Width - pad * 2, Dpi.S(3)), Progress, State == State.Failed ? T.ErrFg : State == State.Succeeded ? T.OkFg : T.Accent, T.Divider);
