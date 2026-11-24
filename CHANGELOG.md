@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.10
+
+24 November 2026.
+
+- Fixed: Set up in Your storage now always uses the subscription the box shows, and the confirmation names the subscription with its full ID, so it is clear where the account and resource group are made.
+
 ## TrackVice 1.11.9
 
 24 November 2026.

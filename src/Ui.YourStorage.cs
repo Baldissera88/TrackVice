@@ -887,6 +887,9 @@ namespace TrackVice
         void SetUp()
         {
             if (busy || run.Subscription == null) return;
+            // What the box shows is what is used, never an older choice.
+            AzureSubscription shown = ShownSubscription();
+            if (shown != null) run.Subscription = shown;
             run.NewAccount = sKind.Selected == 0;
             if (run.NewAccount)
             {
@@ -906,7 +909,7 @@ namespace TrackVice
                 if (!(cAccount.SelectedItem is AzureAccount)) { note.Say("Pick a storage account.", true); return; }
                 run.Account = (AzureAccount)cAccount.SelectedItem;
             }
-            if (!demo && MessageBox.Show(this, PlanText() + "\n\nSet this up in " + run.Subscription.Name + "?", "Your storage", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (!demo && MessageBox.Show(this, PlanText() + "\n\nSet this up in " + run.Subscription.Name + " (" + run.Subscription.Id + ")?", "Your storage", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             run.AskKey = gAsk.On;
             run.RetentionDays = StorageSecurity.DayChoices[sDays.Selected];
             byte[] file;
