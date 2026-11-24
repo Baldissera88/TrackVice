@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.3
+
+24 November 2026.
+
+- The subscription lists in the setup windows show the start of each subscription ID next to its name, because two subscriptions can have the same name and the storage account may be in the other one.
+
 ## TrackVice 1.11.2
 
 24 November 2026.

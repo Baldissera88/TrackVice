@@ -419,7 +419,8 @@ namespace TrackVice
     {
         public string Id, Name, Tenant;
 
-        public override string ToString() { return Name; }
+        // Two subscriptions can have the same name, so the start of the ID is shown too.
+        public override string ToString() { return (Id ?? "").Length >= 8 ? Name + "  (" + Id.Substring(0, 8) + ")" : Name; }
     }
 
     public sealed class AzureAccount
