@@ -464,6 +464,10 @@ namespace TrackVice
         readonly Customer editing;
         readonly TextBox name, notes, tenant, client, server, site, where;
         readonly FooterNote note = new FooterNote();
+        readonly OwnStorage storage;
+        readonly FlatButton bGet, bCopyUpload;
+        readonly TextBox upload;
+        string uploadLink = "", fromStorage = "";
 
         public CustomerEditor(Theme t, CustomerBook book, Customer c) : base(c == null ? "Add a customer" : "Edit " + c.Name, t)
         {
@@ -486,17 +490,16 @@ namespace TrackVice
             where.UseSystemPasswordChar = v.AgentLocation.StartsWith("http", StringComparison.OrdinalIgnoreCase);
             where.TextChanged += delegate { where.UseSystemPasswordChar = false; };
 
-            Add(new SectionTitle("Customer"));
-            Add(new SettingRow(Glyphs2.Device, "Name", "Shown at the top of the device lists and in the status bar.", name));
-            Add(new SettingRow(Glyphs.Info, "Notes", "For yourself. They are exported with the customer.", notes));
-            Add(new SectionTitle("Autopilot in Intune"));
-            Add(new SettingRow(Glyphs.Shield, "Tenant", "The tenant ID or domain, for example contoso.onmicrosoft.com. When it is empty, the sign-in goes to the tenant of the account you use, and is never kept when you change customer.", tenant));
-            Add(new SettingRow(Glyphs2.Code, "Client ID", "The app registration to sign in with. Leave it empty to use Microsoft Graph Command Line Tools.", client));
-            Add(new SectionTitle("TrackVice agent"));
-            Add(new SettingRow(Glyphs2.Folder, "Upload location", "The SAS link of the storage container with Read and List, or a folder. Encrypted for your Windows account.", where));
-            Add(new SectionTitle("SCCM"));
-            Add(new SettingRow(Glyphs2.Apps, "SMS Provider", "The server that runs the SMS Provider, usually the site server.", server));
-            Add(new SettingRow(Glyphs2.Settings, "Site code", "Optional. Read from the server when it is empty.", site));
+            storage = YourStorageUi.Load();
+            upload = Field("", 300, true);
+            bGet = SmallButton("Get it", delegate { Get(); });
+            bCopyUpload = SmallButton("Copy", delegate { note.Say(Menus.Copy(uploadLink) ? "Copied the upload link." : "The upload link could not be copied.", false); });
+            bCopyUpload.Glyph = Glyphs.Copy;
+            bCopyUpload.AutoWidth();
+            bCopyUpload.Width += Dpi.S(8);
+            upload.ReadOnly = true;
+            upload.UseSystemPasswordChar = true;
+            Rows();
 
             bClose.Text = "Cancel";
             bClose.Primary = false;
@@ -518,6 +521,57 @@ namespace TrackVice
             note.BringToFront();
             AcceptButton = null;
             Shown += delegate { name.Focus(); name.SelectAll(); };
+        }
+
+        void Rows()
+        {
+            ClearItems();
+            Add(new SectionTitle("Customer"));
+            Add(new SettingRow(Glyphs2.Device, "Name", "Shown at the top of the device lists and in the status bar.", name));
+            Add(new SettingRow(Glyphs.Info, "Notes", "For yourself. They are exported with the customer.", notes));
+            Add(new SectionTitle("Autopilot in Intune"));
+            Add(new SettingRow(Glyphs.Shield, "Tenant", "The tenant ID or domain, for example contoso.onmicrosoft.com. When it is empty, the sign-in goes to the tenant of the account you use, and is never kept when you change customer.", tenant));
+            Add(new SettingRow(Glyphs2.Code, "Client ID", "The app registration to sign in with. Leave it empty to use Microsoft Graph Command Line Tools.", client));
+            Add(new SectionTitle("TrackVice agent"));
+            Add(new SettingRow(Glyphs2.Folder, "Upload location", "The SAS link of the storage container with Read and List, or a folder. Encrypted for your Windows account.", where));
+            if (CustomerStorageLink.Offered(storage))
+            {
+                Add(new SettingRow(Glyphs2.Sync, "Get it from Your storage", fromStorage.Length > 0 ? fromStorage : "Makes the private container for this customer in " + storage.Account + " and puts the viewer link above. A container that is there is used.", bGet));
+                if (uploadLink.Length > 0)
+                {
+                    upload.Text = uploadLink;
+                    ButtonStrip s = new ButtonStrip(upload, bCopyUpload);
+                    Add(new SettingRow(Glyphs2.Folder, "Upload link for devices", "This is what goes in the customer code. It is not saved here: the customer code is made in Add customer.", s));
+                }
+            }
+            Add(new SectionTitle("SCCM"));
+            Add(new SettingRow(Glyphs2.Apps, "SMS Provider", "The server that runs the SMS Provider, usually the site server.", server));
+            Add(new SettingRow(Glyphs2.Settings, "Site code", "Optional. Read from the server when it is empty.", site));
+
+        }
+
+        void Get()
+        {
+            string problem = CustomerStorageLink.Problem(book, name.Text, editing);
+            if (problem != null)
+            {
+                note.Say(problem, true);
+                if (name.Text.Trim().Length == 0) name.Focus();
+                return;
+            }
+            note.Say("", false);
+            CustomerLinkDialog.Open(this, theme, name.Text.Trim(), Got);
+        }
+
+        // Puts the viewer link in the box and shows the upload link. The upload link is not kept.
+        public void Got(CustomerStorageResult r)
+        {
+            where.Text = r.Viewer;
+            where.UseSystemPasswordChar = true;
+            uploadLink = r.Upload;
+            fromStorage = "The viewer link of " + r.Container + " is in the box above. Save the customer to keep it.";
+            Rows();
+            Relayout();
         }
 
         TextBox Field(string value, int width, bool mono)

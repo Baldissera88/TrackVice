@@ -658,6 +658,7 @@ namespace TrackVice
 
         public string Container = "", Upload = "", Viewer = "";
         public DateTime LinksExpireUtc;
+        public bool ContainerWasThere;
         public CustomerCode Code;
         public string Script = "";
         public DirectoryGroup Group;
@@ -711,10 +712,18 @@ namespace TrackVice
             }
             string a = (Alert ?? "").Trim();
             if (a.Length > 0 && AlertSender.Problem(a) != null) return AlertSender.Problem(a);
-            if (!OwnAzure)
-                foreach (Customer c in book.All)
-                    if (!string.Equals(c.Name, n, StringComparison.OrdinalIgnoreCase) && BlobContainers.NameFor(c.Name) == ContainerName)
-                        return "The customer " + c.Name + " would use the same container " + ContainerName + ". Give this customer a name that differs in letters or digits.";
+            if (!OwnAzure) return ContainerClash(book, n, null);
+            return null;
+        }
+
+        // Null, or why another customer's container would be the same as this name's.
+        public static string ContainerClash(CustomerBook book, string name, Customer except)
+        {
+            string n = (name ?? "").Trim();
+            string container = BlobContainers.NameFor(n);
+            foreach (Customer c in book.All)
+                if (c != except && !string.Equals(c.Name, n, StringComparison.OrdinalIgnoreCase) && BlobContainers.NameFor(c.Name) == container)
+                    return "The customer " + c.Name + " would use the same container " + container + ". Give this customer a name that differs in letters or digits.";
             return null;
         }
 
@@ -754,6 +763,7 @@ namespace TrackVice
             if (own == null) throw new SetupException("Set up Your storage first.");
             Container = ContainerName;
             bool made = BlobContainers.Create(web, own, Container, nowUtc);
+            ContainerWasThere = !made;
             Done.Add("Container " + Container + " in " + own.Account + (made ? "" : ", there already"));
             CustomerLinks links = CustomerAccess.Grant(web, own, Container, made, nowUtc, LinkDays);
             Upload = links.Upload;

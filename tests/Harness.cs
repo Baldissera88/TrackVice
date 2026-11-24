@@ -93,6 +93,7 @@ namespace TrackVice.Tests
             CustomerFileTests.Run();
             PublishTargetTests.Run();
             GetStartedTests.Run();
+            CustomerStorageLinkTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }
