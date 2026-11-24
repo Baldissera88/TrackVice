@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.9
+
+24 November 2026.
+
+- Fixed: in Your storage, picking another subscription did nothing on some PCs. The window now checks every moment which subscription the box shows and reads that one when it is free, so it no longer depends on the box telling the window about the change.
+
 ## TrackVice 1.11.8
 
 24 November 2026.

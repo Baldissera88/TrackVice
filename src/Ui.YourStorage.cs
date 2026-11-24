@@ -627,6 +627,10 @@ namespace TrackVice
             bSetUp = Button("Set up", delegate { SetUp(); });
             bSetUp.Primary = true;
             cSub.SelectedIndexChanged += delegate { if (!filling) { chosenSub = cSub.SelectedItem as AzureSubscription; LoadSubscription(); } };
+            watch.Interval = 400;
+            watch.Tick += delegate { WatchSubscription(); };
+            watch.Start();
+            FormClosed += delegate { watch.Stop(); watch.Dispose(); };
             cSub.SelectionChangeCommitted += delegate { chosenSub = cSub.SelectedItem as AzureSubscription; LoadSubscription(); };
             sKind.Changed += delegate { run.NewAccount = sKind.Selected == 0; Rebuild(); };
             foreach (Control c in new Control[] { cGroup, cRegion, tAccount }) c.TextChanged += delegate { if (!filling) Plan(); };
@@ -801,6 +805,18 @@ namespace TrackVice
         }
 
         AzureSubscription chosenSub;
+        readonly System.Windows.Forms.Timer watch = new System.Windows.Forms.Timer();
+        string loadedSub = "";
+
+        // Does not depend on the box raising its events: what the box shows is read when the window is free.
+        void WatchSubscription()
+        {
+            if (busy || armIn == null || !armIn.SignedIn || subs.Count == 0) return;
+            AzureSubscription s = cSub.SelectedItem as AzureSubscription;
+            if (s == null || s.Id == loadedSub) return;
+            chosenSub = s;
+            LoadSubscription();
+        }
         string diag = "";
         bool reloadSub;
 
@@ -836,6 +852,7 @@ namespace TrackVice
             // Another step is running: the subscription is read when it has ended, so the choice is not lost.
             if (busy) { reloadSub = true; return; }
             run.Subscription = s;
+            loadedSub = s.Id;
             // An error about the subscription chosen before no longer applies.
             note.Say("", false);
             List<KeyValuePair<string, string>> groups = null;
