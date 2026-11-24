@@ -799,6 +799,8 @@ namespace TrackVice
             AzureSubscription s = cSub.SelectedItem as AzureSubscription;
             if (s == null || armIn == null || !armIn.SignedIn) return;
             run.Subscription = s;
+            // An error about the subscription chosen before no longer applies.
+            note.Say("", false);
             List<KeyValuePair<string, string>> groups = null;
             List<AzureAccount> accts = null;
             Work("Reading " + s.Name + "...", delegate

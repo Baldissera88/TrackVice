@@ -727,6 +727,7 @@ namespace TrackVice
             AzureSubscription s = cSub.SelectedItem as AzureSubscription;
             if (s == null || armIn == null || !armIn.SignedIn) return;
             run.Subscription = s;
+            note.Say("", false);
             List<KeyValuePair<string, string>> groups = null;
             List<AzureAccount> accts = null;
             string name = tAccount.Text.Trim();

@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 1.11.4
+
+24 November 2026.
+
+- Fixed: an error about one subscription stayed at the bottom of the Your storage and Add customer windows after another subscription was picked. It is cleared when the subscription changes.
+
 ## TrackVice 1.11.3
 
 24 November 2026.
