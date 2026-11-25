@@ -192,7 +192,15 @@ namespace TrackVice.Tests
                 T.Check(r.Decision == UpdateDecision.Invalid && r.Path == null, "download: a changed manifest is refused");
 
                 r = AgentUpdate.Check(new FolderStore(Path.Combine(dir, "empty")), pub, "1.0.5", Path.Combine(dir, "stage8"));
-                T.Check(r.Decision == UpdateDecision.Invalid && r.Message.StartsWith("No update information"), "download: no manifest");
+                T.Check(r.Decision == UpdateDecision.Invalid && r.Message.StartsWith("Nothing is published in ") && r.Message.Contains("(agent/latest.json is missing). Publish agent update in TrackVice puts it there."), "download: no manifest says nothing is published yet");
+                T.Check(!r.Message.Contains("session"), "download: no manifest does not talk about a session");
+                st.Put(UpdateManifest.Name, new byte[] { 0x7b, 0x7b }, null);
+                r = AgentUpdate.Check(st, pub, "1.0.5", Path.Combine(dir, "stage9"));
+                T.Check(r.Message.Contains("cannot be used") && !r.Message.Contains("Nothing is published"), "download: a broken manifest has its own text");
+                r = AgentUpdate.Check(new FailStore("Could not reach x.blob.core.windows.net: timeout"), pub, "1.0.5", Path.Combine(dir, "stage10"));
+                T.Check(r.Message.StartsWith("Could not read agent/latest.json in fail: Could not reach"), "download: a network error stays a network error");
+                r = AgentUpdate.Check(new FailStore("The storage account refused the link (AuthenticationFailed)."), pub, "1.0.5", Path.Combine(dir, "stage11"));
+                T.Check(r.Message.Contains("refused the link") && !r.Message.Contains("Nothing is published"), "download: an auth error stays an auth error");
             }
             finally { Directory.Delete(dir, true); }
         }
@@ -357,6 +365,16 @@ namespace TrackVice.Tests
             string msg = AgentProcesses.ReplaceFailed(target, "The file is in use.", still);
             T.Check(msg.Contains("process 4711") && msg.Contains("Restart the device"), "the install message names the process and suggests a restart");
             T.Check(AgentProcesses.ReplaceFailed(target, "The file is in use.", null).Contains("Restart the device"), "the install message without a process also suggests a restart");
+        }
+
+        sealed class FailStore : ISessionStore
+        {
+            readonly string message;
+            public FailStore(string message) { this.message = message; }
+            public string Title { get { return "fail"; } }
+            public void Put(string name, byte[] data, Dictionary<string, string> meta) { throw new StoreException(message); }
+            public List<StoreEntry> List(string prefix) { throw new StoreException(message); }
+            public byte[] Get(string name) { throw new StoreException(message); }
         }
 
         sealed class FakeLauncher : IUpdateLauncher

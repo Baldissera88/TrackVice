@@ -1076,7 +1076,7 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 | New customer with links: "Access denied" in Intune | The account needs an Intune role that can add scripts, and consent for `DeviceManagementScripts.ReadWrite.All` and `GroupMember.Read.All`. Or skip the Intune part and add the saved script by hand |
 | `agent.log` says "Self-update is off" | The reason follows: an update key but no update link, a key that is not usable, or a link that cannot be opened |
 | `agent.log` says "is not signed with the update key of this device" | The version was published with another key than the one the agent was installed with. Publish from the PC that has the key. With links, you can also update `$UpdateKey` |
-| `agent.log` says "No update information in" | Nothing is published there yet, or the link lacks Read or points at another container. Open **Publish agent update**: the row of that place shows what it has. Its customers may use a storage account of their own, not Your storage |
+| `agent.log` says "Nothing is published in ... yet" | agent/latest.json is missing there: nothing was published, or the link points at another container (a link without Read says "Could not read" instead). Open **Publish agent update**: the row of that place shows what it has. Its customers may use a storage account of their own, not Your storage |
 | The agent stays on its version | It checks every 6 hours. A version that is not newer than the one it runs is not installed. `agent.log` says "Update check:" with the reason |
 | The script is blocked | `TrackVice.exe` is not code signed. WDAC, AppLocker or Smart App Control can block it. Sign it with your own certificate or allow it by hash |
 

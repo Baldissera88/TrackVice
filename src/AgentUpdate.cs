@@ -386,6 +386,11 @@ namespace TrackVice
                 return BitConverter.ToString(h.ComputeHash(f)).Replace("-", "");
         }
 
+        public static string MissingText(string location)
+        {
+            return "Nothing is published in " + location + " yet (" + UpdateManifest.Name + " is missing). Publish agent update in TrackVice puts it there.";
+        }
+
         // Reads agent/latest.json, checks its signature and version, and downloads and checks the exe it names.
         // Nothing is written unless every check passes.
         public static UpdateCheck Check(ISessionStore store, string publicKey, string current, string stageDir)
@@ -393,10 +398,24 @@ namespace TrackVice
             UpdateCheck r = new UpdateCheck();
             r.Decision = UpdateDecision.Invalid;
             UpdateManifest m;
-            try { m = UpdateManifest.Parse(store.Get(UpdateManifest.Name)); }
+            byte[] raw;
+            try { raw = store.Get(UpdateManifest.Name); }
+            catch (StoreMissingException)
+            {
+                r.Message = MissingText(store.Title);
+                r.Why = AgentVersions.Link;
+                return r;
+            }
             catch (Exception ex)
             {
-                r.Message = "No update information in " + store.Title + ": " + ex.Message;
+                r.Message = "Could not read " + UpdateManifest.Name + " in " + store.Title + ": " + ex.Message;
+                r.Why = AgentVersions.Link;
+                return r;
+            }
+            try { m = UpdateManifest.Parse(raw); }
+            catch (Exception ex)
+            {
+                r.Message = UpdateManifest.Name + " in " + store.Title + " cannot be used: " + ex.Message;
                 r.Why = AgentVersions.Link;
                 return r;
             }

@@ -94,7 +94,8 @@ namespace TrackVice
         public const string NotePage = "note";
         readonly FlowLayoutPanel supportBox = new FlowLayoutPanel();
         FlatButton bTicket, bNote, bIntune;
-        TimeLeftEstimate timeLeft;
+        DeploymentEstimate estimate;
+        DeploymentHistory history;
 
         void BuildSupport()
         {
@@ -170,7 +171,16 @@ namespace TrackVice
             if (bIntune.Visible != intune) bIntune.Visible = intune;
             LayoutSupport();
             chips.PerformLayout();
-            timeLeft = null;
+            RefreshEstimate();
+        }
+
+        // The overall figure and the time left, from the same expected times, so that they agree. Also on every tick, so an
+        // estimate that has passed is never shown.
+        void RefreshEstimate()
+        {
+            if (engine == null) return;
+            Session s = engine.S;
+            estimate = null;
             try
             {
                 Reference r = ReferenceUi.Get(ReferenceCustomer);
@@ -178,24 +188,29 @@ namespace TrackVice
                 UpdateExpected(s, r);
                 overall.Progress = OverallProgress.Fraction(s, engine.Now, expected);
                 overall.Invalidate();
-                timeLeft = OverallProgress.Adjust(TimeLeft.Estimate(s, engine.Now, AutopilotFlow.BoxedTime(s, engine.Now), r, RecentRuns()), s, engine.Now, expected);
+                estimate = DeploymentEstimate.Make(s, engine.Now, AutopilotFlow.BoxedTime(s, engine.Now), expected);
             }
-            catch (Exception) { timeLeft = null; }
-            string left = timeLeft != null ? timeLeft.Text : "";
-            if (overall.Remaining != left)
+            catch (Exception) { estimate = null; }
+            string[] variants = estimate != null ? estimate.Variants() : new string[0];
+            string left = variants.Length > 0 ? variants[0] : "";
+            if (overall.Remaining != left || overall.Variants.Length != variants.Length)
             {
                 overall.Remaining = left;
+                overall.Variants = variants;
                 overall.Invalidate();
                 chips.PerformLayout();
             }
-            tips.SetToolTip(overall, "How far the deployment has come, counting the items TrackVice has seen. Click to show everything." + (timeLeft != null ? "\n\nTime left: " + timeLeft.Basis : ""));
+            tips.SetToolTip(overall, "How far the deployment has come, counting the items TrackVice has seen. Click to show everything." + (estimate != null ? "\n\nTime left: " + estimate.Basis : ""));
         }
 
         // Per-item times from the other devices Overview read and from the reference, made again only when those change.
         void UpdateExpected(Session s, Reference r)
         {
             OverviewSnapshot snap = overviewSnap;
-            string stamp = s.Computer + "|" + (snap != null ? snap.ReadUtc.Ticks : 0) + "|" + (r != null ? r.MarkedUtc.Ticks : 0);
+            // The demo has no Overview read yet: its made-up finished devices of Contoso stand in for the earlier deployments.
+            if (snap == null && engine.Mode == Modes.Demo) snap = new OverviewLoader(OverviewDemo.Sources(DateTime.UtcNow)).Read(DateTime.UtcNow, true);
+            string customer = watchedCustomer ?? (engine.Mode == Modes.Demo ? "Contoso" : "");
+            string stamp = s.Computer + "|" + (snap != null ? snap.ReadUtc.Ticks : 0) + "|" + (r != null ? r.MarkedUtc.Ticks : 0) + "|" + s.Kind + "|" + (s.GetInfo("Task sequence") ?? s.GetInfo("Autopilot profile")) + "|" + TimeLeft.StillRuns(s);
             if (expected != null && (string)expectedFor == stamp) return;
             List<Session> others = new List<Session>();
             if (snap != null)
@@ -206,23 +221,16 @@ namespace TrackVice
                     others.Add(o.S);
                 }
             expected = ExpectedTimes.From(others, s.Computer, r, DateTime.UtcNow);
+            // The finished deployments seen so far, kept on this PC, make the expected times of the whole deployment.
+            bool keep = engine.Mode != Modes.Demo && start.Shot == null;
+            if (history == null) history = keep ? DeploymentHistory.Load(DeploymentHistory.DefaultPath) : new DeploymentHistory();
+            DeploymentHistory.Shared = history;
+            if (snap != null) history.Learn(snap.Devices, DateTime.UtcNow);
+            if (r != null) history.Learn(r, string.IsNullOrEmpty(r.Customer) ? customer : r.Customer);
+            history.Learn(s, customer, DateTime.UtcNow);
+            if (history.Dirty && keep) history.Save(DeploymentHistory.DefaultPath);
+            expected.History = history.Get(customer, s.Kind, s.GetInfo("Task sequence") ?? s.GetInfo("Autopilot profile"));
             expectedFor = stamp;
-        }
-
-        // The enrollments Overview read for the last 7 days, of the customer of this device when it has one.
-        List<FleetRun> RecentRuns()
-        {
-            List<FleetRun> l = new List<FleetRun>();
-            OverviewSnapshot snap = overviewSnap;
-            if (snap == null) return l;
-            DateTime now = DateTime.UtcNow;
-            foreach (OverviewDevice o in snap.Devices)
-            {
-                if (o.S == null) continue;
-                if (watchedCustomer != null && o.Customer != null && !string.Equals(o.Customer, watchedCustomer, StringComparison.OrdinalIgnoreCase)) continue;
-                l.Add(FleetStats.RunOf(o.S, now));
-            }
-            return l;
         }
 
         // The user in the header: who enrolls or signed in, else the account TrackVice runs as on this PC.
@@ -242,7 +250,7 @@ namespace TrackVice
             if (card.Count == 0 && note.Length == 0) return;
             Section(r, "For support");
             foreach (Pair p in card) Field(r, p.Key, p.Value + (p.Key == "User" && s.GetInfo(DeviceFacts.UserFrom) != null ? "  (" + s.GetInfo(DeviceFacts.UserFrom) + ")" : ""), p.Key.EndsWith("ID", StringComparison.Ordinal));
-            if (timeLeft != null) Field(r, "Time left", timeLeft.Text + ". " + timeLeft.Basis, false);
+            if (estimate != null) Field(r, "Time left", estimate.Text + ". " + estimate.Basis, false);
             string link = PortalLinks.Intune(s.GetInfo(DeviceFacts.IntuneId));
             if (link != null) Field(r, "Intune admin center", link, true);
             if (s.GetInfo(DeviceFacts.EntraId) != null) Plain(r, "In Entra ID, search the devices for the Entra device ID.", theme.Text3, Fonts.Small);
@@ -253,7 +261,7 @@ namespace TrackVice
         {
             if (engine == null) return;
             Session s = engine.S;
-            string text = Ticket.Text(s, engine.Now, AutopilotFlow.BoxedTime(s, engine.Now), timeLeft != null ? timeLeft.Text : null, DeviceNotes.Of(s.Computer));
+            string text = Ticket.Text(s, engine.Now, AutopilotFlow.BoxedTime(s, engine.Now), estimate != null ? estimate.Text : null, DeviceNotes.Of(s.Computer));
             if (Menus.Copy(text)) Status("A summary of " + s.Computer + " for a ticket is on the clipboard.");
         }
 

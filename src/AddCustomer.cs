@@ -321,7 +321,7 @@ namespace TrackVice
         public byte[] Get(string name)
         {
             byte[] b = Find(name);
-            if (b == null) throw new StoreException(name + " is not there.");
+            if (b == null) throw new StoreMissingException(name + " is not there.");
             return b;
         }
     }

@@ -9,6 +9,10 @@ namespace TrackVice
     {
         readonly Dictionary<string, double> seconds = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
+        // What the earlier finished deployments of this customer and kind say (DeploymentHistory), or null. Their per-item
+        // middle times come before the averages of the devices Overview read, and their total covers what is not visible yet.
+        public HistoryStats History;
+
         public static string KeyOf(string kind, string name)
         {
             return kind + "|" + name;
@@ -19,6 +23,21 @@ namespace TrackVice
             get { return seconds.Count; }
         }
 
+        // The same item times with other history stats, for another device.
+        public ExpectedTimes WithHistory(HistoryStats h)
+        {
+            ExpectedTimes t = new ExpectedTimes(seconds);
+            t.History = h;
+            return t;
+        }
+
+        public ExpectedTimes() { }
+
+        ExpectedTimes(Dictionary<string, double> shared)
+        {
+            seconds = shared;
+        }
+
         public void Set(string kind, string name, double avgSeconds)
         {
             if (avgSeconds >= 1 && !string.IsNullOrEmpty(name)) seconds[KeyOf(kind, name)] = avgSeconds;
@@ -27,6 +46,7 @@ namespace TrackVice
         public double? Get(Item i)
         {
             double v;
+            if (History != null && History.Items.TryGetValue(KeyOf(i.Kind, i.DisplayName), out v) && v >= 1) return v;
             return seconds.TryGetValue(KeyOf(i.Kind, i.DisplayName), out v) ? v : (double?)null;
         }
 
@@ -160,6 +180,8 @@ namespace TrackVice
                 if (States.IsActive(i.State)) done += w * RunningShare(i, w, nowUtc);
             }
             if ((s.GetInfo("Task sequence result") ?? "").StartsWith("Failed", StringComparison.Ordinal)) failed = true;
+            // What earlier deployments took in all, and is not visible as items yet, still has to come.
+            if (open && history != null && history.History != null && history.History.Total > total) total = history.History.Total;
             if (total <= 0) return open ? 0 : 1;
             double f = Math.Max(0, Math.Min(1, done / total));
             return open || failed ? Math.Min(f, NotDoneCap) : 1;

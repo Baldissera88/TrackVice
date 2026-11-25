@@ -300,6 +300,9 @@ namespace TrackVice
         public string Label = "Overall";
         // The estimate of the time left, such as "about 25 min left", or empty.
         public string Remaining = "";
+        // The same in shorter and shorter texts (DeploymentEstimate.Variants): the first that fits is drawn.
+        public string[] Variants = new string[0];
+        string shownRemaining;
 
         public OverallChip()
         {
@@ -307,7 +310,19 @@ namespace TrackVice
             TabStop = false;
         }
 
-        public int NaturalWidth { get { return Dpi.S(string.IsNullOrEmpty(Remaining) ? 220 : 300); } }
+        // The width for the whole text of the time left after the percentage and the state: 220 without one.
+        public int NaturalWidth
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(Remaining)) return Dpi.S(220);
+                string st = State == State.Unknown ? "" : States.Label(State);
+                int w = Dpi.S(12 + 10 + 12 + 8) + TextRenderer.MeasureText("100 %", T.Num(Fonts.Title), Size.Empty, TextFormatFlags.NoPadding).Width
+                    + (st.Length > 0 ? TextRenderer.MeasureText(st, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width + Dpi.S(14) : 0)
+                    + TextRenderer.MeasureText(Remaining, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding).Width;
+                return Math.Max(Dpi.S(300), w);
+            }
+        }
         public int MinWidth { get { return Dpi.S(150); } }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -331,13 +346,36 @@ namespace TrackVice
                 TextRenderer.DrawText(g, st, Fonts.SmallSemibold, new Rectangle(x0, Dpi.S(12), Math.Max(0, Width - x0 - pad), Dpi.S(18)), StateLook.Color(State, T), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 sw += Dpi.S(8);
             }
+            shownRemaining = null;
             if (!string.IsNullOrEmpty(Remaining))
             {
                 int lx = x0 + sw;
-                if (Width - lx - pad > Dpi.S(40))
-                    TextRenderer.DrawText(g, (st.Length > 0 ? "· " : "") + Remaining, Fonts.Small, new Rectangle(lx, Dpi.S(12), Width - lx - pad, Dpi.S(18)), T.Text2, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+                int room = Width - lx - pad;
+                string lead = st.Length > 0 ? "\u00b7 " : "";
+                string text = Remaining;
+                string[] vs = Variants != null && Variants.Length > 0 ? Variants : new string[] { Remaining };
+                foreach (string v in vs)
+                {
+                    text = v;
+                    if (TextRenderer.MeasureText(lead + v, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding).Width <= room) break;
+                }
+                shownRemaining = text;
+                if (room > Dpi.S(40))
+                    TextRenderer.DrawText(g, lead + text, Fonts.Small, new Rectangle(lx, Dpi.S(12), Width - lx - pad, Dpi.S(18)), T.Text2, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             }
-            TextRenderer.DrawText(g, Label + (Elapsed.Length > 0 ? " · " + Elapsed : ""), Fonts.Small, new Rectangle(pad, Dpi.S(34), Width - pad * 2, Dpi.S(14)), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+            // What of the longer texts did not fit beside the state (the range, the clock) goes on the second line when it fits there.
+            string second = Label + (Elapsed.Length > 0 ? " \u00b7 " + Elapsed : "");
+            if (!string.IsNullOrEmpty(Remaining) && Variants != null)
+            {
+                string shown = shownRemaining;
+                foreach (string v in Variants)
+                {
+                    if (shown == null || !v.StartsWith(shown + " \u00b7 ", StringComparison.Ordinal)) continue;
+                    string cand = second + " \u00b7 " + v.Substring(shown.Length + 3);
+                    if (TextRenderer.MeasureText(cand, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding).Width <= Width - pad * 2) { second = cand; break; }
+                }
+            }
+            TextRenderer.DrawText(g, second, Fonts.Small, new Rectangle(pad, Dpi.S(34), Width - pad * 2, Dpi.S(14)), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             StateLook.Bar(g, new RectangleF(pad, Height - Dpi.S(10), Width - pad * 2, Dpi.S(3)), Progress, State == State.Failed ? T.ErrFg : State == State.Succeeded ? T.OkFg : T.Accent, T.Divider);
         }
     }

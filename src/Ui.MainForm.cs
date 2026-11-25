@@ -744,7 +744,7 @@ namespace TrackVice
             if (watching && engine.S.CountActive > 0)
             {
                 overall.Elapsed = Elapsed();
-                overall.Progress = OverallProgress.Fraction(engine.S, engine.Now, expected);
+                RefreshEstimate();
                 overall.Invalidate();
                 rail.Invalidate();
                 list.Invalidate();

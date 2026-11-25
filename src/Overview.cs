@@ -348,6 +348,8 @@ namespace TrackVice
         public OverviewDevice Dev;
         public double? Percent;
         public string Phase, WaitsFor;
+        // The time left of the deployment, short: "~25 min left" or "longer than usual". Null when there is no estimate.
+        public string Left;
         public bool Failed;
     }
 
@@ -493,9 +495,21 @@ namespace TrackVice
             List<Session> known = new List<Session>();
             foreach (OverviewDevice o in data.Devices) if (o.S != null && o.D.LastUtc >= weekStart) known.Add(o.S);
             ExpectedTimes history = ExpectedTimes.From(known, null, null, nowUtc);
+            // The finished deployments seen so far (and read now) give each running device its expected total and time left.
+            DeploymentHistory finished = DeploymentHistory.Shared ?? new DeploymentHistory();
+            if (snap != null) finished.Learn(snap.Devices, nowUtc);
             foreach (OverviewDevice o in data.Devices)
             {
-                if (o.Running(nowUtc)) data.Now.Add(NowOf(o, history, nowUtc));
+                if (o.Running(nowUtc))
+                {
+                    ExpectedTimes own = history;
+                    if (o.S != null && o.S.Items.Count > 0)
+                    {
+                        HistoryStats hs = finished.Get(o.Customer ?? "", o.S.Kind, o.S.GetInfo("Task sequence") ?? o.S.GetInfo("Autopilot profile"));
+                        if (hs != null) own = history.WithHistory(hs);
+                    }
+                    data.Now.Add(NowOf(o, own, nowUtc));
+                }
                 if (o.Finished(nowUtc))
                 {
                     DateTime end = o.EndUtc;
@@ -588,6 +602,13 @@ namespace TrackVice
             if (s != null && s.Items.Count > 0)
             {
                 r.Percent = OverallProgress.Percent(s, nowUtc, history);
+                if (!r.Failed)
+                {
+                    DeploymentEstimate est = null;
+                    try { est = DeploymentEstimate.Make(s, nowUtc, AutopilotFlow.BoxedTime(s, nowUtc), history); }
+                    catch (Exception) { est = null; }
+                    if (est != null) r.Left = est.Brief;
+                }
                 Item cur = null;
                 foreach (Item i in s.Items)
                     if (States.IsActive(i.State) && i.Key != SccmFeed.RunKey && (cur == null || i.LastUtc > cur.LastUtc)) cur = i;

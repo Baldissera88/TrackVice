@@ -64,6 +64,7 @@ namespace TrackVice
     {
         public double Overall;
         public ExpectedTimes Expected;
+        string[] left = new string[0];
         string device = "", kind = "", phase = "", itemName = "", stateText = "", counts = "", last = "", elapsed = "";
         State itemState = State.Unknown, overallState = State.Unknown;
         int? percent;
@@ -124,6 +125,10 @@ namespace TrackVice
             int failed = s.Count(State.Failed);
             overallState = failed > 0 ? State.Failed : s.CountActive > 0 ? State.Installing : total > 0 && s.CountComplete == total ? State.Succeeded : State.Pending;
             counts = s.CountComplete + " done  ·  " + s.CountActive + " running  ·  " + failed + " failed  ·  " + (s.Count(State.Pending) + s.Count(State.Unknown)) + " waiting";
+            DeploymentEstimate est = null;
+            try { est = DeploymentEstimate.Make(s, now, AutopilotFlow.BoxedTime(s, now), Expected); }
+            catch (Exception) { est = null; }
+            left = est != null ? est.Variants() : new string[0];
             DateTime? f = s.FirstUtc;
             elapsed = f.HasValue ? OffTime.Elapsed(s, now) : "";
             Invalidate();
@@ -164,6 +169,14 @@ namespace TrackVice
             string pct = ((int)Math.Round(Overall * 100)).ToString(CultureInfo.InvariantCulture) + " %";
             TextRenderer.DrawText(g, pct, Fonts.UiSemibold, new Rectangle(Width - pad - Dpi.S(60), by - Dpi.S(4), Dpi.S(60), Dpi.S(20)), T.Text, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             StateLook.Bar(g, new RectangleF(pad, by + Dpi.S(3), w - Dpi.S(70), Dpi.S(6)), Overall, overallState == State.Failed ? T.ErrFg : overallState == State.Succeeded ? T.OkFg : T.Accent, T.Divider);
+            // The time left stands above the bar: the first text that fits, as the window is wide.
+            string est = null;
+            foreach (string v in left)
+            {
+                est = v;
+                if (TextRenderer.MeasureText(v, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width <= w) break;
+            }
+            if (est != null) TextRenderer.DrawText(g, est, Fonts.SmallSemibold, new Rectangle(pad, by - Dpi.S(24), w, Dpi.S(18)), T.Text2, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(g, counts, Fonts.Small, new Rectangle(pad, by + Dpi.S(20), w, Dpi.S(18)), T.Text3, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         }
     }

@@ -62,7 +62,7 @@ namespace TrackVice
         }
 
         // Something still runs or waits, and nothing failed with nothing left running.
-        static bool StillRuns(Session s)
+        public static bool StillRuns(Session s)
         {
             if (s.CountActive > 0) return true;
             if (s.Count(State.Failed) > 0) return false;

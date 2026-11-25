@@ -570,6 +570,7 @@ namespace TrackVice
                 r.State = n.Failed ? State.Failed : State.Installing;
                 r.Percent = n.Percent;
                 r.Right = n.Percent.HasValue ? n.Percent.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %" : "Running";
+                if (!string.IsNullOrEmpty(n.Left) && !n.Failed) r.Right += " \u00b7 " + n.Left;
                 if (n.Failed) { r.Right = (n.Percent.HasValue ? r.Right + " · " : "") + "failed"; r.Level = 2; }
                 r.Tag = n.Dev;
                 now.Rows.Add(r);

@@ -12,6 +12,7 @@ Looking for setup? Start with the [Quick start](../README.md#quick-start). The a
 - [Findings](#findings)
 - [Gantt](#gantt)
 - [Where to run it](#where-to-run-it)
+- [Percentage and time left](#percentage-and-time-left)
 - [Other devices](#other-devices): [Autopilot in Intune](#autopilot-in-intune), [Task sequences in SCCM](#task-sequences-in-sccm), [Devices with the TrackVice agent](#devices-with-the-trackvice-agent), [Wall view](#wall-view), [Check devices before enrollment](#check-devices-before-enrollment), [Customers](#customers), [Statistics](#statistics), [Compare](#compare), [Reference enrollment](#reference-enrollment), [Names from Intune](#names-from-intune), [Logs from the device](#logs-from-the-device)
 - [Watch, save and share](#watch-save-and-share)
 - [Settings](#settings) and [Updates](#updates)
@@ -44,7 +45,7 @@ TrackVice reads only. The exceptions are the agent's own folder, task and regist
 
 | Part | Contents |
 |---|---|
-| Overall | How far the deployment has come, its state and how long it has run |
+| Overall | How far the deployment has come, its state, how long it has run and how long it still takes. See [Percentage and time left](#percentage-and-time-left) |
 | Counts | Items, in progress, waiting, failed and findings. Click one to filter the list |
 | Phase rail | Each phase as a card with its state, count, time and progress. Click one to jump to it |
 | Progress | Every item under its phase, with a live spinner, download progress, tries, duration and its last event |
@@ -133,6 +134,16 @@ The **Gantt** tab shows every item as a bar from its start to its end, grouped b
 **Compact** opens a small window that stays on top: the phase, what is installing now with its progress, overall progress and the counts. It is made for OOBE screens and for watching over someone's shoulder.
 
 <p align="center"><img src="images/trackvice-compact.png" width="480" alt="The compact view"></p>
+
+## Percentage and time left
+
+The overall percentage weighs every item by how long it is expected to take, so one slow app counts for more than a policy that applies in a second. The time left comes from the same expected times, so the two agree.
+
+The expected times come from the finished deployments TrackVice has seen of the same customer and kind (the Autopilot profile or task sequence when known): the agent uploads Overview reads, sessions you open and the reference enrollment. Per customer and kind it keeps the newest 20 in `%LOCALAPPDATA%\TrackVice\history.json`: the total time from the start of the deployment to the end of its last item, the time per phase and per item, and the number and length of restarts. It uses the middle value (median) and the 20th to 80th percentile as the spread. Failed, still running and replaced deployments, ones where the device was off for more than an hour, and totals more than three times the middle are left out. Without history, the defaults per kind of item are used and the estimate is marked rough.
+
+The time left counts what runs now (what is expected minus what has run, at least 30 seconds), what waits (apps one after the other, policies side by side and small) and the restarts still to come. Items that are not visible yet are covered by the historical total times what is left of it; the larger of the two is shown. With three or more earlier deployments the range is the spread; with fewer there is only the point. The finish time is now plus the point. The estimate never shows a time that has passed: when the deployment has run longer than the high end of the spread, it says "taking longer than usual (usually 35 min)".
+
+The chip reads like `about 25 min left · 20–35 · done ~16:35`, with the basis (`Based on 6 earlier deployments of <profile>`) in its tooltip. In a narrow window the range is dropped first, then the clock. The Compact window and the Now rows of Overview show the same estimate, and the window title keeps the percentage only.
 
 ## Other devices
 

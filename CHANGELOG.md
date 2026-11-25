@@ -1,5 +1,12 @@
 # Changelog
 
+## TrackVice 2.0.6
+
+25 November 2026.
+
+- **Better time left**: TrackVice learns from earlier deployments of the same customer and Autopilot profile or task sequence (medians, without failed, replaced or unusual ones) and keeps that history on the PC. The estimate adds up what is left one app at a time, covers apps that are not visible yet and the usual restarts, and shows a range and the finish time, for example "about 25 min left · 20–35 · done ~16:35". When a deployment passes the usual time it says "taking longer than usual". The overall % uses the same figures.
+- Fixed: when nothing was published yet, agent.log said "That session is no longer in the container". It now says that nothing is published in that place yet and how to publish there.
+
 ## TrackVice 2.0.5
 
 25 November 2026.

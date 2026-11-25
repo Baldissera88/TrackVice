@@ -22,9 +22,15 @@ namespace TrackVice
         public readonly Dictionary<string, string> Meta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 
-    public sealed class StoreException : Exception
+    public class StoreException : Exception
     {
         public StoreException(string message) : base(message) { }
+    }
+
+    // The file asked for is not in the store (as against: the store cannot be reached or refuses).
+    public sealed class StoreMissingException : StoreException
+    {
+        public StoreMissingException(string message) : base(message) { }
     }
 
     // A place devices upload their sessions to, and the viewer lists and reads them from.
@@ -137,7 +143,7 @@ namespace TrackVice
         public byte[] Get(string name)
         {
             string path = PathOf(name);
-            if (!File.Exists(path)) throw new StoreException("That session is no longer in " + root + ".");
+            if (!File.Exists(path)) throw new StoreMissingException("That session is no longer in " + root + ".");
             return File.ReadAllBytes(path);
         }
     }
@@ -278,7 +284,7 @@ namespace TrackVice
                 return new StoreException("The link does not allow TrackVice to " + what + ". The viewer needs a SAS with Read and List, a device one with Create and Write.");
             if (status == 403)
                 return new StoreException("The storage account refused the link (" + (code.Length > 0 ? code : "HTTP 403") + "). It may have expired, be mistyped, or the storage firewall may block this network.");
-            if (status == 404 && what == "read") return new StoreException("That session is no longer in the container.");
+            if (status == 404 && what == "read") return new StoreMissingException("That session is no longer in the container.");
             if (status == 404) return new StoreException("The container was not found. Check the link.");
             return new StoreException("The storage account answered HTTP " + status + (code.Length > 0 ? " (" + code + ")" : "") + ".");
         }
@@ -1111,7 +1117,7 @@ namespace TrackVice
                         Advance(d);
                         return AgentData.Pack(d.Engine.S);
                     }
-            throw new StoreException("That session is no longer there.");
+            throw new StoreMissingException("That session is no longer there.");
         }
     }
 }
