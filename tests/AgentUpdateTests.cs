@@ -29,6 +29,8 @@ namespace TrackVice.Tests
                 Apply();
                 Processes();
                 SelfUpdate();
+                Schedule();
+                LogGate();
             }
             finally
             {
@@ -384,6 +386,96 @@ namespace TrackVice.Tests
             public void StartDetached(string exe, string arguments) { Started = exe; Args = arguments; }
         }
 
+        static void Schedule()
+        {
+            TimeSpan m5 = TimeSpan.FromMinutes(5);
+            T.Eq(TimeSpan.FromHours(6), AgentUpdate.NextDelay(UpdateKind.Ok, 1, false), "a good check waits 6 hours");
+            T.Eq(TimeSpan.FromMinutes(30), AgentUpdate.NextDelay(UpdateKind.Ok, 1, true), "a good check during a deployment waits 30 minutes");
+            T.Eq(m5, AgentUpdate.NextDelay(UpdateKind.Transient, 1, false), "network failure: 5 minutes");
+            T.Eq(TimeSpan.FromMinutes(10), AgentUpdate.NextDelay(UpdateKind.Transient, 2, false), "then 10");
+            T.Eq(TimeSpan.FromMinutes(20), AgentUpdate.NextDelay(UpdateKind.Transient, 3, false), "then 20");
+            T.Eq(TimeSpan.FromMinutes(40), AgentUpdate.NextDelay(UpdateKind.Transient, 4, false), "then 40");
+            T.Eq(TimeSpan.FromHours(6), AgentUpdate.NextDelay(UpdateKind.Transient, 40, false), "capped at the normal interval");
+            T.Eq(TimeSpan.FromMinutes(30), AgentUpdate.NextDelay(UpdateKind.Transient, 6, true), "capped at 30 minutes during a deployment");
+            T.Eq(TimeSpan.FromMinutes(30), AgentUpdate.NextDelay(UpdateKind.Nothing, 1, false), "nothing published: 30 minutes");
+            T.Eq(TimeSpan.FromMinutes(30), AgentUpdate.NextDelay(UpdateKind.Nothing, 9, true), "nothing published during a deployment: 30 minutes");
+            T.Eq(TimeSpan.FromHours(6), AgentUpdate.NextDelay(UpdateKind.Refused, 1, false), "refused: the normal interval");
+            T.Eq(TimeSpan.FromMinutes(30), AgentUpdate.NextDelay(UpdateKind.Refused, 5, true), "refused during a deployment: no quicker than 30 minutes");
+
+            T.Eq(UpdateKind.Nothing, AgentUpdate.KindOf(new StoreMissingException("x")), "a missing file is nothing published");
+            T.Eq(UpdateKind.Transient, AgentUpdate.KindOf(new StoreException("Could not reach x.blob.core.windows.net: The remote name could not be resolved")), "DNS is transient");
+            T.Eq(UpdateKind.Transient, AgentUpdate.KindOf(new StoreException("The storage account answered HTTP 503 (ServerBusy).")), "5xx is transient");
+            T.Eq(UpdateKind.Transient, AgentUpdate.KindOf(new TimeoutException("timed out")), "a timeout is transient");
+            T.Eq(UpdateKind.Refused, AgentUpdate.KindOf(new StoreException("The storage account refused the link (AuthenticationFailed). It may have expired")), "403 is refused");
+            T.Eq(UpdateKind.Refused, AgentUpdate.KindOf(new StoreException("The link does not allow TrackVice to read.")), "a link without rights is refused");
+        }
+
+        sealed class FlakyStore : ISessionStore
+        {
+            public ISessionStore Inner;
+            public bool Down = true;
+            public string Title { get { return "the test store"; } }
+            public void Put(string name, byte[] data, Dictionary<string, string> meta) { Inner.Put(name, data, meta); }
+            public List<StoreEntry> List(string prefix) { return Inner.List(prefix); }
+            public byte[] Get(string name)
+            {
+                if (Down) throw new StoreException("Could not reach test.blob.core.windows.net: The remote name could not be resolved");
+                return Inner.Get(name);
+            }
+        }
+
+        static void LogGate()
+        {
+            UpdateLogGate g = new UpdateLogGate();
+            DateTime t = new DateTime(2026, 11, 15, 8, 0, 0, DateTimeKind.Utc);
+            T.Eq("down", g.Offer(UpdateKind.Transient, "down", t), "the first line is logged");
+            T.Check(g.Offer(UpdateKind.Transient, "down", t.AddMinutes(5)) == null, "the same failure is quiet");
+            T.Check(g.Offer(UpdateKind.Transient, "down", t.AddMinutes(59)) == null, "still quiet within the hour");
+            string again = g.Offer(UpdateKind.Transient, "down", t.AddMinutes(60));
+            T.Check(again != null && again.StartsWith("Still") && again.Contains("down"), "once an hour it says still");
+            T.Check(g.Offer(UpdateKind.Transient, "down", t.AddMinutes(90)) == null, "then quiet again");
+            T.Eq("other", g.Offer(UpdateKind.Nothing, "other", t.AddMinutes(95)), "a different result is logged at once");
+            T.Eq("works", g.Offer(UpdateKind.Ok, "works", t.AddMinutes(96)), "success is logged at once");
+            T.Eq("down", g.Offer(UpdateKind.Transient, "down", t.AddMinutes(97)), "a failure after success is logged again");
+
+            // Through the agent: a store that cannot be read, then published.
+            List<string> log = new List<string>();
+            string dir = TempDir();
+            try
+            {
+                string install = Path.Combine(dir, "install");
+                Directory.CreateDirectory(install);
+                string link = Path.Combine(dir, "store");
+                FlakyStore flaky = new FlakyStore();
+                flaky.Inner = new FolderStore(link);
+                AgentSelfUpdate u = new AgentSelfUpdate(flaky, pub, "1.0.5", install, new FakeLauncher(), delegate (string s) { log.Add(s); });
+                // The store cannot be reached.
+                DateTime n = t;
+                T.Check(!u.Cycle(n), "first check fails");
+                T.Eq(n.AddMinutes(5), u.NextUtc, "retry in 5 minutes");
+                T.Check(!u.Cycle(n.AddMinutes(5)), "second check fails");
+                T.Eq(n.AddMinutes(15), u.NextUtc, "retry in 10 minutes");
+                T.Check(!u.Cycle(n.AddMinutes(15)), "third check fails");
+                T.Eq(n.AddMinutes(35), u.NextUtc, "retry in 20 minutes");
+                T.Eq(1, log.Count, "the same failure is logged once");
+                Directory.CreateDirectory(link);
+                flaky.Down = false;
+                T.Check(!u.Cycle(n.AddMinutes(35)), "folder there, nothing published");
+                T.Eq(n.AddMinutes(65), u.NextUtc, "nothing published: 30 minutes");
+                T.Eq(2, log.Count, "the change is logged");
+                // During a deployment, a good check is repeated every 30 minutes.
+                UpdatePublisher.Publish(new FolderStore(link), FakeExe(800), "1.0.5", key, n);
+                T.Check(!u.Cycle(n.AddMinutes(65), true), "published version is the running one");
+                T.Eq(n.AddMinutes(95), u.NextUtc, "deploying: 30 minutes");
+                T.Eq(3, log.Count, "the good check is logged");
+                T.Check(!u.Cycle(n.AddMinutes(95), false), "not deploying any more: checks when due");
+                T.Eq(n.AddMinutes(95).AddHours(6), u.NextUtc, "done: back to 6 hours");
+                T.Check(!u.Cycle(n.AddMinutes(125), true), "deployment starts again: the rest of 6 hours is not waited out");
+                T.Eq(n.AddMinutes(155), u.NextUtc, "30 minutes again");
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
         static void SelfUpdate()
         {
             List<string> log = new List<string>();
@@ -409,10 +501,10 @@ namespace TrackVice.Tests
                 DateTime now = new DateTime(2026, 11, 15, 8, 0, 0, DateTimeKind.Utc);
                 Directory.CreateDirectory(link);
                 T.Check(!u.Cycle(now), "no update published yet");
-                T.Eq(now.AddHours(6), u.NextUtc, "the next check is 6 hours later");
+                T.Eq(now.AddMinutes(30), u.NextUtc, "nothing published yet: the next check is 30 minutes later");
                 UpdatePublisher.Publish(new FolderStore(link), FakeExe(800), "1.0.6", key, now);
-                T.Check(!u.Cycle(now.AddHours(1)), "no check before 6 hours");
-                T.Check(u.Cycle(now.AddHours(6)), "the update is started at the next check");
+                T.Check(!u.Cycle(now.AddMinutes(10)), "no check before 30 minutes");
+                T.Check(u.Cycle(now.AddMinutes(30)), "a publish made soon after is found at the next check");
                 T.Eq(Path.Combine(install, AgentUpdate.HelperName), fl.Copied, "the agent copies itself to the helper name");
                 T.Eq(fl.Copied, fl.Started, "the helper copy is started");
                 T.Check(fl.Args.StartsWith("/agent-update-apply \"") && fl.Args.Contains("TrackVice-1.0.6.exe") && fl.Args.Contains("/sha256 " + AgentUpdate.Sha256Hex(FakeExe(800))), "the helper gets the new exe and its hash");
@@ -427,6 +519,7 @@ namespace TrackVice.Tests
                 DateTime later = now.AddHours(7);
                 T.Check(!again.Cycle(later) && fl.Started == null, "after a failed update the first check waits");
                 T.Eq(later.AddHours(6), again.NextUtc, "the next try is 6 hours later");
+                T.Check(!again.Cycle(later.AddHours(1), true) && fl.Started == null, "a failed update waits the full interval even during a deployment");
                 T.Check(again.Cycle(later.AddHours(6)) && fl.Started != null, "then the update is tried again");
 
                 // The update worked: the new version starts as usual.
