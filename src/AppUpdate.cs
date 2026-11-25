@@ -72,7 +72,7 @@ namespace TrackVice
         // Windows setup or the Enrollment Status Page runs on this device, or the user is defaultuser0.
         public bool Oobe;
         public bool TaskSequence;
-        // TrackVice follows this device while an ESP or task sequence item on it is not finished.
+        // Not used by the update gate: following a deployment never blocks a check or an install. Other gates read it.
         public bool Deploying;
         public bool Policy;
     }
@@ -92,8 +92,19 @@ namespace TrackVice
             if (c.System) return "No update check while TrackVice runs as SYSTEM.";
             if (c.TaskSequence) return "No update check while a task sequence runs on this device.";
             if (c.Oobe) return "No update check while Windows setup or the Enrollment Status Page runs on this device.";
-            if (c.Deploying) return "No update check while TrackVice follows a deployment on this device.";
             if (c.Policy) return "Your organization has turned this off with the policy value " + PolicyValue + ".";
+            return null;
+        }
+
+        // Null when TrackVice may install an update now, otherwise why not. Only a real deployment on this device stops it.
+        public static string InstallReason(UpdateContext c)
+        {
+            if (c == null || !c.Window) return NoWindow;
+            if (c.WinPE) return "It is not installed in Windows PE.";
+            if (c.System) return "It is not installed while TrackVice runs as SYSTEM.";
+            if (c.TaskSequence) return "It is not installed while a task sequence runs on this device.";
+            if (c.Oobe) return "It is not installed while Windows setup or the Enrollment Status Page runs on this device.";
+            if (c.Policy) return "Your organization has turned updates off with the policy value " + PolicyValue + ".";
             return null;
         }
 
@@ -195,11 +206,24 @@ namespace TrackVice
             }
         }
 
-        // At most once a day. 20 hours, so a start at about the same time each day still checks.
-        public static bool DueAt(DateTime nowUtc)
+        // The first check comes this long after the window is shown, then one every CheckEvery while TrackVice stays open.
+        public static readonly TimeSpan FirstCheckAfter = TimeSpan.FromSeconds(8);
+        public static readonly TimeSpan CheckEvery = TimeSpan.FromHours(6);
+
+        // Given to the new TrackVice after an update, so it follows this device again and turns Watch on.
+        public const string ResumeWatchArg = "--resume-watch";
+
+        public static bool IsResumeWatch(string arg)
         {
-            DateTime? last = LastChecked;
-            return last == null || last.Value > nowUtc || nowUtc - last.Value > TimeSpan.FromHours(20);
+            return string.Equals(arg, ResumeWatchArg, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // What the new TrackVice opens: the saved session or folder of a file or folder session, or the watch switch for a live one.
+        public static string[] ReopenArgs(string mode, string sourcePath, bool watching)
+        {
+            if ((mode == Modes.File || mode == Modes.Folder) && !string.IsNullOrEmpty(sourcePath)) return new string[] { sourcePath };
+            if (mode == Modes.Live && watching) return new string[] { ResumeWatchArg };
+            return null;
         }
 
         public static void CheckAsync(Action<AppUpdateInfo> done)

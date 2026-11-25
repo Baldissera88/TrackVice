@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.0.1" src="https://img.shields.io/badge/version-2.0.1-005fb8">
+  <img alt="Version 2.0.2" src="https://img.shields.io/badge/version-2.0.2-005fb8">
   <a href="../../actions/workflows/build.yml"><img alt="Build" src="../../actions/workflows/build.yml/badge.svg"></a>
   <img alt="Windows 10, 11 and Server 2016 or later" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078d4">
   <img alt=".NET Framework 4.5 or later, included in Windows" src="https://img.shields.io/badge/.NET%20Framework-4.5%2B%20(in%20Windows)-512bd4">
@@ -266,7 +266,7 @@ TrackVice says "It is not installed while TrackVice follows a deployment on this
 
 TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save.
 
-- **Network.** Once a day at start, it asks `api.github.com` for the latest release, unless you turn that off in Settings > Updates (or the policy value `DisableUpdateCheck`). It sends nothing about you or your devices. Otherwise it connects only when you open something under **Devices**, **Your storage** or **Publish agent update**: then it talks to Microsoft Graph, the SMS Provider you name, the upload location you enter, Azure, and your Key Vault.
+- **Network.** At every start and every 6 hours while it is open, it asks `api.github.com` for the latest release, unless you turn that off in Settings > Updates (or the policy value `DisableUpdateCheck`). It sends nothing about you or your devices. Otherwise it connects only when you open something under **Devices**, **Your storage** or **Publish agent update**: then it talks to Microsoft Graph, the SMS Provider you name, the upload location you enter, Azure, and your Key Vault.
 - **What is kept, and how.** Upload links, the Intune sign-in, the account key of Your storage and customer codes are encrypted for your Windows account. The update key is in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted the same way.
 - **The agent** is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes itself when its time is up. Passwords, keys and tokens are masked before anything leaves the device.
 - **Nothing is sent by TrackVice itself.** The Help menu can open a pre-filled GitHub issue or e-mail, and you send it.

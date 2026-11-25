@@ -168,7 +168,7 @@ namespace TrackVice.Tests
             ok.Window = true;
             T.Check(UpdateGate.Reason(ok) == null, "the window on an ordinary PC may check");
 
-            string[] names = { "Screenshot", "WinPE", "System", "Oobe", "TaskSequence", "Deploying", "Policy" };
+            string[] names = { "Screenshot", "WinPE", "System", "Oobe", "TaskSequence", "Policy" };
             foreach (string n in names)
             {
                 UpdateContext c = new UpdateContext();
@@ -176,6 +176,35 @@ namespace TrackVice.Tests
                 typeof(UpdateContext).GetField(n).SetValue(c, true);
                 T.Check(UpdateGate.Reason(c) != null, "no check when " + n + " is set");
             }
+
+            UpdateContext dep = new UpdateContext();
+            dep.Window = true;
+            dep.Deploying = true;
+            T.Check(UpdateGate.Reason(dep) == null, "following a deployment does not block the check");
+            T.Check(UpdateGate.InstallReason(dep) == null, "following a deployment does not block the install");
+            T.Check(UpdateGate.InstallReason(null) != null && UpdateGate.InstallReason(new UpdateContext()) != null, "no window, no install");
+            T.Check(UpdateGate.InstallReason(ok) == null, "an ordinary PC may install");
+            foreach (string n in new string[] { "WinPE", "System", "TaskSequence", "Oobe", "Policy" })
+            {
+                UpdateContext c = new UpdateContext();
+                c.Window = true;
+                typeof(UpdateContext).GetField(n).SetValue(c, true);
+                T.Check(UpdateGate.InstallReason(c) != null, "no install when " + n + " is set");
+            }
+            UpdateContext shot = new UpdateContext();
+            shot.Window = true;
+            shot.Screenshot = true;
+            T.Check(UpdateGate.Reason(shot) != null && UpdateGate.InstallReason(shot) == null, "a screenshot stops the check only");
+
+            T.Check(AppUpdate.IsResumeWatch("--resume-watch") && AppUpdate.IsResumeWatch("--RESUME-WATCH") && !AppUpdate.IsResumeWatch("--watch"), "the resume switch is recognised");
+            T.Check(!AppUpdate.ResumeWatchArg.StartsWith("/") && AppUpdate.ResumeWatchArg.StartsWith("--"), "the switch does not go to the command line mode");
+            T.Eq(AppUpdate.ResumeWatchArg, AppUpdate.ReopenArgs(Modes.Live, null, true)[0], "a watched device reopens with the resume switch");
+            T.Check(AppUpdate.ReopenArgs(Modes.Live, null, false) == null, "a paused live session reopens plain");
+            T.Eq(@"C:\Logs\PC1", AppUpdate.ReopenArgs(Modes.Folder, @"C:\Logs\PC1", true)[0], "a folder reopens as before");
+            T.Eq(@"C:\Logs\s.json", AppUpdate.ReopenArgs(Modes.File, @"C:\Logs\s.json", false)[0], "a file reopens as before");
+            T.Check(AppUpdate.ReopenArgs(Modes.Demo, null, true) == null, "a demo is not reopened");
+            string wargs = AppUpdate.HelperArgs(@"C:\Work\TrackVice.exe", @"C:\Tools\TrackVice.exe", 7, AppUpdate.ReopenArgs(Modes.Live, null, true));
+            T.Check(wargs.EndsWith(" 7 \"--resume-watch\""), "the helper passes the resume switch on");
 
             MemoryRegistry reg = new MemoryRegistry();
             UpdateContext d = new UpdateContext();
@@ -264,13 +293,13 @@ namespace TrackVice.Tests
             T.Check(AppUpdate.Check().Error != null && calls == 0, "without a gate nothing is asked");
 
             AppUpdate.Gate = delegate { return null; };
-            T.Check(AppUpdate.DueAt(DateTime.UtcNow), "never checked means due");
             AppUpdateInfo r = AppUpdate.Check();
             T.Eq(1, calls, "an allowed check asks GitHub once");
             T.Check(r.Error == null && r.Newer && r.Latest == "99.0.0", "an allowed check finds the newer version");
             T.Check(AppUpdate.LastChecked.HasValue, "the time of the check is kept");
-            T.Check(!AppUpdate.DueAt(DateTime.UtcNow.AddHours(1)), "not again the same day");
-            T.Check(AppUpdate.DueAt(DateTime.UtcNow.AddHours(21)), "due again the next day");
+            AppUpdateInfo again = AppUpdate.Check();
+            T.Eq(2, calls, "a check right after another still asks: there is no daily limit");
+            T.Check(again.Error == null && AppUpdate.FirstCheckAfter == TimeSpan.FromSeconds(8) && AppUpdate.CheckEvery == TimeSpan.FromHours(6), "first check after 8 seconds, then every 6 hours");
 
             T.Check(AppUpdate.Enabled, "checking is on by default");
             AppUpdate.Enabled = false;

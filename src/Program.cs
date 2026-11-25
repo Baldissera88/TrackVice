@@ -168,6 +168,7 @@ namespace TrackVice
                 }
                 else if (low == "--scale" && i + 1 < args.Length) ShotScale.Apply(args[++i]);
                 else if (low == "--wall") o.Wall = true;
+                else if (AppUpdate.IsResumeWatch(a)) o.ResumeWatch = true;
                 else if ((low == "/upload" || low == "--upload") && i + 1 < args.Length) o.Upload = args[++i];
                 else if (Directory.Exists(a)) o.Folder = a;
                 else if (a.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && File.Exists(a)) o.File = a;
@@ -187,6 +188,8 @@ namespace TrackVice
         public int Tab = -1;
         public bool Compact;
         public bool Wall;
+        // Set by an update that restarted TrackVice while it watched this device.
+        public bool ResumeWatch;
         public string Upload;
         public Size Size;
     }

@@ -356,7 +356,7 @@ Use a Windows user that has not started TrackVice before, or remove `WelcomeSeen
 Use a PC where the previous release is installed with the MSI, and a copy of the exe in a folder.
 
 1. **Settings > Updates > Check now** says the newer version, and when it last checked.
-2. The status bar says "TrackVice <version> is out" at the next start, at most once a day.
+2. The status bar says "TrackVice <version> is out" about 8 seconds after the next start, and again every 6 hours while TrackVice is open.
 3. **Install** with the MSI: Windows asks for administrator rights, TrackVice closes, installs and opens again in the new version.
 4. **Install** with the copy in a folder: the exe in that folder is replaced and opens again.
 5. After the update, the status bar offers to publish the new version to Your storage.

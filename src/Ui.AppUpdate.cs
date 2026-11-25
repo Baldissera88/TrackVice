@@ -29,8 +29,6 @@ namespace TrackVice
         public static AppUpdateInfo Last;
         // Set by the main window: asks and installs.
         public static Action<AppUpdateInfo> Install;
-        // Set by the main window: brings what it knows about this device up to date before a check.
-        public static MethodInvoker BeforeCheck;
         // Screenshots show this instead of asking GitHub.
         public static AppUpdateInfo Demo;
         static bool wired;
@@ -79,7 +77,7 @@ namespace TrackVice
                 Toggle tog = new Toggle();
                 tog.On = AppUpdate.Enabled;
                 tog.Changed += Safe.Wrap(delegate { if (Demo == null) AppUpdate.Enabled = tog.On; });
-                l.Add(new SettingRow(Glyphs2.Sync, "Check for updates", "Once a day at start, TrackVice asks GitHub which version is the latest and shows a line in the status bar when there is a newer one. Nothing about you or your devices is sent. Never on the command line, as the agent, in Windows PE, during Windows setup or the ESP, or as SYSTEM. Administrators can turn it off for everyone with the DWORD DisableUpdateCheck = 1 under HKLM\\SOFTWARE\\Policies\\TrackVice.", tog));
+                l.Add(new SettingRow(Glyphs2.Sync, "Check for updates", "At every start and every 6 hours while it is open, TrackVice asks GitHub which version is the latest and shows a line in the status bar when there is a newer one. Nothing about you or your devices is sent. Never on the command line, as the agent, in Windows PE, during Windows setup or the ESP, or as SYSTEM. Administrators can turn it off for everyone with the DWORD DisableUpdateCheck = 1 under HKLM\\SOFTWARE\\Policies\\TrackVice.", tog));
             }
 
             FlatButton b = new FlatButton("Check now", null);
@@ -133,7 +131,6 @@ namespace TrackVice
                     else try { Process.Start(r.Url); } catch (Exception) { }
                     return;
                 }
-                if (BeforeCheck != null) BeforeCheck();
                 blocked = AppUpdate.Blocked;
                 if (blocked != null) { show(); return; }
                 b.Enabled = false;
@@ -233,11 +230,11 @@ namespace TrackVice
     // Asks before an update is downloaded: Install, Release page or Not now.
     public sealed class UpdateDialog : PageForm
     {
-        public UpdateDialog(Theme t, AppUpdateInfo r, bool msi) : base("Update TrackVice", t)
+        public UpdateDialog(Theme t, AppUpdateInfo r, bool msi, bool watching = false) : base("Update TrackVice", t)
         {
             Size = new Size(Dpi.S(700), Dpi.S(500));
             Add(new SectionTitle("TrackVice " + r.Latest + " is out"));
-            Add(new SettingRow(Glyphs.Info, "Install", "You have " + Program.Version + ". Install downloads " + (msi ? AppUpdate.MsiName : AppUpdate.ExeName) + " from GitHub to a new folder under %LOCALAPPDATA%\\TrackVice, checks it against the release's " + AppUpdate.SumsName + " and installs it. TrackVice closes and opens again." + (msi ? " Windows asks for administrator rights." : " The new TrackVice.exe replaces this one in " + System.IO.Path.GetDirectoryName(Program.Location) + "."), null));
+            Add(new SettingRow(Glyphs.Info, "Install", "You have " + Program.Version + ". Install downloads " + (msi ? AppUpdate.MsiName : AppUpdate.ExeName) + " from GitHub to a new folder under %LOCALAPPDATA%\\TrackVice, checks it against the release's " + AppUpdate.SumsName + " and installs it. TrackVice closes and opens again." + (watching ? " TrackVice restarts to update, then opens again and continues watching this device." : "") + (msi ? " Windows asks for administrator rights." : " The new TrackVice.exe replaces this one in " + System.IO.Path.GetDirectoryName(Program.Location) + "."), null));
             if (!string.IsNullOrEmpty(r.Notes))
             {
                 Add(new SectionTitle("What's new"));
@@ -364,15 +361,14 @@ namespace TrackVice
         AppUpdateInfo pendingUpdate;
         bool installingUpdate;
         volatile bool updateDeploying;
-        int updateTries;
+        System.Windows.Forms.Timer updateTimer;
 
-        // What stops an update check here. Runs on any thread, so the state of the session is read before, on this one.
-        string UpdateBlocked()
+        // The state of this device now, read fresh each time. Runs on any thread.
+        UpdateContext UpdateContextNow()
         {
             UpdateContext c = new UpdateContext();
             c.Window = true;
             c.Screenshot = start.Shot != null;
-            c.Deploying = updateDeploying;
             bool system = false;
             try
             {
@@ -391,39 +387,45 @@ namespace TrackVice
             }
             catch (Exception) { }
             using (LiveRegistry reg = new LiveRegistry()) UpdateGate.ReadDevice(c, reg, Environment.UserName, system, ts);
-            return UpdateGate.Reason(c);
+            return c;
         }
 
+        // What stops an update check here.
+        string UpdateBlocked()
+        {
+            return UpdateGate.Reason(UpdateContextNow());
+        }
+
+        // What stops an install here, read when Install is pressed. Following a deployment is not a reason.
+        string InstallBlocked()
+        {
+            return UpdateGate.InstallReason(UpdateContextNow());
+        }
+
+        // Only for LogVice's gate, which still treats a followed deployment as one.
         void RefreshUpdateDeploying()
         {
             updateDeploying = engine != null && engine.Mode == Modes.Live && UpdateGate.Deploying(engine.S, DateTime.UtcNow);
         }
 
-        // Once a day at start, after this device has been read, so a deployment on it is known first.
+        // About 8 seconds after the window is shown, then every 6 hours while TrackVice is open. Not waiting for the device to load.
         void StartUpdateCheck()
         {
             if (start.Shot != null) return;
             UpdatesUi.Wire();
             AppUpdate.Gate = UpdateBlocked;
             UpdatesUi.Install = delegate (AppUpdateInfo r) { UpdateInvoke(delegate { InstallUpdate(r); }); };
-            UpdatesUi.BeforeCheck = RefreshUpdateDeploying;
             FormClosed += delegate { if (AppUpdate.HandedOff) Environment.Exit(0); };
             ThreadPool.QueueUserWorkItem(delegate { AppUpdate.CleanUp(); });
-            if (!AppUpdate.Enabled || !AppUpdate.DueAt(DateTime.UtcNow)) return;
-            System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
-            t.Interval = 20000;
-            t.Tick += Safe.Wrap(delegate
+            updateTimer = new System.Windows.Forms.Timer();
+            updateTimer.Interval = (int)AppUpdate.FirstCheckAfter.TotalMilliseconds;
+            updateTimer.Tick += Safe.Wrap(delegate
             {
-                if (engine == null || (engine.Mode == Modes.Live && !loadedOnce))
-                {
-                    if (++updateTries < 15) return;
-                }
-                t.Stop();
-                t.Dispose();
-                RefreshUpdateDeploying();
+                updateTimer.Interval = (int)AppUpdate.CheckEvery.TotalMilliseconds;
+                if (!AppUpdate.Enabled || installingUpdate) return;
                 AppUpdate.CheckAsync(delegate (AppUpdateInfo r) { UpdateInvoke(delegate { UpdateFound(r); }); });
             });
-            t.Start();
+            updateTimer.Start();
         }
 
         void UpdateFound(AppUpdateInfo r)
@@ -465,26 +467,28 @@ namespace TrackVice
                 try { Process.Start(r.Url); } catch (Exception) { }
                 return;
             }
-            RefreshUpdateDeploying();
-            string why = UpdateBlocked();
+            string why = InstallBlocked();
             if (why != null)
             {
-                // Updating restarts TrackVice, which would stop it following the deployment.
-                string text = updateDeploying
-                    ? "TrackVice " + r.Latest + " is out. It is not installed while TrackVice follows a deployment on this device, because the update restarts TrackVice. Update when the deployment is done, or download it now and install it on another PC.\r\n\r\nOpen the release page?"
-                    : "TrackVice " + r.Latest + " is out. " + why.Replace("No update check", "It is not installed") + "\r\n\r\nOpen the release page?";
+                string text = "TrackVice " + r.Latest + " is out. " + why + "\r\n\r\nOpen the release page?";
                 if (MessageBox.Show(this, text, "Update TrackVice", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
                     try { Process.Start(r.Url); } catch (Exception) { }
                 return;
             }
             DialogResult a;
-            using (UpdateDialog d = new UpdateDialog(theme, r, msi)) a = d.ShowDialog(this);
+            bool resume = engine != null && engine.Mode == Modes.Live && watching;
+            using (UpdateDialog d = new UpdateDialog(theme, r, msi, resume)) a = d.ShowDialog(this);
             if (a == DialogResult.No) { try { Process.Start(r.Url); } catch (Exception) { } return; }
             if (a != DialogResult.Yes) return;
-            RefreshUpdateDeploying();
+            why = InstallBlocked();
+            if (why != null)
+            {
+                MessageBox.Show(this, "TrackVice " + r.Latest + " is out. " + why, "Update TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             installingUpdate = true;
             if (updateNote != null) updateNote.Say("Downloading TrackVice " + r.Latest + "…", false);
-            string[] reopen = engine != null && (engine.Mode == Modes.File || engine.Mode == Modes.Folder) ? new string[] { engine.S.SourcePath } : null;
+            string[] reopen = engine == null ? null : AppUpdate.ReopenArgs(engine.Mode, engine.S.SourcePath, resume);
             Thread th = new Thread(delegate ()
             {
                 string file = null, err = null;

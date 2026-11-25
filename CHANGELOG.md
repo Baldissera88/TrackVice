@@ -1,5 +1,13 @@
 # Changelog
 
+## TrackVice 2.0.2
+
+25 November 2026.
+
+- **Updates are found at once**: TrackVice checks for a new version at every start, about 8 seconds after it opens, and every 6 hours while it stays open, instead of once a day.
+- **Update while watching**: following or watching a deployment no longer blocks the check or the install. TrackVice restarts to update, then opens again and continues watching this device.
+- Fixed: after turning Watch off, a found update could not be installed until TrackVice was restarted. Install now checks the device each time it is pressed. It is still not installed in Windows PE, as SYSTEM, while a task sequence or Windows setup and the Enrollment Status Page run, or when the policy DisableUpdateCheck is set.
+
 ## TrackVice 2.0.1
 
 24 November 2026.

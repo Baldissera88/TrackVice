@@ -664,7 +664,7 @@ namespace TrackVice
             UpdateNewerRun(e);
             if (first)
             {
-                bool auto = e.Mode != Modes.Live || Settings.WatchOnStart;
+                bool auto = e.Mode != Modes.Live || Settings.WatchOnStart || (start.ResumeWatch && e.Mode == Modes.Live);
                 if (thenWatch && auto && e.CanWatch && start.Shot == null && start.At < 0) SetWatching(true);
                 else SetWatching(false);
                 Status(err != null ? "Reading failed: " + err.Message : Summary());
