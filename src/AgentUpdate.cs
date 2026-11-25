@@ -345,8 +345,22 @@ namespace TrackVice
         Newer
     }
 
+    // How a check ended, for deciding when to check next.
+    public enum UpdateKind
+    {
+        // The check worked: same, older, newer or downloaded.
+        Ok,
+        // Network, DNS, timeout, 5xx, or a file that is still being published: try again soon.
+        Transient,
+        // agent/latest.json is not there yet.
+        Nothing,
+        // 403, a bad key, a bad signature or an unusable manifest: the same answer next time, so no quick retries.
+        Refused
+    }
+
     public sealed class UpdateCheck
     {
+        public UpdateKind Kind = UpdateKind.Refused;
         public UpdateDecision Decision;
         public UpdateManifest Manifest;
         // The checked new TrackVice.exe, when it was downloaded.
@@ -386,6 +400,47 @@ namespace TrackVice
                 return BitConverter.ToString(h.ComputeHash(f)).Replace("-", "");
         }
 
+        public static readonly TimeSpan DeployingEvery = TimeSpan.FromMinutes(30);
+        public static readonly TimeSpan NothingEvery = TimeSpan.FromMinutes(30);
+        public static readonly TimeSpan RetryFirst = TimeSpan.FromMinutes(5);
+
+        // When to check next. attempt counts the checks in a row that ended like this one (1 for the first).
+        // Transient: 5, 10, 20, 40 minutes and on, never more than the normal interval. Nothing published: 30 minutes.
+        // Refused: the normal interval. The normal interval is 6 hours, or 30 minutes while a deployment runs.
+        public static TimeSpan NextDelay(UpdateKind last, int attempt, bool deploying)
+        {
+            TimeSpan interval = deploying ? DeployingEvery : Every;
+            if (last == UpdateKind.Transient)
+            {
+                double minutes = RetryFirst.TotalMinutes;
+                for (int i = 1; i < attempt && minutes < interval.TotalMinutes; i++) minutes *= 2;
+                TimeSpan d = TimeSpan.FromMinutes(minutes);
+                return d < interval ? d : interval;
+            }
+            if (last == UpdateKind.Nothing) return NothingEvery < interval ? NothingEvery : interval;
+            return interval;
+        }
+
+        // Sorts a store error by what the agent can do about it. 403 and other refusals are not retried quickly.
+        public static UpdateKind KindOf(Exception ex)
+        {
+            if (ex is StoreMissingException) return UpdateKind.Nothing;
+            string m = ex.Message ?? "";
+            Match h = Regex.Match(m, @"HTTP (\d{3})");
+            if (h.Success)
+            {
+                int code = int.Parse(h.Groups[1].Value, CultureInfo.InvariantCulture);
+                return code >= 500 || code == 408 || code == 429 ? UpdateKind.Transient : UpdateKind.Refused;
+            }
+            if (m.Contains("refused the link") || m.Contains("does not allow") || m.Contains("container was not found")) return UpdateKind.Refused;
+            return UpdateKind.Transient;
+        }
+
+        public static string Minutes(TimeSpan t)
+        {
+            return t.TotalMinutes >= 120 ? Math.Round(t.TotalHours, 1).ToString(CultureInfo.InvariantCulture) + " hours" : Math.Round(t.TotalMinutes).ToString(CultureInfo.InvariantCulture) + " min";
+        }
+
         public static string MissingText(string location)
         {
             return "Nothing is published in " + location + " yet (" + UpdateManifest.Name + " is missing). Publish agent update in TrackVice puts it there.";
@@ -403,12 +458,14 @@ namespace TrackVice
             catch (StoreMissingException)
             {
                 r.Message = MissingText(store.Title);
+                r.Kind = UpdateKind.Nothing;
                 r.Why = AgentVersions.Link;
                 return r;
             }
             catch (Exception ex)
             {
                 r.Message = "Could not read " + UpdateManifest.Name + " in " + store.Title + ": " + ex.Message;
+                r.Kind = KindOf(ex);
                 r.Why = AgentVersions.Link;
                 return r;
             }
@@ -441,6 +498,7 @@ namespace TrackVice
                 return r;
             }
             r.Decision = Decide(current, publicKey, store.Title, m.Version);
+            r.Kind = UpdateKind.Ok;
             r.Why = AgentVersions.On;
             if (r.Decision == UpdateDecision.Same)
             {
@@ -457,6 +515,7 @@ namespace TrackVice
             catch (Exception ex)
             {
                 r.Decision = UpdateDecision.Invalid;
+                r.Kind = ex is StoreMissingException ? UpdateKind.Transient : KindOf(ex);
                 r.Message = "Version " + m.Version + " could not be downloaded: " + ex.Message;
                 r.Why = AgentVersions.Link;
                 return r;
@@ -464,6 +523,7 @@ namespace TrackVice
             if (exe.LongLength != m.Size)
             {
                 r.Decision = UpdateDecision.Invalid;
+                r.Kind = UpdateKind.Transient;
                 r.Message = m.Blob + " has " + exe.LongLength + " bytes, the signed size is " + m.Size + ". It is not installed.";
                 r.Why = AgentVersions.Download;
                 return r;
@@ -472,6 +532,7 @@ namespace TrackVice
             if (!string.Equals(hash, m.Sha256, StringComparison.OrdinalIgnoreCase))
             {
                 r.Decision = UpdateDecision.Invalid;
+                r.Kind = UpdateKind.Transient;
                 r.Message = m.Blob + " has SHA-256 " + hash + ", the signed one is " + m.Sha256.ToUpperInvariant() + ". It is not installed.";
                 r.Why = AgentVersions.Download;
                 return r;
@@ -480,6 +541,7 @@ namespace TrackVice
             string path = System.IO.Path.Combine(stageDir, "TrackVice-" + m.Version + ".exe");
             File.WriteAllBytes(path, exe);
             r.Path = path;
+            r.Kind = UpdateKind.Ok;
             r.Message = "Version " + m.Version + " is downloaded and its signature, size and SHA-256 are correct.";
             return r;
         }
@@ -494,7 +556,32 @@ namespace TrackVice
         void StartDetached(string exe, string arguments);
     }
 
-    // Checks for an update at start and every 6 hours while the installed agent runs.
+    // Keeps the log short: a line that says the same as the last one is written once an hour, as "still ...".
+    // A line that differs from the last one, including the first good one after a failure, is always written.
+    public sealed class UpdateLogGate
+    {
+        public static readonly TimeSpan Repeat = TimeSpan.FromHours(1);
+        string lastKey;
+        DateTime lastUtc;
+
+        // The text to log, or null to stay quiet.
+        public string Offer(UpdateKind kind, string message, DateTime nowUtc)
+        {
+            string key = kind + "|" + message;
+            if (key != lastKey)
+            {
+                lastKey = key;
+                lastUtc = nowUtc;
+                return message;
+            }
+            if (nowUtc - lastUtc < Repeat) return null;
+            lastUtc = nowUtc;
+            return "Still the same: " + message;
+        }
+    }
+
+    // Checks for an update at start and every 6 hours while the installed agent runs, sooner after a check that did not
+    // work, and every 30 minutes while the deployment is running.
     public sealed class AgentSelfUpdate
     {
         readonly ISessionStore store;
@@ -502,7 +589,13 @@ namespace TrackVice
         readonly Action<string> log;
         readonly IUpdateLauncher launcher;
         DateTime nextUtc = DateTime.MinValue;
+        DateTime lastCheckUtc = DateTime.MinValue;
         bool waitFirst;
+        // After a failed update the next check waits the full interval, deployment or not.
+        bool held;
+        UpdateKind lastKind = UpdateKind.Ok;
+        int attempt;
+        readonly UpdateLogGate gate = new UpdateLogGate();
         // The result of the last check as an AgentVersions code, and when it ran.
         public string State = AgentVersions.On;
         public DateTime? CheckedUtc;
@@ -553,7 +646,7 @@ namespace TrackVice
                 u.waitFirst = true;
                 log("The update to " + tried + " did not finish. Self-update is on and checks " + st.Title + " again in " + AgentUpdate.Every.TotalHours + " hours.");
             }
-            else log("Self-update is on. It checks " + st.Title + " now and every " + AgentUpdate.Every.TotalHours + " hours.");
+            else log("Self-update is on. It checks " + st.Title + " now and every " + AgentUpdate.Every.TotalHours + " hours, every " + AgentUpdate.DeployingEvery.TotalMinutes + " minutes while the deployment runs.");
             return u;
         }
 
@@ -587,24 +680,42 @@ namespace TrackVice
         // True when a newer version was downloaded and the helper was started. The agent then makes its last upload and exits.
         public bool Cycle(DateTime nowUtc)
         {
-            if (nowUtc < nextUtc) return false;
-            nextUtc = nowUtc + AgentUpdate.Every;
+            return Cycle(nowUtc, false);
+        }
+
+        // deploying: the deployment on this device is not done yet, so a publish made now should be found soon.
+        public bool Cycle(DateTime nowUtc, bool deploying)
+        {
+            DateTime due = nextUtc;
+            // A deployment that starts again after being done must not wait out the rest of 6 hours.
+            if (deploying && !held && lastCheckUtc > DateTime.MinValue && lastCheckUtc + AgentUpdate.DeployingEvery < due) due = lastCheckUtc + AgentUpdate.DeployingEvery;
+            if (nowUtc < due) return false;
             if (waitFirst)
             {
                 waitFirst = false;
+                held = true;
+                nextUtc = nowUtc + AgentUpdate.Every;
                 return false;
             }
+            held = false;
             UpdateCheck r;
             CheckedUtc = nowUtc;
+            lastCheckUtc = nowUtc;
             try { r = AgentUpdate.Check(store, key, current, Path.Combine(dir, AgentUpdate.StageFolder)); }
             catch (Exception ex)
             {
-                State = AgentVersions.Link;
-                log("Update check failed: " + ex.Message);
-                return false;
+                r = new UpdateCheck();
+                r.Kind = AgentUpdate.KindOf(ex);
+                r.Why = AgentVersions.Link;
+                r.Message = "Could not check: " + ex.Message;
             }
             State = r.Why;
-            log("Update check: " + r.Message);
+            attempt = r.Kind == lastKind && r.Kind != UpdateKind.Ok ? attempt + 1 : 1;
+            lastKind = r.Kind;
+            TimeSpan wait = AgentUpdate.NextDelay(r.Kind, attempt, deploying);
+            nextUtc = nowUtc + wait;
+            string line = gate.Offer(r.Kind, r.Message, nowUtc);
+            if (line != null) log("Update check: " + line + (r.Kind == UpdateKind.Ok ? "" : " Next check in " + AgentUpdate.Minutes(wait) + "."));
             if (r.Path == null) return false;
             try
             {

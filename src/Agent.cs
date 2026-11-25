@@ -825,7 +825,7 @@ namespace TrackVice
                         if (alerts != null) alerts.Cycle(e.S, idle, now);
                         logs.Cycle(e.S, idle, last, now);
                         if (last) break;
-                        if (self != null && self.Cycle(now))
+                        if (self != null && self.Cycle(now, !life.DoneUtc.HasValue))
                         {
                             a.Cycle(e.S, now, o, true);
                             updating = true;
