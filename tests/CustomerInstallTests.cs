@@ -137,7 +137,7 @@ namespace TrackVice.Tests
                 T.Check(s.Contains("could not be downloaded from $HostName after 5 attempts: $reason"), n + "the last failure names the host and the error");
                 T.Check(first > 0 && s.IndexOf("$null = Wait-ForHost -HostName $") < first, n + "waits for the host before the first download");
             }
-            T.Check(AgentScriptTemplate.Links.Contains("$installedHash -eq $Sha256") && AgentScriptTemplate.Share.Contains("$installedHash -eq $Sha256"), "Robust: links and share are idempotent on the SHA-256 they install");
+            T.Check(!AgentScriptTemplate.Links.Contains("$installedHash") && !AgentScriptTemplate.Share.Contains("$installedHash"), "Robust: an installed agent is kept whatever its SHA-256, so it is never downgraded");
             T.Check(AgentScriptTemplate.Links.Contains("SecurityProtocol = [Net.SecurityProtocolType]::Tls12") && AgentScriptTemplate.Text.Contains("SecurityProtocol = [Net.SecurityProtocolType]::Tls12"), "Robust: TLS 1.2 is set");
             T.Check(!AgentScriptTemplate.Text.Contains("Invoke-WebRequest -Uri (Get-BlobLink"), "Robust: the customer script has no direct download");
         }

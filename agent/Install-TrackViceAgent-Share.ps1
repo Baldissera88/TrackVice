@@ -90,18 +90,15 @@ $agentTask = Get-ScheduledTask -TaskName 'TrackVice Agent' -ErrorAction Silently
 $agentRegistered = $agentTask -and $agentTask.State -ne 'Disabled'
 $useInstalled = $false
 if (Test-Path -Path $agentExe) {
-    # The installed exe is the one this script installs when it has the same SHA-256. A version the agent updated itself to is replaced by the script's version only when the exe is missing.
-    $installedHash = (Get-FileHash -Path $agentExe -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
-    if ($installedHash -eq $Sha256) {
-        if ($agentRegistered) {
-            $state = if ($agentTask.State -eq 'Running') { 'installed and running' } else { 'installed and registered' }
-            Write-Output "The TrackVice agent $(Get-AgentVersion) is already $state. Nothing to do."
-            exit 0
-        }
-        # The exe is the right one but its task is missing: register it again from the installed exe, without a download.
-        Write-Output 'The TrackVice agent is installed but its scheduled task is missing. It is registered again.'
-        $useInstalled = $true
+    # Whatever version is installed is kept: the agent updates itself, and an older exe is never put over a newer one.
+    if ($agentRegistered) {
+        $state = if ($agentTask.State -eq 'Running') { 'installed and running' } else { 'installed and registered' }
+        Write-Output "The TrackVice agent $(Get-AgentVersion) is already $state. Nothing to do."
+        exit 0
     }
+    # The exe is there but its task is not: register it again from the installed exe, without a download.
+    Write-Output 'The TrackVice agent is installed but its scheduled task is missing. It is registered again.'
+    $useInstalled = $true
 }
 
 # Downloads go to a new folder that only SYSTEM and administrators can change, so the file that is checked is the one that runs.
