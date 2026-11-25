@@ -2,7 +2,7 @@
 
 What is planned for the next version of TrackVice.
 
-Everything released so far is in CHANGELOG.md (latest: TrackVice 2.0.3).
+Everything released so far is in CHANGELOG.md (latest: TrackVice 2.0.4).
 
 ## 1. First use in a few minutes: Quick start
 
@@ -35,15 +35,5 @@ Today the files are not code signed, so Windows SmartScreen and the UAC prompt w
 - **Microsoft Artifact Signing** (formerly Trusted Signing) in Azure. It is a monthly fee, the keys stay in Azure, and the signature gives a base reputation in SmartScreen. Public Trust is open to organizations in the EU, but individual developers only in the USA and Canada, so the publisher must be a company (for example MANSOFT A/S, if it can and wants to be the publisher). The other choice is an OV code signing certificate from a certificate authority, which today must be kept on a hardware token or in a cloud HSM.
 - **Signing in the build**, so no unsigned file is ever released, and a check in TrackVice that an update is signed by the same publisher before it is installed.
 - **What it changes:** the publisher name is shown instead of "Unknown publisher". SmartScreen may still warn for a short time after the first signed release while reputation builds up. Files deployed by Intune or SCCM are not checked by SmartScreen, so devices are not affected either way.
-
-## 4. A share (UNC path) instead of Azure storage in New customer
-
-For domain-joined devices on the company network (SCCM task sequences and Hybrid Autopilot), a share is simpler than Azure storage.
-
-- **Step 2 Storage offers two choices**: Azure storage, as today, or **Share (UNC)** such as `\\server\TrackVice\<customer>`.
-- **TrackVice checks the share** from this PC: that it can be reached, written to and read, and explains the permissions the devices need (Domain Computers may create files; only admins may read and change).
-- **No links are needed**: the Links step is skipped. TrackVice.exe and the signed agent update are put in an `agent` folder on the share, so agents update from there.
-- **The script and the task sequence step** are made with the share filled in, and the customer is saved with the share as its upload location, so the device list reads from it.
-- **Clear limits**: the agent writes as the device's computer account, so it fits devices that can reach the share. Not cloud-only Autopilot devices on the internet, and not Windows PE unless the share accepts that account.
 
 Wishes are welcome: in TrackVice, Help > Suggest a feature, or [Discussions](https://github.com/Baldissera88/TrackVice/discussions).

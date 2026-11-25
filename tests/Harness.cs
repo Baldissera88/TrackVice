@@ -67,6 +67,7 @@ namespace TrackVice.Tests
             AgentLifetimeTests.Run();
             AppGroupTests.Run();
             CustomerInstallTests.Run();
+            ShareStorageTests.Run();
             AddCustomerTests.Run();
             AddCustomerGroupTests.Run();
             CustomerFlowTests.Run();

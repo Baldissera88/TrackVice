@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.0.3" src="https://img.shields.io/badge/version-2.0.3-005fb8">
+  <img alt="Version 2.0.4" src="https://img.shields.io/badge/version-2.0.4-005fb8">
   <a href="../../actions/workflows/build.yml"><img alt="Build" src="../../actions/workflows/build.yml/badge.svg"></a>
   <img alt="Windows 10, 11 and Server 2016 or later" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078d4">
   <img alt=".NET Framework 4.5 or later, included in Windows" src="https://img.shields.io/badge/.NET%20Framework-4.5%2B%20(in%20Windows)-512bd4">
@@ -99,6 +99,8 @@ The **Get started** page (Devices > Get started) walks through the same steps an
 4. **Press Create.** TrackVice makes a private container `tv-<customer>`, two links, the **customer code**, and the script `Install-TrackViceAgent-<customer>.ps1` in `Documents\TrackVice\Scripts`. If you signed in to Intune, it also adds the platform script **TrackVice agent**. If you skipped that, add the saved script to Intune yourself: system context, no signature check, 64-bit PowerShell, assigned to a device group.
 5. **Test on one device.** On a test PC, in PowerShell as administrator, run `.\TrackVice.exe /agent-install /customer "<customer code>"`. Check that it appears in the list (next step), then run `TrackVice.exe /agent-remove` to take it off again.
 6. **Follow the devices.** Choose **Devices > Intune / cloud > Devices with the TrackVice agent**, with the customer chosen at the top. A device shows up during device setup. Select it and choose **Watch this device** to see it as if you sat at it.
+
+**A share instead of Azure storage.** For domain-joined devices on the company network (SCCM task sequences and Hybrid Autopilot), **Devices > Intune / cloud > New customer with links** also offers **Share (UNC)** in step 2, such as `\\server\TrackVice\Contoso`. TrackVice checks the share from your PC, shows the permissions the devices need and copies the icacls commands. The Links step is skipped, TrackVice.exe and the signed agent update are put in an `agent` folder on the share, and the script and the task sequence command use the share. It does not fit cloud-only Autopilot devices on the internet. See [docs/AGENT.md](docs/AGENT.md#alternative-a-folder-instead-of-a-storage-account).
 
 <img src="docs/images/trackvice-agent-list.png" width="900" alt="Devices with the TrackVice agent">
 

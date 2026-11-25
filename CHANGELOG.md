@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 2.0.4
+
+25 November 2026.
+
+- **A share instead of Azure storage**: in New customer, step 2 Storage now offers Azure storage or **Share (UNC)**, such as \\server\TrackVice\Contoso, for domain-joined devices on the company network (SCCM task sequences and Hybrid Autopilot). Check tests from this PC that the share can be reached, written and read. Copy icacls commands gives the permissions the devices need. The Links step is skipped, TrackVice.exe and the signed agent update go to the share's agent folder, and the platform script and the task sequence command are made with the share filled in. No customer code is made for a share.
+
 ## TrackVice 2.0.3
 
 25 November 2026.

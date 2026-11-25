@@ -17,6 +17,14 @@ namespace TrackVice
     {
         readonly string[] names;
         int current;
+        // A step that this setup does not need, such as Links for a share. It is drawn dimmed with a dash.
+        int skipped = -1;
+
+        public int Skipped
+        {
+            get { return skipped; }
+            set { skipped = value; Invalidate(); }
+        }
 
         public StepRail(params string[] names)
         {
@@ -53,14 +61,15 @@ namespace TrackVice
             {
                 float cx = slot * i + slot / 2;
                 RectangleF c = new RectangleF(cx - d / 2f, cy - d / 2f, d, d);
-                Color fill = i == current ? T.Accent : i < current ? T.AccentSoft : T.Field;
-                Color fg = i == current ? T.OnAccent : i < current ? T.Accent : T.Text3;
+                bool off = i == skipped;
+                Color fill = off ? T.Field : i == current ? T.Accent : i < current ? T.AccentSoft : T.Field;
+                Color fg = off ? T.Text3 : i == current ? T.OnAccent : i < current ? T.Accent : T.Text3;
                 using (SolidBrush b = new SolidBrush(fill)) g.FillEllipse(b, c);
-                if (i > current) using (Pen p = new Pen(T.FieldStroke, 1f)) g.DrawEllipse(p, c);
-                string mark = (i + 1).ToString(CultureInfo.InvariantCulture);
+                if (off || i > current) using (Pen p = new Pen(T.FieldStroke, 1f)) g.DrawEllipse(p, c);
+                string mark = off ? "-" : (i + 1).ToString(CultureInfo.InvariantCulture);
                 Draw.Text(g, mark, Fonts.SmallSemibold, Rectangle.Round(c), fg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
                 Rectangle lr = new Rectangle((int)(slot * i), cy + d / 2 + Dpi.S(4), (int)slot, Fonts.Small.Height + 2);
-                Draw.Text(g, names[i], i == current ? Fonts.SmallSemibold : Fonts.Small, lr, i == current ? T.Text : T.Text2, Draw.Line | TextFormatFlags.HorizontalCenter);
+                Draw.Text(g, names[i], i == current ? Fonts.SmallSemibold : Fonts.Small, lr, off ? T.Text3 : i == current ? T.Text : T.Text2, Draw.Line | TextFormatFlags.HorizontalCenter);
             }
         }
     }
@@ -178,16 +187,17 @@ namespace TrackVice
         Customer before;
 
         // Inputs kept across steps.
-        readonly TextBox tName, tTenant, tAzTenant, tClient, tAccount, tAlert, tSearch;
+        readonly TextBox tName, tTenant, tAzTenant, tClient, tAccount, tAlert, tSearch, tShare;
         readonly ComboBox cSub, cGroup, cRegion, cAccount, cFound;
         readonly Segmented sKind = new Segmented("New account", "Existing account");
+        readonly Segmented sStore = new Segmented("Azure storage", "Share (UNC)");
         readonly Segmented sValid = new Segmented("6 months", "1 year", "2 years");
         readonly NumericUpDown nDays, nMaxAge;
-        readonly FlatButton bArm, bCreate, bLinks, bExe, bUpload, bGuide, bTest, bSave, bGraph, bSearch, bIntune;
+        readonly FlatButton bArm, bCreate, bLinks, bExe, bUpload, bCheck, bAcl, bTsCopy, bGuide, bTest, bSave, bGraph, bSearch, bIntune;
 
         WebSignIn armIn, graphIn;
         DeviceCode armCode, graphCode;
-        string armText = "", storageText = "", nameText = "", linksText = "", uploadText = "", alertText = "", scriptText = "", graphText = "", intuneText = "";
+        string armText = "", storageText = "", nameText = "", linksText = "", uploadText = "", shareText = "", alertText = "", scriptText = "", graphText = "", intuneText = "";
         List<AzureSubscription> subs = new List<AzureSubscription>();
         List<AzureAccount> accounts = new List<AzureAccount>();
         List<DirectoryGroup> found = new List<DirectoryGroup>();
@@ -220,6 +230,8 @@ namespace TrackVice
             tAccount.Leave += delegate { CheckName(); };
             tAlert = Field(360, true);
             tSearch = Field(200, false);
+            tShare = Field(440, true);
+            tShare.TextChanged += delegate { if (!filling) ShareEdited(); };
             cSub = Combo(360, true);
             cGroup = Combo(260, false);
             cRegion = Combo(200, false);
@@ -232,6 +244,7 @@ namespace TrackVice
             sValid.Selected = 1;
             body.Keep.Add(sKind);
             body.Keep.Add(sValid);
+            body.Keep.Add(sStore);
 
             bArm = Button("Sign in", delegate { SignIn(true); });
             bCreate = Button("Create", delegate { CreateStorage(); });
@@ -241,6 +254,16 @@ namespace TrackVice
             bExe = Button("Browse", delegate { BrowseExe(); });
             bUpload = Button("Upload", delegate { Upload(); });
             bUpload.Primary = true;
+            bCheck = Button("Check", delegate { CheckShare(); });
+            bCheck.Primary = true;
+            bAcl = Button("Copy icacls commands", delegate { CopyAcl(); });
+            bAcl.Glyph = Glyphs.Copy;
+            bAcl.AutoWidth();
+            bAcl.Width += Dpi.S(8);
+            bTsCopy = Button("Copy", delegate { CopyTsCommand(); });
+            bTsCopy.Glyph = Glyphs.Copy;
+            bTsCopy.AutoWidth();
+            bTsCopy.Width += Dpi.S(8);
             bGuide = Button("Open the guide", delegate { Open(GuideUrl); });
             bTest = Button("Send a test", delegate { TestAlert(); });
             bSave = Button("Save as", delegate { SaveScript(); });
@@ -254,6 +277,7 @@ namespace TrackVice
             watch.Tick += delegate { WatchSubscription(); };
             watch.Start();
             FormClosed += delegate { watch.Stop(); watch.Dispose(); };
+            sStore.Changed += delegate { run.UseShare = sStore.Selected == 1; rail.Skipped = run.UseShare ? 2 : -1; note.Say("", false); Rebuild(); Nav(); };
             sKind.Changed += delegate { run.NewAccount = sKind.Selected == 0; Rebuild(); };
             cGroup.TextChanged += delegate { if (!filling) Plan(); };
             cRegion.TextChanged += delegate { if (!filling) Plan(); };
@@ -276,7 +300,7 @@ namespace TrackVice
             bNext.Click += Safe.Wrap(delegate { Next(); });
             bBack.Width = Math.Max(bBack.Width, Dpi.S(96));
             bBack.Dock = DockStyle.Right;
-            bBack.Click += Safe.Wrap(delegate { if (!busy && page > 0) Go(page - 1); });
+            bBack.Click += Safe.Wrap(delegate { if (!busy && page > 0) Go(page == 3 && run.UseShare ? 1 : page - 1); });
             Panel gap1 = new Panel(), gap2 = new Panel();
             gap1.Dock = gap2.Dock = DockStyle.Right;
             gap1.Width = gap2.Width = Dpi.S(8);
@@ -298,8 +322,14 @@ namespace TrackVice
         // The demo, with made-up answers. tab picks the step to show, with the steps before it already done.
         public static NewCustomerDialog ForDemo(Theme t, int tab)
         {
+            return ForDemo(t, tab, false);
+        }
+
+        // share: the demo with a share (UNC) instead of Azure storage.
+        public static NewCustomerDialog ForDemo(Theme t, int tab, bool share)
+        {
             NewCustomerDialog d = new NewCustomerDialog(t, CustomerBook.Demo(), new DemoSetupWeb(), true);
-            d.DemoTo(Math.Max(0, Math.Min(StepNames.Length - 1, tab)));
+            d.DemoTo(Math.Max(0, Math.Min(StepNames.Length - 1, tab)), share);
             return d;
         }
 
@@ -318,14 +348,24 @@ namespace TrackVice
             return d;
         }
 
-        void DemoTo(int target)
+        void DemoTo(int target, bool share)
         {
             tName.Text = "Northwind Traders";
             tTenant.Text = "northwind.onmicrosoft.com";
             if (target >= 1) Next();
-            if (target >= 1) SignIn(true);
-            if (target >= 2) { CreateStorage(); Next(); MakeLinks(); }
-            if (target >= 3) { Next(); Upload(); }
+            if (share)
+            {
+                sStore.Selected = 1;
+                tShare.Text = @"\\fs01\TrackVice\Northwind Traders";
+                if (target >= 1) CheckShare();
+            }
+            else
+            {
+                if (target >= 1) SignIn(true);
+                if (target >= 2) { CreateStorage(); Next(); MakeLinks(); }
+            }
+            // A share has no Links step: Next goes from Storage to Upload.
+            if (share ? target >= 2 : target >= 3) { Next(); Upload(); }
             if (target >= 4) Next();
             if (target >= 5) { tAlert.Text = "https://northwind.example/workflows/trackvice-alerts"; Next(); SignIn(false); tSearch.Text = "Autopilot"; SearchGroups(); }
             if (target >= 6) { AddToIntune(); Next(); }
@@ -433,7 +473,7 @@ namespace TrackVice
         {
             switch (page)
             {
-                case 1: return run.StorageReady;
+                case 1: return run.UseShare ? run.ShareChecked : run.StorageReady;
                 case 2: return run.Links != null;
                 case 3: return run.ExeSha256.Length > 0;
                 default: return true;
@@ -454,7 +494,8 @@ namespace TrackVice
             else if (page == StepNames.Length - 1) { DialogResult = DialogResult.OK; Close(); return; }
             if (!CanLeave()) return;
             note.Say("", false);
-            Go(page + 1);
+            // A share needs no links: the Links step is skipped.
+            Go(page == 1 && run.UseShare ? 3 : page + 1);
         }
 
         // Runs a step away from the window. In the demo it runs at once, so a screenshot shows the result.
@@ -581,7 +622,9 @@ namespace TrackVice
 
         void BuildStorage(List<Control> l)
         {
-            l.Add(new SectionTitle("2. Azure storage"));
+            l.Add(new SectionTitle(run.UseShare ? "2. Share (UNC)" : "2. Azure storage"));
+            l.Add(Row(Glyphs2.Folder, "Where the devices upload", "Azure storage, with links, works for every device with internet. A share is simpler for devices on the company network.", sStore));
+            if (run.UseShare) { BuildShare(l); return; }
             l.Add(Row(Glyphs.Info, "What this does", "Signs in to Azure and makes a storage account with two private containers: " + Arm.Sessions + " for the sessions and logs the agents upload, and " + Arm.AgentFiles + " for TrackVice.exe. The account does not have to be in the customer's tenant.", null));
             l.Add(new SectionTitle("Sign in"));
             l.Add(Row(Glyphs.Shield, "Azure tenant", "Where the subscription is. Empty signs in to the tenant of your account.", tAzTenant));
@@ -604,6 +647,79 @@ namespace TrackVice
             bCreate.Text = run.NewAccount ? "Create" : "Set up";
             bCreate.Enabled = !run.StorageReady;
             l.Add(Row(Glyphs.Save, run.StorageReady ? "Done" : run.NewAccount ? "Create" : "Set up", run.StorageReady ? storageText : PlanText(), bCreate));
+        }
+
+        void BuildShare(List<Control> l)
+        {
+            l.Add(Row(Glyphs.Info, "What this does", "The agents upload to a folder on a share, and read TrackVice.exe and agent updates from its agent folder. No Azure account and no links are made, so the Links step is skipped.", null));
+            l.Add(Row(Glyphs2.Folder, "Share folder", "The UNC path for this customer, such as " + ShareStorage.Example + ". Use a folder only for this customer.", tShare));
+            bCheck.Text = run.ShareChecked ? "Check again" : "Check";
+            l.Add(Row(Glyphs.Shield, run.ShareChecked ? "Checked" : "Check", shareText.Length > 0 ? shareText : "Tests from this PC that the folder exists or can be made, and that a test file can be written, read back and deleted. Nothing else is changed.", bCheck));
+            l.Add(Row(Glyphs.Shield, "Permissions the devices need", ShareStorage.PermissionsText + " The commands run on the file server, as administrator.", bAcl));
+            l.Add(Row(Glyphs.Info, "Limits", ShareStorage.LimitsText, null));
+        }
+
+        // The path was edited: what was checked no longer holds.
+        void ShareEdited()
+        {
+            if (page != 1 || !run.UseShare) return;
+            run.ShareChecked = false;
+            shareText = "";
+            foreach (Control c in body.Controls)
+            {
+                SettingRow r = c as SettingRow;
+                if (r != null && r.Accessory == bCheck) { r.Title = "Check"; r.Desc = "Tests from this PC that the folder exists or can be made, and that a test file can be written, read back and deleted. Nothing else is changed."; r.Invalidate(); }
+            }
+            bCheck.Text = "Check";
+            Relayout();
+            Nav();
+        }
+
+        void CheckShare()
+        {
+            if (busy) return;
+            string path = ShareStorage.Normalize(tShare.Text);
+            string problem = ShareStorage.PathProblem(path);
+            if (problem != null) { note.Say(problem, true); tShare.Focus(); return; }
+            ShareCheck res = null;
+            Work("Checking " + path + "...", delegate
+            {
+                if (demo)
+                {
+                    // The demo has no share: it shows what a successful check says.
+                    run.Share = path;
+                    run.ShareChecked = true;
+                    run.Done.Add("Share " + path + ": a test file was written, read back and deleted");
+                    res = new ShareCheck();
+                    res.Ok = true;
+                    res.Kind = ShareStorage.KindOf(path);
+                    res.Message = "Found the folder " + path + ", wrote a test file, read it back and deleted it. This PC can use it.";
+                    return;
+                }
+                res = run.CheckShare(path);
+                if (!res.Ok) throw new SetupException(res.Message);
+            }, delegate
+            {
+                shareText = res.Message;
+                if (res.Warning.Length > 0) { shareText += "\n" + res.Warning; note.Say(res.Warning, true); }
+            }, delegate
+            {
+                run.ShareChecked = false;
+                shareText = res != null ? res.Message : "";
+            });
+        }
+
+        void CopyAcl()
+        {
+            string path = ShareStorage.Normalize(tShare.Text);
+            string problem = ShareStorage.PathProblem(path);
+            if (problem != null) { note.Say(problem, true); tShare.Focus(); return; }
+            note.Say(Menus.Copy(ShareStorage.IcaclsText(path)) ? "Copied the icacls commands. Run them on the file server in a prompt as administrator." : "The commands could not be copied.", false);
+        }
+
+        void CopyTsCommand()
+        {
+            note.Say(Menus.Copy(ShareStorage.TaskSequenceCommand(run.Share, run.Alert)) ? "Copied the command line." : "The command line could not be copied.", false);
         }
 
         string RegionName
@@ -865,12 +981,22 @@ namespace TrackVice
 
         void BuildUpload(List<Control> l)
         {
-            l.Add(new SectionTitle("4. Upload TrackVice.exe"));
+            l.Add(new SectionTitle(run.UseShare ? "4. Copy TrackVice.exe to the share" : "4. Upload TrackVice.exe"));
+            if (run.UseShare) { BuildShareUpload(l); return; }
             l.Add(Row(Glyphs.Info, "What this does", "Uploads TrackVice.exe to " + Arm.AgentFiles + ", where devices download it with the download link. The script checks its SHA-256 before it runs it.", null));
             string v = File.Exists(run.ExePath) ? SemVer.OfFile(run.ExePath) : null;
             l.Add(Row(Glyphs2.Apps, "TrackVice.exe", run.ExePath + (v != null ? " · version " + v : ""), bExe));
             bUpload.Text = run.ExeSha256.Length > 0 ? "Upload again" : "Upload";
             l.Add(Row(Glyphs2.Sync, run.ExeSha256.Length > 0 ? "Uploaded" : "Upload", uploadText.Length > 0 ? uploadText : "Puts the file in " + Arm.AgentFiles + " as TrackVice.exe, over one that is there.", bUpload));
+        }
+
+        void BuildShareUpload(List<Control> l)
+        {
+            l.Add(Row(Glyphs.Info, "What this does", "Copies TrackVice.exe to " + ShareStorage.AgentDir(run.Share) + " for the script, and publishes the same version there as a signed agent update (" + UpdateManifest.Name + " and agent\\TrackVice-<version>.exe), so the agents update from the share. It is signed with the update key of this PC, and one is made when there is none.", null));
+            string v = File.Exists(run.ExePath) ? SemVer.OfFile(run.ExePath) : null;
+            l.Add(Row(Glyphs2.Apps, "TrackVice.exe", run.ExePath + (v != null ? " · version " + v : ""), bExe));
+            bUpload.Text = run.ExeSha256.Length > 0 ? "Copy again" : "Copy";
+            l.Add(Row(Glyphs2.Sync, run.ExeSha256.Length > 0 ? "Copied" : "Copy", uploadText.Length > 0 ? uploadText : "Puts the file in " + ShareStorage.AgentDir(run.Share) + ", over one that is there, and signs the update.", bUpload));
         }
 
         void BrowseExe()
@@ -890,7 +1016,8 @@ namespace TrackVice
 
         void Upload()
         {
-            if (busy || run.Links == null) return;
+            if (busy || (!run.UseShare && run.Links == null)) return;
+            if (run.UseShare) { UploadToShare(); return; }
             byte[] data;
             try { data = demo ? Encoding.ASCII.GetBytes("MZ TrackVice demo") : File.ReadAllBytes(run.ExePath); }
             catch (Exception ex) { note.Say("TrackVice.exe could not be read: " + ex.Message, true); return; }
@@ -899,6 +1026,35 @@ namespace TrackVice
             {
                 uploadText = "SHA-256 " + run.ExeSha256 + ". " + (demo ? "" : (run.ExeSize / 1048576.0).ToString("0.0", CultureInfo.CurrentCulture) + " MB. ")
                     + (run.DownloadChecked ? "The download link reads it, as a device will." : "The download link could not read it yet. Check the storage account's network settings.");
+            });
+        }
+
+        void UploadToShare()
+        {
+            byte[] data;
+            try { data = demo ? Encoding.ASCII.GetBytes("MZ TrackVice demo") : File.ReadAllBytes(run.ExePath); }
+            catch (Exception ex) { note.Say("TrackVice.exe could not be read: " + ex.Message, true); return; }
+            string version = demo ? SemVer.OfFile(run.ExePath) ?? "1.0.0" : SemVer.OfFile(run.ExePath);
+            if (version == null) { note.Say("The version of " + run.ExePath + " could not be read. Choose a TrackVice.exe.", true); return; }
+            if (!demo && MessageBox.Show(this, "Copy " + run.ExePath + " (version " + version + ") to " + ShareStorage.AgentDir(run.Share) + " as TrackVice.exe, and publish it there as a signed agent update?\n\nIt replaces a TrackVice.exe that is there. Devices whose script has another $Sha256 then stop installing the agent until that script is updated.", "Copy TrackVice.exe", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            Work("Copying TrackVice.exe and signing the update...", delegate
+            {
+                if (demo)
+                {
+                    run.ExeSha256 = AgentUpdate.Sha256Hex(data).ToUpperInvariant();
+                    run.ExeSize = data.Length;
+                    bool made;
+                    using (RSACryptoServiceProvider k = UpdateKeys.LoadOrCreate(new MemoryKeyStore(), out made)) run.UpdateKey = UpdateKeys.PublicKey(k);
+                    run.PublishedVersion = version;
+                    run.DownloadChecked = true;
+                    run.Done.Add("TrackVice.exe and TrackVice " + version + " (signed) in " + ShareStorage.AgentDir(run.Share) + ", SHA-256 " + run.ExeSha256);
+                    return;
+                }
+                run.UploadToShare(data, version, new DpapiKeyStore(), DateTime.UtcNow);
+            }, delegate
+            {
+                uploadText = "SHA-256 " + run.ExeSha256 + ". " + (demo ? "" : (run.ExeSize / 1048576.0).ToString("0.0", CultureInfo.CurrentCulture) + " MB. ")
+                    + "Published TrackVice " + run.PublishedVersion + ", signed with the update key of this PC (" + UpdateKeys.Fingerprint(run.UpdateKey) + ").";
             });
         }
 
@@ -941,12 +1097,30 @@ namespace TrackVice
             if (UpdateKey != null && run.UpdateKey.Length == 0) run.UpdateKey = UpdateKey() ?? "";
             run.MaxAgeHours = (int)nMaxAge.Value;
             l.Add(new SectionTitle("6. The platform script"));
+            if (run.UseShare) { BuildShareScript(l); BuildIntune(l); return; }
             l.Add(Row(Glyphs.Info, "What this does", "Fills in Install-TrackViceAgent-Links.ps1: the download link, the SHA-256, the upload link, the alert link and $MaxAgeHours. The script installs the agent on a device during enrollment.", null));
             l.Add(Row(Glyphs2.Clock, "$MaxAgeHours", "Only devices enrolled within this many hours install the agent, so assigning the script to older devices does nothing. 0 installs on every device.", nMaxAge));
             l.Add(Row(Glyphs.Shield, "Agent updates", HasUpdateKey
                 ? "The update key of this PC goes in as $UpdateKey and the read link of " + Arm.AgentFiles + " as $UpdateLink. The agents install versions you publish."
                 : "This PC has no update key, so $UpdateKey stays empty. Settings > Publish agent update makes one.", null));
             l.Add(Row(Glyphs.Save, "Save the script", scriptText.Length > 0 ? scriptText : "Saves the filled script where you choose. It holds the upload and download links: keep it like a password.", bSave));
+            BuildIntune(l);
+        }
+
+        void BuildShareScript(List<Control> l)
+        {
+            l.Add(Row(Glyphs.Info, "What this does", "Fills in Install-TrackViceAgent-Share.ps1: the path of TrackVice.exe on the share, its SHA-256, the share as the upload location, the alert link and $MaxAgeHours. The script copies TrackVice.exe from the share and installs the agent on a device during enrollment.", null));
+            l.Add(Row(Glyphs2.Clock, "$MaxAgeHours", "Only devices enrolled within this many hours install the agent, so assigning the script to older devices does nothing. 0 installs on every device.", nMaxAge));
+            l.Add(Row(Glyphs.Shield, "Agent updates", HasUpdateKey
+                ? "The update key of this PC goes in as $UpdateKey and the share as $UpdateLink. The agents read " + UpdateManifest.Name + " there and install the versions you publish."
+                : "This PC has no update key, so $UpdateKey stays empty.", null));
+            l.Add(Row(Glyphs.Save, "Save the script", scriptText.Length > 0 ? scriptText : "Saves the filled script where you choose. It holds the share path and no secret.", bSave));
+            l.Add(Row(Glyphs2.Sync, "Task sequence step", "A Run Command Line step in an SCCM task sequence, with a package that holds TrackVice.exe. It starts the agent and returns at once.\n" + ShareStorage.TaskSequenceCommand(run.Share, run.Alert), bTsCopy));
+            l.Add(Row(Glyphs.Info, "Customer code", "Not made for a share. The customer code holds Azure links, and the script and the command line above carry the same values.", null));
+        }
+
+        void BuildIntune(List<Control> l)
+        {
             l.Add(new SectionTitle("Intune (optional)"));
             l.Add(Row(Glyphs.Info, "This changes Intune", "It is the only step that does, and it is optional. It adds the platform script TrackVice agent (system context, no signature check, 64-bit PowerShell) and assigns it to the device group you pick. Or skip it and add the saved script by hand, as step 6 in docs/AGENT.md says.", null));
             bGraph.Text = graphCode != null && graphIn != null && !graphIn.SignedIn ? "Copy code and open" : graphIn != null && graphIn.SignedIn ? "Sign in again" : "Sign in";
@@ -974,7 +1148,7 @@ namespace TrackVice
                 File.WriteAllText(d.FileName, text, new UTF8Encoding(false));
                 run.ScriptPath = d.FileName;
             }
-            scriptText = "Saved to " + run.ScriptPath + ". It holds the upload and download links: keep it like a password.";
+            scriptText = "Saved to " + run.ScriptPath + (run.UseShare ? ". It holds the share path and no secret." : ". It holds the upload and download links: keep it like a password.");
             Rebuild();
         }
 
@@ -1013,24 +1187,26 @@ namespace TrackVice
         {
             Customer c = book.Find(run.Customer);
             if (c == null) { note.Say("The customer " + run.Customer + " is gone. Go back to the first step.", true); return false; }
-            if (run.Links == null) return false;
+            if (run.UseShare ? !run.ShareChecked : run.Links == null) return false;
             Customer d = c.Copy();
             d.Tenant = run.Tenant;
-            d.AgentLocation = run.Links.Viewer;
+            d.AgentLocation = run.UploadLocation;
             book.Update(c.Name, d);
             if (live)
             {
                 book.Save();
                 CustomerUi.Edited(before);
             }
-            if (SavePublishLink != null) SavePublishLink(c.Name, run.Links.Publish);
+            if (SavePublishLink != null) SavePublishLink(c.Name, run.PublishLocation);
             return true;
         }
 
         void BuildDone(List<Control> l)
         {
             l.Add(new SectionTitle("7. Done"));
-            l.Add(Row(Glyphs2.Device, run.Customer, "The tenant " + run.Tenant + " and the viewer link are saved in the customer, the link encrypted for your Windows account. The publish link is saved for Publish agent update.", null));
+            l.Add(Row(Glyphs2.Device, run.Customer, run.UseShare
+                ? "The tenant " + run.Tenant + " and the share " + run.Share + " are saved in the customer, as the place the agents upload to and the list reads from. The share is also saved for Publish agent update."
+                : "The tenant " + run.Tenant + " and the viewer link are saved in the customer, the link encrypted for your Windows account. The publish link is saved for Publish agent update.", null));
             l.Add(Row(Glyphs.Save, "Made", string.Join("\n", run.Done.ToArray()), null));
             List<string> open = new List<string>();
             if (run.ScriptPath.Length == 0) open.Add("The script was not saved. Go back to step 6 to save it.");
@@ -1040,6 +1216,11 @@ namespace TrackVice
             l.Add(Row(Glyphs.Info, "Still to do", string.Join("\n", open.ToArray()), null));
             l.Add(new SectionTitle("Next step"));
             l.Add(Row(Glyphs2.Sync, "Enroll a test device", "Assign the script to a group with one test device, then enroll or reset that device. Open Devices > Devices with the TrackVice agent with " + run.Customer + " chosen: the device appears during device setup.", null));
+            if (run.UseShare)
+            {
+                l.Add(Row(Glyphs.Shield, "Permissions", "Give the devices their rights on " + run.Share + ", as step 2 says: Copy icacls commands there, and run them on the file server. Then check a test device.", null));
+                return;
+            }
             l.Add(Row(Glyphs2.Calendar, "Renew the links", "The links expire on " + (run.Links != null ? run.Links.ExpiresUtc.ToLocalTime().ToString("d MMMM yyyy", CultureInfo.CurrentCulture) : "") + ". Run New customer again with the same name and the existing account to make new ones.", null));
         }
     }

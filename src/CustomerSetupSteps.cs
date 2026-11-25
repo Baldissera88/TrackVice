@@ -3,6 +3,8 @@ namespace TrackVice
     using System;
     using System.Collections.Generic;
     using System.Globalization;
+    using System.IO;
+    using System.Security.Cryptography;
     using System.Text;
     using System.Text.RegularExpressions;
 
@@ -180,11 +182,56 @@ namespace TrackVice
         public string ScriptPath = "";
         public string IntuneScriptId = "";
         public DirectoryGroup Group;
+        // A share (UNC path) instead of Azure storage: no account and no links.
+        public bool UseShare;
+        public string Share = "";
+        public bool ShareChecked;
+        public string PublishedVersion = "";
         public readonly List<string> Done = new List<string>();
 
         public bool StorageReady
         {
             get { return StorageDone && Account != null; }
+        }
+
+        // Where the devices upload and the viewer reads: the share, or the viewer link of the account.
+        public string UploadLocation
+        {
+            get { return UseShare ? Share : Links != null ? Links.Viewer : ""; }
+        }
+
+        // Where Publish agent update puts new versions.
+        public string PublishLocation
+        {
+            get { return UseShare ? Share : Links != null ? Links.Publish : ""; }
+        }
+
+        public ShareCheck CheckShare(string path)
+        {
+            Share = ShareStorage.Normalize(path);
+            ShareCheck r = ShareStorage.Check(Share);
+            ShareChecked = r.Ok;
+            if (r.Ok) Done.Add("Share " + Share + ": a test file was written, read back and deleted");
+            return r;
+        }
+
+        // Copies TrackVice.exe and the signed version into the agent folder of the share. The key is the one of this PC and is made when there is none.
+        public void UploadToShare(byte[] exe, string version, IUpdateKeyStore keys, DateTime nowUtc)
+        {
+            if (!ShareChecked) throw new SetupException("Check the share first.");
+            if (string.IsNullOrEmpty(version)) throw new SetupException("The version of TrackVice.exe could not be read.");
+            ExeSha256 = AgentUpdate.Sha256Hex(exe).ToUpperInvariant();
+            ExeSize = exe.Length;
+            bool created;
+            using (RSACryptoServiceProvider key = UpdateKeys.LoadOrCreate(keys, out created))
+            {
+                UpdateKey = UpdateKeys.PublicKey(key);
+                UpdateManifest m = ShareStorage.Publish(Share, exe, version, key, nowUtc);
+                PublishedVersion = m.Version;
+                if (created) Done.Add("A new update key was made for this PC");
+            }
+            DownloadChecked = File.Exists(Path.Combine(Path.Combine(Share, ShareStorage.AgentFolder), ShareStorage.ExeName));
+            Done.Add("TrackVice.exe and TrackVice " + PublishedVersion + " (signed) in " + ShareStorage.AgentDir(Share) + ", SHA-256 " + ExeSha256);
         }
 
         // Creates what is missing: the resource group, the account, both containers and the lifecycle rule.
@@ -245,7 +292,13 @@ namespace TrackVice
         public ScriptValues Values()
         {
             ScriptValues v = new ScriptValues();
-            if (Links != null)
+            if (UseShare)
+            {
+                v.Download = ShareStorage.ExePath(Share);
+                v.Upload = ShareStorage.Normalize(Share);
+                if (UpdateKey.Trim().Length > 0) v.UpdateLink = v.Upload;
+            }
+            else if (Links != null)
             {
                 v.Download = Links.Download;
                 v.Upload = Links.Upload;
@@ -260,7 +313,7 @@ namespace TrackVice
 
         public string Script()
         {
-            return AgentScript.Fill(AgentScriptTemplate.Links, Values());
+            return AgentScript.Fill(UseShare ? AgentScriptTemplate.Share : AgentScriptTemplate.Links, Values());
         }
 
         public void AddToIntune(IntuneScripts intune)

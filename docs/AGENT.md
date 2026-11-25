@@ -770,6 +770,35 @@ TrackVice.exe /agent-install /upload "\\server\share\TrackVice"
 
 The agent writes as the device's computer account, so the share has to allow that. This fits domain-joined devices and testing, not Autopilot devices on the internet. In the list, enter the same folder as the upload location.
 
+### In New customer
+
+**Devices > Intune / cloud > New customer with links…** offers the choice at the top of step 2: **Azure storage** or **Share (UNC)**. With a share:
+
+| | |
+|---|---|
+| Storage | Enter the folder, such as `\\server\TrackVice\Contoso`. **Check** tests from this PC that the path is a UNC path, that the folder exists or can be made, and that a test file can be written, read back and deleted. A local or mapped path is accepted with a warning, because devices need a UNC path. **Copy icacls commands** puts the commands for the permissions below on the clipboard |
+| Links | Skipped. The steps bar shows it as not needed, and Next and Back go past it |
+| Upload | Copies TrackVice.exe to `<share>\agent\TrackVice.exe` for the script, and publishes the same version there as a signed agent update, `agent\latest.json` and `agent\TrackVice-<version>.exe`, signed with the update key of this PC. A key is made when there is none. It refuses a share whose `latest.json` is signed with another key |
+| Alerts | The same as for Azure storage |
+| Script | `Install-TrackViceAgent-Share.ps1` (`agent/Install-TrackViceAgent-Share.ps1`) is filled in: `$Download` is `<share>\agent\TrackVice.exe`, `$Upload` is the share and, with an update key, `$UpdateLink` is the share. The script copies TrackVice.exe from the share and checks its SHA-256. Adding it to Intune works as before. The page also shows the command line for a task sequence step: `TrackVice.exe /agent-start /upload "\\server\TrackVice\Contoso"` |
+| Saved | The customer has the share as its upload location, so **Devices with the TrackVice agent** lists the sessions from it. The share is also saved for Publish agent update |
+| Customer code | None is made for a share. The code (`tv1:`) holds Azure links, so the script and the command line carry the values instead |
+
+Permissions, run on the file server as administrator (the same lines as **Copy icacls commands**, shown for `\\server\TrackVice\Contoso`):
+
+```text
+if not exist "\\server\TrackVice\Contoso\agent" mkdir "\\server\TrackVice\Contoso\agent"
+icacls "\\server\TrackVice\Contoso" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)F" /grant "BUILTIN\Administrators:(OI)(CI)F"
+icacls "\\server\TrackVice\Contoso" /grant "Domain Computers:(OI)(CI)(X,RA,WD,AD)" /grant "CREATOR OWNER:(OI)(CI)(IO)M"
+icacls "\\server\TrackVice\Contoso\agent" /inheritance:d
+icacls "\\server\TrackVice\Contoso\agent" /remove:g "Domain Computers" "CREATOR OWNER"
+icacls "\\server\TrackVice\Contoso\agent" /grant "Domain Computers:(OI)(CI)RX"
+```
+
+The share itself also needs the share permission Change for Domain Computers. Domain Computers can create files and folders but not list or read what other devices sent, and `CREATOR OWNER` lets a device replace its own session file. In the `agent` folder they can only read. The group name is localized on non-English servers.
+
+Limits: it fits SCCM task sequences in full Windows, and Hybrid Autopilot devices that can reach the share. It does not fit cloud-only Autopilot devices on the internet, and Windows PE only when the share accepts the account it has there.
+
 ## Setup with links (existing setups)
 
 Before customer codes, each customer had its own storage account, and the platform script held the links and the SHA-256 of TrackVice.exe. Those setups keep working. Their script is `agent/Install-TrackViceAgent-Links.ps1`, with `$Download`, `$Sha256`, `$Upload`, `$KeepHours`, `$MaxAgeHours`, `$Alert`, `$UpdateKey` and `$UpdateLink`. For a new customer, use [Add customer](#add-a-customer-in-three-steps) instead.
