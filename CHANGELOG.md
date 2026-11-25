@@ -1,5 +1,13 @@
 # Changelog
 
+## TrackVice 2.0.11
+
+25 November 2026.
+
+- Publish agent update: a place that has the version already is no longer counted as "not published". The result says "1 place had it already", or "2.0.10 is already in every place" when there was nothing to publish.
+- Fixed: after Publish agent update, the banner in the main window could still show an older publish to Your storage only. It now says what Publish agent update did.
+- The publish texts say that installed agents update within 30 minutes during a deployment, otherwise within 6 hours.
+
 ## TrackVice 2.0.10
 
 25 November 2026.

@@ -166,6 +166,8 @@ namespace TrackVice
         public UpdateLocation Place;
         public PublishOutcome Outcome;
         public string Text = "";
+        // Skipped because the place has this version already: nothing is missing there.
+        public bool Already;
 
         public string Full
         {
@@ -557,7 +559,7 @@ namespace TrackVice
                     if (l.State == UpdateState.Published && SemVer.IsValid(l.Version))
                     {
                         int c = SemVer.Compare(l.Version, version);
-                        if (c == 0) { Skip(line, "it has " + version + " already."); continue; }
+                        if (c == 0) { Skip(line, "it has " + version + " already."); line.Already = true; continue; }
                         if (c > 0) { Skip(line, "it has " + l.Version + ", which is newer than " + version + ". Agents never install an older version."); continue; }
                     }
                     UpdatePublisher.Publish(open(l.WriteLink), exe, version, key, nowUtc);
@@ -587,7 +589,7 @@ namespace TrackVice
         // is not replaced here: it would fail the SHA-256 check and no new device would install.
         static string AfterText(UpdateLocation l)
         {
-            string s = " Installed agents update within 6 hours.";
+            string s = " Installed agents update within 30 minutes during a deployment, otherwise within 6 hours.";
             if (l.HasFixedScript)
                 s += " " + FixedScriptText(l);
             return s;
@@ -599,30 +601,42 @@ namespace TrackVice
                 + "To give new devices this version at once, make a customer code and use Customer code... > Update the script in Intune.";
         }
 
-        // The banner after a publish: the places that took the version, and how many did not.
+        // The banner after a publish: the places that took the version, those that had it already, and how many did not.
         public static string Summary(IList<PublishLine> lines, string version)
         {
-            List<string> done = new List<string>();
+            List<string> done = new List<string>(), already = new List<string>();
             int other = 0;
             foreach (PublishLine l in lines)
             {
                 if (l.Outcome == PublishOutcome.Published) done.Add(l.Place.Short);
+                else if (l.Already) already.Add(l.Place.Short);
                 else other++;
             }
+            string had = already.Count == 0 ? "" : " " + (already.Count == 1 ? "1 place had it already: " : already.Count + " places had it already: ") + string.Join(", ", already.ToArray()) + ".";
+            string not = other == 0 ? "" : " Not published to " + other + (other == 1 ? " place" : " places") + ": see below.";
             if (done.Count == 0)
             {
+                if (other == 0 && already.Count > 0) return version + " is already in " + (already.Count == 1 ? "the place: " : "every place: ") + string.Join(", ", already.ToArray()) + ". Nothing to publish.";
                 if (lines.Count == 1) return "Not published: " + lines[0].Full;
-                return "Not published to any of the " + lines.Count + " places. The reasons are below.";
+                if (already.Count == 0) return "Not published to any of the " + lines.Count + " places. The reasons are below.";
+                return ("Nothing published." + not + had).Trim();
             }
-            string s = "Published " + version + " to " + done.Count + (done.Count == 1 ? " place: " : " places: ") + string.Join(", ", done.ToArray()) + ".";
-            if (other > 0) s += " Not published to " + other + (other == 1 ? " place" : " places") + ": see below.";
-            return s;
+            return "Published " + version + " to " + done.Count + (done.Count == 1 ? " place: " : " places: ") + string.Join(", ", done.ToArray()) + "." + had + not;
+        }
+
+        // Raised on the UI thread after Publish agent update, with its summary, so the main window's banner says the same.
+        public static event Action<string> AfterPublish;
+
+        public static void RaiseAfterPublish(string summary)
+        {
+            Action<string> h = AfterPublish;
+            if (h != null) h(summary);
         }
 
         // The same for a publish to Your storage only, as the banner and the status bar do it.
         public static string Done(string version, IList<string> places)
         {
-            return "Published " + version + " to " + places.Count + (places.Count == 1 ? " place: " : " places: ") + string.Join(", ", new List<string>(places).ToArray()) + ". Installed agents update within 6 hours.";
+            return "Published " + version + " to " + places.Count + (places.Count == 1 ? " place: " : " places: ") + string.Join(", ", new List<string>(places).ToArray()) + ". Installed agents update within 30 minutes during a deployment, otherwise within 6 hours.";
         }
 
         // ---------- remembered between reads ----------

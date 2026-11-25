@@ -375,7 +375,7 @@ namespace TrackVice
 
         public static string Done(string version)
         {
-            return "Published " + version + ". New devices get it now; installed agents update within 6 hours.";
+            return "Published " + version + ". New devices get it now; installed agents update within 30 minutes during a deployment, otherwise within 6 hours.";
         }
 
         // After a publish: the places that took it.

@@ -965,6 +965,19 @@ namespace TrackVice
         void RegisterPublishTile()
         {
             if (publishProvider != null) return;
+            Action<string> afterPublish = delegate (string summary)
+            {
+                // Publish agent update ran: the banner and the status bar say what it did, not an older publish.
+                bool any = summary.StartsWith("Published ", StringComparison.Ordinal) || summary.IndexOf(" is already in ", StringComparison.Ordinal) > 0;
+                if (any && publishNote != null) publishNote.Visible = false;
+                if (publishBanner != null && (publishBanner.Visible || any))
+                {
+                    publishBanner.Say(summary, false, "Close");
+                    publishBanner.Visible = true;
+                }
+            };
+            UpdateLocations.AfterPublish += afterPublish;
+            FormClosed += delegate { UpdateLocations.AfterPublish -= afterPublish; };
             publishProvider = OverviewAttention.Register(delegate
             {
                 List<AttentionTile> tiles = new List<AttentionTile>();

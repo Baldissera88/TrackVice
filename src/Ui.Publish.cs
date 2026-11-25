@@ -507,6 +507,7 @@ namespace TrackVice
                         bKey.Enabled = true;
                         note = null;
                         if (lines != null) Published(lines, version, other);
+                        if (lines != null && reads) UpdateLocations.RaiseAfterPublish(UpdateLocations.Summary(lines, version));
                         ShowKey();
                         ShowExe0();
                         BuildAll();

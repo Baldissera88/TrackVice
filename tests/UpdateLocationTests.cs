@@ -310,14 +310,19 @@ namespace TrackVice.Tests
 
             string banner = UpdateLocations.Summary(lines, "2.0.4");
             T.Check(banner.StartsWith("Published 2.0.4 to 2 places: Your storage, legacy/trackvice-agent."), "banner names the places: " + banner);
-            T.Check(banner.Contains("Not published to 6 places"), "banner counts the others: " + banner);
+            T.Check(banner.Contains("1 place had it already: same/trackvice-agent") && banner.Contains("Not published to 5 places"), "banner counts the others, and a place that had it already is not a failure: " + banner);
             List<PublishLine> one = new List<PublishLine>();
             one.Add(lines[0]);
             T.Eq("Published 2.0.4 to 1 place: Your storage.", UpdateLocations.Summary(one, "2.0.4"), "banner for one place");
             List<PublishLine> bad = new List<PublishLine>();
             bad.Add(lines[3]);
             T.Check(UpdateLocations.Summary(bad, "2.0.4").StartsWith("Not published: fabrikam/trackvice-agent: failed:"), "banner for one failure");
-            T.Eq("Published 1.4.0 to 1 place: Your storage. Installed agents update within 6 hours.", UpdateLocations.Done("1.4.0", new string[] { "Your storage" }), "banner after publishing to Your storage");
+            {
+                PublishLine a = new PublishLine(); a.Place = new UpdateLocation(); a.Outcome = PublishOutcome.Skipped; a.Already = true;
+                List<PublishLine> only = new List<PublishLine> { a };
+                T.Check(UpdateLocations.Summary(only, "2.0.10").Contains("is already in"), "banner when every place has it: " + UpdateLocations.Summary(only, "2.0.10"));
+            }
+            T.Eq("Published 1.4.0 to 1 place: Your storage. Installed agents update within 30 minutes during a deployment, otherwise within 6 hours.", UpdateLocations.Done("1.4.0", new string[] { "Your storage" }), "banner after publishing to Your storage");
 
             // A place with no read link is published without a key check.
             UpdateLocation blind = new UpdateLocation();

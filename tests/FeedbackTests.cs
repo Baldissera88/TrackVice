@@ -181,7 +181,7 @@ namespace TrackVice.Tests
             T.Check(!PublishBanner.Shown(true, "1.1.2", "1.4.0", true), "not after Later");
             T.Check(PublishBanner.Shown(true, "1.4.0-beta", "1.4.0", false), "a pre-release before the running version counts as older");
             T.Eq("TrackVice 1.4.0 is installed. Your devices still get 1.1.2.", PublishBanner.Text("1.4.0", "1.1.2"), "banner text");
-            T.Eq("Published 1.4.0. New devices get it now; installed agents update within 6 hours.", PublishBanner.Done("1.4.0"), "text after Publish");
+            T.Eq("Published 1.4.0. New devices get it now; installed agents update within 30 minutes during a deployment, otherwise within 6 hours.", PublishBanner.Done("1.4.0"), "text after Publish");
 
             int published = 0;
             PublishTile t = PublishBanner.Tile(true, "1.1.2", "1.4.0", delegate { published++; });
