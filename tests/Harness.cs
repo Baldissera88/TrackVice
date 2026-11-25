@@ -95,6 +95,7 @@ namespace TrackVice.Tests
             CustomerFileTests.Run();
             PublishTargetTests.Run();
             UpdateLocationTests.Run();
+            PublishAccessTests.Run();
             GetStartedTests.Run();
             CustomerStorageLinkTests.Run();
             EnrollmentAnchorTests.Run();

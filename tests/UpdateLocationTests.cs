@@ -179,7 +179,7 @@ namespace TrackVice.Tests
             T.Check(UpdateLocations.WriteLinkProblem(m, "D:\\x", Now) != null, "a folder is not a link");
             T.Check(UpdateLocations.WriteLinkProblem(m, "https://" + Mansoft + ".blob.core.windows.net/trackvice-agent", Now) != null, "a link without a token is refused");
             string wrong = UpdateLocations.WriteLinkProblem(m, Link("other", "trackvice-agent", "rcw"), Now);
-            T.Check(wrong != null && wrong.Contains("other/trackvice-agent") && wrong.Contains(Mansoft), "a link for another account is refused and says which");
+            T.Check(wrong != null && wrong.Contains("other") && wrong.Contains(Mansoft), "a link for another account is refused and says which");
             T.Check(UpdateLocations.WriteLinkProblem(m, Link(Mansoft, "trackvice", "rcw"), Now) != null, "a link for another container is refused");
             string rl = UpdateLocations.WriteLinkProblem(m, Link(Mansoft, "trackvice-agent", "rl"), Now);
             T.Check(rl != null && rl.Contains("Create and Write"), "a read link is refused");

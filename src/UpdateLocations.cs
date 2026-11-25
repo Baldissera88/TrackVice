@@ -378,11 +378,10 @@ namespace TrackVice
         // What is missing to publish to a container, and how to get it.
         public static string MissingText(UpdateLocation l, OwnStorage own)
         {
-            string portal = "In the Azure portal, open " + l.Account + " > Containers > " + l.Container + " > Shared access tokens, tick Read, Create and Write, and paste the link here.";
+            string portal = "Or make a link in the Azure portal (" + l.Account + " > Containers > " + l.Container + " > Shared access tokens, Read, Create and Write) and use Add a link.";
             if (own != null && string.Equals(own.Account, l.Account, StringComparison.OrdinalIgnoreCase))
-                return "Your storage does not keep its account key on this PC, so TrackVice cannot make a link for " + l.Container + ". Publish from Settings > Your storage (it signs in to Azure), or paste a link. " + portal;
-            return "This PC has no link with Create and Write for " + l.Container + " in " + l.Account + ". " + portal
-                + " Or sign in to Azure with Storage Account Contributor on " + l.Account + " and set it up as Your storage: TrackVice then gets the key itself.";
+                return "Your storage does not keep its account key on this PC, so TrackVice cannot make a link for " + l.Container + ". Use Sign in to Azure and get access. " + portal;
+            return "This PC has no link with Read, Create and Write for " + l.Container + " in " + l.Account + ". Use Sign in to Azure and get access: it needs Storage Account Contributor on " + l.Account + ", and TrackVice only reads the key and changes nothing. " + portal;
         }
 
         // Null when link can be saved as the link to publish to l with, otherwise what is wrong with it.
@@ -396,17 +395,55 @@ namespace TrackVice
                 return ShareStorage.Normalize(s).ToLowerInvariant() == l.Folder.ToLowerInvariant() ? null : "That is not the folder " + l.Folder + ".";
             }
             if (!Stores.IsUrl(s)) return "Paste a link that starts with https://.";
-            if (s.IndexOf('?') < 0) return "The link has no access token. Make it under Shared access tokens in the portal.";
+            if (s.IndexOf('?') < 0) return "The link has no access token. Copy the Blob SAS URL, not the Blob SAS token or the container address.";
             Spot p = ContainerSpot(s, true);
-            if (p == null || !string.Equals(p.Account, l.Account, StringComparison.OrdinalIgnoreCase) || !string.Equals(p.Container, l.Container, StringComparison.OrdinalIgnoreCase))
-                return "That link is for " + (p == null ? "no container" : p.Account + "/" + p.Container) + ", not for " + l.Account + "/" + l.Container + ".";
+            if (p == null || !string.Equals(p.Account, l.Account, StringComparison.OrdinalIgnoreCase))
+                return "That link is for the storage account " + (p == null ? "none" : p.Account) + ", not for " + l.Account + ". Make it in " + l.Account + ".";
+            if (!string.Equals(p.Container, l.Container, StringComparison.OrdinalIgnoreCase))
+                return "That link is for the container " + p.Container + " in " + l.Account + ", not for " + l.Container + ".";
+            Uri u;
+            if (Uri.TryCreate(s, UriKind.Absolute, out u) && u.AbsolutePath.Trim('/').Split('/').Length > 1)
+                return "That link is for a file in " + l.Container + ", not for the whole container. Make it for the container, under Containers > " + l.Container + " > Shared access tokens.";
+            string sr = Query(s, "sr");
+            if (sr != null && sr != "c") return "That link is not for a container (sr=" + sr + "). Make it under Containers > " + l.Container + " > Shared access tokens.";
             string sp = Query(s, "sp");
-            if (sp != null && (sp.IndexOf('c') < 0 || sp.IndexOf('w') < 0)) return "The link allows \"" + sp + "\". It needs Create and Write.";
+            if (sp != null)
+            {
+                List<string> miss = new List<string>();
+                if (sp.IndexOf('r') < 0) miss.Add("Read");
+                if (sp.IndexOf('c') < 0) miss.Add("Create");
+                if (sp.IndexOf('w') < 0) miss.Add("Write");
+                if (miss.Count > 0)
+                    return "The link allows " + PermNames(sp) + " (sp=" + sp + "). It also needs " + AndList(miss) + ". Make a new one with Read, Create and Write ticked.";
+            }
             string se = Query(s, "se");
             DateTime end;
             if (se != null && DateTime.TryParse(se, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out end) && end <= nowUtc)
-                return "The link expired on " + end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ".";
+                return "The link expired on " + end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ". Make a new one with an Expiry date in the future.";
+            string st = Query(s, "st");
+            DateTime start;
+            if (st != null && DateTime.TryParse(st, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out start) && start > nowUtc.AddMinutes(5))
+                return "The link is not valid before " + start.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC. Make a new one that starts now, or check the clock of this PC.";
             return null;
+        }
+
+        static string PermNames(string sp)
+        {
+            List<string> l = new List<string>();
+            foreach (char c in sp)
+            {
+                string n = c == 'r' ? "Read" : c == 'a' ? "Add" : c == 'c' ? "Create" : c == 'w' ? "Write" : c == 'd' ? "Delete" : c == 'l' ? "List" : null;
+                if (n != null) l.Add(n);
+            }
+            return l.Count == 0 ? "nothing" : AndList(l);
+        }
+
+        public static string AndList(IList<string> l)
+        {
+            if (l.Count == 1) return l[0];
+            string[] a = new string[l.Count];
+            l.CopyTo(a, 0);
+            return string.Join(", ", a, 0, a.Length - 1) + " and " + a[a.Length - 1];
         }
 
         // A location for a link or folder typed by hand, or null when it is neither. Not tied to a customer.

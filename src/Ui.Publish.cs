@@ -35,7 +35,10 @@ namespace TrackVice
         readonly Toggle tOther;
         readonly TextBox link;
         string exePath, publicKey, note;
-        bool busy, touched, building, reading;
+        bool busy, touched, building, reading, getting;
+        readonly ManualResetEvent cancel = new ManualResetEvent(false);
+        // What happened when access was asked for, by place. It stays under the row.
+        readonly Dictionary<string, string> says = new Dictionary<string, string>();
 
         // True when the person chose Set up Your storage: the caller closes this dialog and opens the guide.
         public bool WantsSetUp;
@@ -52,6 +55,7 @@ namespace TrackVice
             this.saveLink = saveLink;
             this.savePlaceLink = savePlaceLink;
             Size = new Size(Dpi.S(860), Dpi.S(840));
+            FormClosed += delegate { cancel.Set(); };
 
             // Shows the details of the key, or creates the key pair when there is none yet.
             bKey = SmallButton("Details", delegate
@@ -197,6 +201,8 @@ namespace TrackVice
             if (p.CanWrite) s.Add(p.IsFolder ? "This PC writes to the folder." : "This PC can publish here.");
             else s.Add("Cannot publish from this PC yet. " + p.Missing);
             if (!p.Confirmed) s.Add("Taken from the viewer link of the customer: its agents are expected to check here.");
+            string said;
+            if (says.TryGetValue(p.Key, out said) && said.Length > 0) return string.Join(" ", s.ToArray()) + "\n" + said;
             return string.Join(" ", s.ToArray());
         }
 
@@ -246,7 +252,14 @@ namespace TrackVice
                 r.Tick.Changed += delegate { if (!building) { touched = true; note = null; Refresh2(); } };
                 accessory = r.Tick;
             }
-            else accessory = SmallButton("Add a link", delegate { r.LinkBox.Shown = !r.LinkBox.Shown; Relayout(); if (r.LinkBox.Shown) r.LinkText.Focus(); });
+            else
+            {
+                FlatButton get = SmallButton("Sign in to Azure and get access", delegate { GetAccess(p, false); });
+                get.Primary = true;
+                get.Enabled = !getting;
+                FlatButton add = SmallButton("Add a link", delegate { r.LinkBox.Shown = !r.LinkBox.Shown; Relayout(); if (r.LinkBox.Shown) r.LinkText.Focus(); });
+                accessory = new ButtonStrip(get, add);
+            }
             r.Row = new SettingRow(Glyphs2.Folder, p.Long, DescOf(p), accessory);
             r.LinkText = new TextBox();
             r.LinkText.Width = Dpi.S(300);
@@ -256,10 +269,98 @@ namespace TrackVice
             r.LinkText.ForeColor = theme.Text;
             FlatButton save = SmallButton("Use this link", delegate { UseLink(r); });
             string who = p.Customers.Count > 0 ? string.Join(", ", p.Customers.ToArray()) : "this location";
-            r.LinkRow = new SettingRow(Glyphs.Shield, "Link for " + p.Container, "A link with Read, Create and Write for " + p.Container + " in " + p.Account + ", from the portal: " + p.Account + " > Containers > " + p.Container + " > Shared access tokens. It is saved encrypted for " + who + ".", new ButtonStrip(r.LinkText, save));
+            r.LinkRow = new SettingRow(Glyphs.Shield, "Link for " + p.Container, "Make a link for " + p.Container + " in " + p.Account + " and paste it here. It is saved encrypted for " + who + ".\n" + PublishAccess.ManualSteps(p), new ButtonStrip(r.LinkText, save));
             r.LinkBox = new Collapsible(r.LinkRow);
             r.LinkBox.Shown = false;
             return r;
+        }
+
+        void OnUi(Action a)
+        {
+            try { if (!IsDisposed) BeginInvoke((MethodInvoker)delegate { if (!IsDisposed) a(); }); }
+            catch (Exception) { }
+        }
+
+        void SayAbout(UpdateLocation p, string text)
+        {
+            says[p.Key] = text;
+            foreach (PlaceRow r in rows) if (r.Place == p) { r.Row.Desc = DescOf(p); r.Row.Invalidate(); }
+            Relayout();
+        }
+
+        // Signs in to Azure (an earlier sign-in of this run is used again), finds the storage account, and makes and saves the link.
+        void GetAccess(UpdateLocation p, bool createContainer)
+        {
+            if (getting) return;
+            getting = true;
+            SayAbout(p, createContainer ? "Creating the container..." : "Signing in to Azure...");
+            IWeb web = YourStorageUi.Web;
+            Action<UpdateLocation, string> save = savePlaceLink;
+            Thread th = new Thread(delegate ()
+            {
+                AccessResult res = null;
+                string err = null;
+                try
+                {
+                    WebSignIn s = SignIns.Get(web, Arm.ClientId, "", Arm.Scope);
+                    if (!s.SignedIn && !s.Quiet())
+                    {
+                        DeviceCode d = s.Start();
+                        OnUi(delegate
+                        {
+                            Menus.Copy(d.UserCode);
+                            try { System.Diagnostics.Process.Start(d.VerificationUri); }
+                            catch (Exception) { }
+                            SayAbout(p, "Open " + d.VerificationUri + " and enter the code " + d.UserCode + " (it is copied). TrackVice waits for the sign-in.");
+                        });
+                        s.Wait(d, cancel);
+                    }
+                    OnUi(delegate { SayAbout(p, "Signed in" + (string.IsNullOrEmpty(s.Account) ? "" : " as " + s.Account) + ". Looking for the storage account " + p.Account + "..."); });
+                    res = PublishAccess.Get(new Arm(web, s.Token), s.Account, p, createContainer, DateTime.UtcNow, save);
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex) { err = ex.Message; }
+                OnUi(delegate { getting = false; GotAccess(p, res, err); });
+            });
+            th.IsBackground = true;
+            th.Start();
+        }
+
+        void GotAccess(UpdateLocation p, AccessResult res, string err)
+        {
+            if (res == null)
+            {
+                says[p.Key] = err + "\nOr make the link by hand: use Add a link.";
+                BuildAll();
+                OpenLinkBox(p);
+                return;
+            }
+            if (res.Outcome == AccessOutcome.Saved)
+            {
+                says.Remove(p.Key);
+                touched = false;
+                note = null;
+                if (reads && open != null) ReadAll();
+                else ApplyDefaults();
+                Say(res.Message + " Reading what is published there...");
+                return;
+            }
+            if (res.Outcome == AccessOutcome.AskContainer)
+            {
+                if (MessageBox.Show(this, res.Message, "Publish agent update", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes) { GetAccess(p, true); return; }
+                says[p.Key] = "The container " + p.Container + " was not created. Nothing was changed in Azure.";
+                BuildAll();
+                return;
+            }
+            says[p.Key] = res.Message;
+            BuildAll();
+            OpenLinkBox(p);
+        }
+
+        void OpenLinkBox(UpdateLocation p)
+        {
+            foreach (PlaceRow r in rows) if (r.Place == p && r.LinkBox != null) { r.LinkBox.Shown = true; r.LinkText.Focus(); }
+            Relayout();
         }
 
         void UseLink(PlaceRow r)
@@ -267,6 +368,7 @@ namespace TrackVice
             string problem = UpdateLocations.WriteLinkProblem(r.Place, r.LinkText.Text, DateTime.UtcNow);
             if (problem != null) { r.LinkRow.Desc = problem; r.LinkRow.Invalidate(); Relayout(); return; }
             UpdateLocations.UseWriteLink(r.Place, r.LinkText.Text);
+            says.Remove(r.Place.Key);
             if (savePlaceLink != null) savePlaceLink(r.Place, r.LinkText.Text.Trim());
             touched = false;
             note = null;
