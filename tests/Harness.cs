@@ -71,6 +71,7 @@ namespace TrackVice.Tests
             ShareStorageTests.Run();
             AddCustomerTests.Run();
             AddCustomerGroupTests.Run();
+            IntuneScriptCheckTests.Run();
             CustomerFlowTests.Run();
             StoragePolicyTests.Run();
             AppUpdateTests.Run();
