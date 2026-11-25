@@ -37,7 +37,7 @@ $cscArgs = @(
     '/nologo', '/target:winexe', '/platform:anycpu', '/optimize+', '/langversion:5',
     '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Xml.dll',
     '/reference:System.Runtime.Serialization.dll', '/reference:System.Management.dll', '/reference:System.IO.Compression.dll', '/reference:System.Security.dll', '/reference:System.Drawing.dll', '/reference:System.Windows.Forms.dll',
-    '/win32icon:TrackVice.ico', '/resource:TrackVice.ico,TrackVice.ico', '/out:TrackVice.exe'
+    '/win32icon:TrackVice.ico', '/resource:TrackVice.ico,TrackVice.ico', '/resource:CHANGELOG.md,TrackVice.CHANGELOG.md', '/out:TrackVice.exe'
 ) + $sources
 
 & $csc @cscArgs

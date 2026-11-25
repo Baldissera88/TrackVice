@@ -1,5 +1,12 @@
 # Changelog
 
+## TrackVice 2.0.10
+
+25 November 2026.
+
+- **Settings > Updates**: updates have their own page, as in LogVice: Check for updates, the version you have with Check now or Install, the Release page, and What's new, which shows what changed in this version and the ones before it, also without network.
+- The Publish agent update row in Settings says what it does today: it publishes to every place your customers' agents check.
+
 ## TrackVice 2.0.9
 
 25 November 2026.

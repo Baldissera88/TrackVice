@@ -93,20 +93,21 @@ namespace TrackVice
     public static class SettingsCatalog
     {
         public const string General = "general", ThisDevice = "device", Customers = "customers", Intune = "intune",
-            Sccm = "sccm", Storage = "storage", LogVice = "logvice", Data = "data";
+            Sccm = "sccm", Storage = "storage", LogVice = "logvice", Updates = "updates", Data = "data";
 
         // The subject Settings opened on last.
         public const string LastPagePref = "SettingsPage";
 
         public static readonly SettingPage[] Pages =
         {
-            P(General, "General", "The theme, what TrackVice does when it opens, and updates from GitHub."),
+            P(General, "General", "The theme and what TrackVice does when it opens."),
             P(ThisDevice, "This device", "What TrackVice reads on this PC, how far back and how often."),
             P(Customers, "Customers", "The customers you work for and their customer codes."),
             P(Intune, "Intune / cloud", "The sign-in to Intune, and what TrackVice reads from it."),
             P(Sccm, "SCCM / on-premises", "The SMS Provider TrackVice connects to."),
             P(Storage, "Your storage and agents", "Your storage, publishing TrackVice to it, and agent updates."),
             P(LogVice, "LogVice", "Where LogVice is."),
+            P(Updates, "Updates", "The version you have and the newest one on GitHub."),
             P(Data, "Data and privacy", "What TrackVice keeps on this PC and what it sends."),
         };
 
@@ -118,10 +119,6 @@ namespace TrackVice
                 "appearance colour color dark light vice terminal amber synthwave", "Theme", Palettes.Default),
             D("watchonstart", General, "Watch when TrackVice opens", "Start following this device as soon as TrackVice has read it.",
                 "When it is off, press Watch or Ctrl+W.", "start open follow", "WatchOnStart", "1"),
-            D("updatecheck", General, "Check for updates", "Once a day at start, TrackVice asks GitHub for the latest version.",
-                "A line in the status bar shows when there is a newer one. Nothing about you or your devices is sent. Never on the command line, as the agent, in Windows PE, during Windows setup or the ESP, or as SYSTEM. Administrators can turn it off for everyone with the DWORD DisableUpdateCheck = 1 under HKLM\\SOFTWARE\\Policies\\TrackVice.",
-                "github version release", "UpdateCheck", "1"),
-            Row(D("updates", General, "Updates", "The version you have and the newest on GitHub, with Check now and Install.", null, "github version release install download"), "Updates"),
 
             // This device
             D("history", ThisDevice, "History to read", "How far back to read logs and event logs.",
@@ -206,14 +203,22 @@ namespace TrackVice
             Row(D("retention", Storage, "Delete uploads after", "How long uploads stay in your storage.", null, "days retention lifecycle"), "Delete uploads after"),
             Row(D("accountkey", Storage, "Keep the account key", "Keep the account key of your storage on this PC, or sign in to Azure each time you add a customer.", null, "account key sign in azure"), "Ask for Azure sign-in when adding a customer instead of keeping the account key on this PC"),
             Row(D("removestorage", Storage, "Remove Your storage", "Forget the account key and the links on this PC. Nothing in Azure is deleted.", null, "forget remove"), "Remove"),
-            D("agentupdate", Storage, "Publish agent update", "Upload a TrackVice.exe with a signed agent/latest.json for setups with links.",
-                "Agents installed with $UpdateKey and $UpdateLink update themselves to it, so the platform script stays the same. The signing key is kept in %LOCALAPPDATA%\\TrackVice\\agent-update-key.bin, encrypted for your Windows account.",
+            D("agentupdate", Storage, "Publish agent update", "Publish this TrackVice to every place your customers' agents check for updates: Your storage, a customer's own storage account or a share.",
+                "Each place gets agent/TrackVice-<version>.exe and agent/latest.json, signed with the update key. Installed agents update within 30 minutes during a deployment and within 6 hours after it, so the platform script stays the same. The signing key is kept in %LOCALAPPDATA%\\TrackVice\\agent-update-key.bin, encrypted for your Windows account.",
                 "update key signing key links"),
 
             // LogVice
             D("logvice", LogVice, "LogVice", "Where LogVice.exe is. TrackVice opens logs in it.",
                 "TrackVice looks for the LogVice MSI install, App Paths and LogVice.exe next to TrackVice.exe. Download gets the latest LogVice from GitHub after it asks; Browse chooses another one.",
                 "log viewer path exe", "LogVicePath", ""),
+
+            // Updates
+            D("updatecheck", Updates, "Check for updates", "At every start and every 6 hours while it is open, TrackVice asks GitHub for the latest version.",
+                "A line in the status bar shows when there is a newer one. Nothing about you or your devices is sent. Never on the command line, as the agent, in Windows PE, during Windows setup or the ESP, or as SYSTEM. Administrators can turn it off for everyone with the DWORD DisableUpdateCheck = 1 under HKLM\\SOFTWARE\\Policies\\TrackVice.",
+                "github version release", "UpdateCheck", "1"),
+            Row(D("updates", Updates, "Updates", "The version you have and the newest on GitHub, with Check now and Install.", null, "github version release install download"), "Updates"),
+            D("releasepage", Updates, "Release page", AppUpdate.ReleasesUrl, "Opens the TrackVice releases on GitHub in your browser.", "github releases download web browser"),
+            D("whatsnew", Updates, "What's new", "Read what changed in this version and the ones before it.", "Shows the changelog that comes with TrackVice, newest first.", "changelog changes release notes history"),
 
             // Data and privacy
             D("settingsstore", Data, "Where settings are stored", "Settings are kept for your Windows account in the registry.", null, "registry hkcu"),

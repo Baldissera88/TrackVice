@@ -271,7 +271,7 @@ namespace TrackVice
         // Off for screenshots, so the subject shown is not saved.
         public static bool RememberPage = true;
 
-        static readonly string[] PageGlyphs = { Glyphs2.Settings, Glyphs2.Device, Glyphs2.Apps, Glyphs2.Sync, Glyphs2.Code, Glyphs2.Folder, Glyphs.Log, Glyphs.Shield };
+        static readonly string[] PageGlyphs = { Glyphs2.Settings, Glyphs2.Device, Glyphs2.Apps, Glyphs2.Sync, Glyphs2.Code, Glyphs2.Folder, Glyphs.Log, Glyphs2.Reset, Glyphs.Shield };
 
         readonly ISettingStore store = new PrefsSettingStore();
         readonly SubjectList subjects;
@@ -449,6 +449,7 @@ namespace TrackVice
                 case SettingsCatalog.Sccm: BuildSccm(l); break;
                 case SettingsCatalog.Storage: BuildStorage(l); break;
                 case SettingsCatalog.LogVice: BuildLogVice(l); break;
+                case SettingsCatalog.Updates: BuildUpdates(l); break;
                 case SettingsCatalog.Data: BuildData(l); break;
             }
             // Rows that other parts of TrackVice make are matched by their title.
@@ -623,19 +624,6 @@ namespace TrackVice
             watch.Changed += Safe.Wrap(delegate { Prefs.SetBool("WatchOnStart", watch.On); });
             l.Add(Bind("theme", new SettingRow(Glyphs2.Palette, "Theme", null, segTheme)));
             l.Add(Bind("watchonstart", new SettingRow(Glyphs.Watch, "Watch when TrackVice opens", null, watch)));
-            SettingDef check = SettingsCatalog.Find("updatecheck");
-            foreach (Control c in UpdatesUi.SettingRows(theme, delegate { Relayout(); }))
-            {
-                SettingRow r = c as SettingRow;
-                // The row of the policy says why it is off; the toggle gets the short text and More.
-                if (r != null && r.Title == check.Title && r.Accessory is Toggle)
-                {
-                    r.Desc = check.Summary;
-                    r.More = check.More;
-                    Watch(r.Accessory);
-                }
-                l.Add(c);
-            }
         }
 
         void BuildDevice(List<Control> l)
@@ -851,6 +839,24 @@ namespace TrackVice
             l.Add(Bind("agentupdate", new SettingRow(Glyphs.Shield, "Publish agent update", null, bPublish)));
         }
 
+        void BuildUpdates(List<Control> l)
+        {
+            SettingDef check = SettingsCatalog.Find("updatecheck");
+            foreach (Control c in UpdatesUi.SettingRows(theme, delegate { Relayout(); }))
+            {
+                SettingRow r = c as SettingRow;
+                // The row of the policy says why it is off; the toggle gets the short text and More.
+                if (r != null && r.Title == check.Title && r.Accessory is Toggle)
+                {
+                    r.Desc = check.Summary;
+                    r.More = check.More;
+                    Watch(r.Accessory);
+                }
+                l.Add(c);
+            }
+            foreach (Control c in UpdatesUi.LinkRows(theme)) l.Add(c);
+        }
+
         void BuildLogVice(List<Control> l)
         {
             FlatButton bDownload = SmallButton("Download", delegate { DownloadLogVice(); });
@@ -978,6 +984,7 @@ namespace TrackVice
         public static Form ForShot(Theme t, string page, string select)
         {
             if (page == AboutDialog.CommandLinePart || page == AboutDialog.ShortcutsPart) return new AboutDialog(t, page);
+            if (select == "whatsnew-dialog") return new WhatsNewDialog(t);
             RememberPage = false;
             string sub = page.StartsWith("settings-", StringComparison.Ordinal) ? page.Substring(9) : null;
             if (sub == SettingsCatalog.Storage) YourStorageUi.UseDemo();

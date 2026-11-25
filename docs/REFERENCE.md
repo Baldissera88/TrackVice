@@ -337,7 +337,7 @@ ESP and Win32 app states come from the registry, and always carry the time their
 
 At every start (about 8 seconds after the window is shown) and every 6 hours while TrackVice is open, TrackVice asks GitHub (`api.github.com`) for its latest release. Following or watching a deployment does not stop the check. When it is newer, the status bar says so with **Install**. Install downloads `TrackVice.msi`, or `TrackVice.exe` for a copy run from a folder, to a new folder under `%LOCALAPPDATA%\TrackVice`, checks it against the release's `SHA256SUMS.txt`, installs it and opens TrackVice again. Install is refused only in Windows PE, as SYSTEM, while a task sequence or Windows setup / the Enrollment Status Page runs on this device, or by the policy. When Watch is on, TrackVice restarts to update, then opens again and continues watching this device. It then offers to publish the new version to Your storage. Pre-releases are not offered.
 
-**Settings > Updates** turns the check on or off, has **Check now**, and says when it last checked. To turn it off for everyone, set the DWORD `DisableUpdateCheck` to 1 under `HKLM\SOFTWARE\Policies\TrackVice`.
+**Settings > Updates** turns the check on or off, has **Check now**, and says when it last checked. **Release page** opens the TrackVice releases on GitHub, and **What's new** shows the changelog that comes with TrackVice, newest first, with this version marked. To turn it off for everyone, set the DWORD `DisableUpdateCheck` to 1 under `HKLM\SOFTWARE\Policies\TrackVice`.
 
 There is no check on the command line, as the agent, in Windows PE, during Windows setup or the ESP, while a task sequence runs or TrackVice follows a deployment on the device, or as SYSTEM.
 

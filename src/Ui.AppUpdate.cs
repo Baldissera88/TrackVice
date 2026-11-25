@@ -5,6 +5,7 @@ namespace TrackVice
     using System.Diagnostics;
     using System.Drawing;
     using System.Globalization;
+    using System.Text;
     using System.Threading;
     using System.Windows.Forms;
 
@@ -59,11 +60,42 @@ namespace TrackVice
             return utc.ToLocalTime().ToString("d MMMM yyyy HH:mm", CultureInfo.CurrentCulture);
         }
 
+        public static void OpenReleasePage()
+        {
+            try { Process.Start(AppUpdate.ReleasesUrl); } catch (Exception) { }
+        }
+
+        // Release page and What's new, the two rows after the update rows.
+        public static List<Control> LinkRows(Theme theme)
+        {
+            List<Control> l = new List<Control>();
+            FlatButton bOpen = new FlatButton("Open", null);
+            bOpen.Compact = true;
+            bOpen.AutoWidth();
+            bOpen.Width += Dpi.S(8);
+            bOpen.ApplyTheme(theme);
+            bOpen.Click += Safe.Wrap(delegate { OpenReleasePage(); });
+            SettingRow release = new SettingRow(Glyphs.Info, "Release page", AppUpdate.ReleasesUrl, bOpen);
+            release.MonoDesc = true;
+            l.Add(release);
+            FlatButton bShow = new FlatButton("Show", null);
+            bShow.Compact = true;
+            bShow.AutoWidth();
+            bShow.Width += Dpi.S(8);
+            bShow.ApplyTheme(theme);
+            SettingRow news = new SettingRow(Glyphs.Info, "What's new", "Read what changed in this version and the ones before it.", bShow);
+            bShow.Click += Safe.Wrap(delegate
+            {
+                using (WhatsNewDialog d = new WhatsNewDialog(theme)) d.ShowDialog(news.FindForm());
+            });
+            l.Add(news);
+            return l;
+        }
+
         public static List<Control> SettingRows(Theme theme, MethodInvoker relayout)
         {
             Wire();
             List<Control> l = new List<Control>();
-            l.Add(new SectionTitle("Updates"));
             string blocked = Demo != null ? null : AppUpdate.Blocked;
             bool policy = Demo == null && blocked != null && blocked.IndexOf(UpdateGate.PolicyValue, StringComparison.Ordinal) >= 0;
             if (policy)
@@ -266,6 +298,40 @@ namespace TrackVice
             footer.Controls.Add(b);
             gap.BringToFront();
             b.BringToFront();
+        }
+    }
+
+    // Settings > Updates > What's new: the changelog that is embedded in TrackVice.exe.
+    public sealed class WhatsNewDialog : PageForm
+    {
+        public WhatsNewDialog(Theme t) : base("What's new in TrackVice", t)
+        {
+            Size = new Size(Dpi.S(760), Dpi.S(660));
+            List<ChangelogSection> list = Changelog.Parse(Changelog.Embedded(), Program.Version);
+            if (list.Count == 0)
+            {
+                Add(new SectionTitle("What's new"));
+                Add(new SettingRow(Glyphs.Info, "No changelog in this copy", "This copy of TrackVice has no changelog inside it. Every release and what changed in it is on " + AppUpdate.ReleasesUrl + ".", null));
+                FlatButton b = new FlatButton("Release page", null);
+                b.AutoWidth();
+                b.Width = Math.Max(b.Width + Dpi.S(8), Dpi.S(120));
+                b.Dock = DockStyle.Left;
+                b.ApplyTheme(t);
+                b.Click += Safe.Wrap(delegate { UpdatesUi.OpenReleasePage(); });
+                footer.Controls.Add(b);
+                return;
+            }
+            foreach (ChangelogSection s in list)
+            {
+                Add(new SectionTitle(s.Title + (s.Current ? " (this version)" : "")));
+                StringBuilder b = new StringBuilder();
+                foreach (string item in s.Items)
+                {
+                    if (b.Length > 0) b.Append("\n\n");
+                    b.Append("\u2022 ").Append(item);
+                }
+                Add(new SettingRow(null, s.Date ?? s.Version, b.ToString(), null));
+            }
         }
     }
 
@@ -536,8 +602,7 @@ namespace TrackVice
                 case "updates":
                     if (start.Select == "latest") { demo.Newer = false; demo.Latest = Program.Version; }
                     UpdatesUi.Demo = demo;
-                    SettingsDialog sd = new SettingsDialog(theme, SettingsCatalog.General);
-                    sd.Shown += delegate { sd.BeginInvoke((MethodInvoker)delegate { foreach (Control c in sd.Controls) { Panel p = c as Panel; if (p != null && p.AutoScroll) p.AutoScrollPosition = new Point(0, Dpi.S(start.Tab >= 0 ? start.Tab : 5000)); } }); };
+                    SettingsDialog sd = new SettingsDialog(theme, SettingsCatalog.Updates);
                     return sd;
                 case "update": return new UpdateDialog(theme, demo, true);
                 case "updater":

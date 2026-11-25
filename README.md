@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.0.9" src="https://img.shields.io/badge/version-2.0.9-005fb8">
+  <img alt="Version 2.0.10" src="https://img.shields.io/badge/version-2.0.10-005fb8">
   <a href="../../actions/workflows/build.yml"><img alt="Build" src="../../actions/workflows/build.yml/badge.svg"></a>
   <img alt="Windows 10, 11 and Server 2016 or later" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078d4">
   <img alt=".NET Framework 4.5 or later, included in Windows" src="https://img.shields.io/badge/.NET%20Framework-4.5%2B%20(in%20Windows)-512bd4">
@@ -23,7 +23,7 @@ It can also follow **other devices** from your own PC: Autopilot deployments as 
 
 ![TrackVice following an Autopilot deployment](docs/images/trackvice-autopilot.png)
 
-**[Download the latest release](https://github.com/Baldissera88/TrackVice/releases/latest)**: `TrackVice.msi` or the portable `TrackVice.exe`. It needs .NET Framework 4.5 or later, which Windows 10 and 11 have. The files are not code signed, so SmartScreen warns on the first start. Each release has `SHA256SUMS.txt` with the hash of every file. TrackVice updates itself after that, see [Updates](docs/REFERENCE.md#updates).
+**[Download the latest release](https://github.com/Baldissera88/TrackVice/releases/latest)**: `TrackVice.msi` or the portable `TrackVice.exe`. It needs .NET Framework 4.5 or later, which Windows 10 and 11 have. The files are not code signed, so SmartScreen warns on the first start. Each release has `SHA256SUMS.txt` with the hash of every file. TrackVice updates itself after that, see [Updates](docs/REFERENCE.md#updates). **Settings > Updates** has Check now, the release page and What's new.
 
 **On this page:** [What's new in 2.0](#whats-new-in-20) · [Quick start](#quick-start) · [Features](#features) · [Same setup on every PC](#same-setup-on-every-pc) · [Permissions](#permissions) · [Troubleshooting](#troubleshooting) · [Privacy](#privacy-and-data) · [More documentation](#more-documentation) · [Build from source](#build-from-source) · [License](#license)
 

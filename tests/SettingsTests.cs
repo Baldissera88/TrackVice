@@ -19,7 +19,7 @@ namespace TrackVice.Tests
         {
             List<string> titles = new List<string>();
             foreach (SettingPage p in SettingsCatalog.Pages) titles.Add(p.Title);
-            T.Eq("General|This device|Customers|Intune / cloud|SCCM / on-premises|Your storage and agents|LogVice|Data and privacy", string.Join("|", titles.ToArray()), "the subjects in order");
+            T.Eq("General|This device|Customers|Intune / cloud|SCCM / on-premises|Your storage and agents|LogVice|Updates|Data and privacy", string.Join("|", titles.ToArray()), "the subjects in order");
             foreach (SettingPage p in SettingsCatalog.Pages) T.Check(SettingsCatalog.On(p.Id).Count > 0, "settings on " + p.Title);
         }
 
@@ -53,7 +53,12 @@ namespace TrackVice.Tests
             }
             T.Eq(saved.Length, keys.Count, "no other keys");
             T.Eq(SettingsCatalog.ThisDevice, SettingsCatalog.Find("wmi").Page, "WMI is on This device");
-            T.Eq(SettingsCatalog.General, SettingsCatalog.Find("updatecheck").Page, "updates are on General");
+            T.Eq(SettingsCatalog.Updates, SettingsCatalog.Find("updatecheck").Page, "the update check is on Updates");
+            T.Eq(SettingsCatalog.Updates, SettingsCatalog.Find("updates").Page, "Updates is on Updates");
+            T.Eq(SettingsCatalog.Updates, SettingsCatalog.Find("releasepage").Page, "the release page is on Updates");
+            T.Eq(SettingsCatalog.Updates, SettingsCatalog.Find("whatsnew").Page, "What's new is on Updates");
+            T.Eq(AppUpdate.ReleasesUrl, SettingsCatalog.Find("releasepage").Summary, "the release page row shows the address");
+            T.Check(SettingsCatalog.Resettable(SettingsCatalog.Updates), "Updates can be reset");
             T.Eq(SettingsCatalog.Storage, SettingsCatalog.Find("agentupdate").Page, "agent updates are with Your storage");
             T.Eq(SettingsCatalog.Intune, SettingsCatalog.Find("names.apps").Page, "names from Intune are on Intune / cloud");
             T.Check(SettingsCatalog.Find("customers").Keys.Length == 0, "the customers are not a single value");
