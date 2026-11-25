@@ -1,5 +1,13 @@
 # Changelog
 
+## TrackVice 2.0.3
+
+25 November 2026.
+
+- Fixed: on a device installed from an older image, one app or log entry with an old date could make the deployment look months long (for example "4584 h"). The start is now taken from the enrollment itself, and anything recorded more than an hour before it no longer pulls the start, the phases or the durations back. The old time is still shown in the item details as "Recorded earlier".
+- **Overall % by time**: the overall progress now weighs each item by how long it usually takes, from earlier deployments of the same customer when there are some. Microsoft 365 Apps counts as minutes, a policy as seconds, so the % no longer jumps to 97 % while a large app still installs. It stays at most 99 % until everything is done.
+- Fixed: Overview listed a device under "Agents that stopped sending" when its old deployment was replaced by a new one on the same device, for example after reinstalling a VM. Such a deployment now shows as "Replaced by a newer deployment".
+
 ## TrackVice 2.0.2
 
 25 November 2026.

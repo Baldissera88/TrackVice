@@ -106,6 +106,8 @@ namespace TrackVice
         public RemoteDeployment D;
         public Session S;
         public IOverviewSource Source;
+        // A newer deployment of the same device exists, so this one will never finish: the VM or PC was reset or reinstalled.
+        public bool Replaced;
 
         // Intune or SCCM. A device with the agent in a task sequence is SCCM.
         public string Side
@@ -116,7 +118,7 @@ namespace TrackVice
         // The agent has not uploaded for longer than it ever waits.
         public bool Silent
         {
-            get { return Kind == OverviewKinds.Agents && D.StateText != null && D.StateText.StartsWith("No upload for", StringComparison.Ordinal); }
+            get { return !Replaced && Kind == OverviewKinds.Agents && D.StateText != null && D.StateText.StartsWith("No upload for", StringComparison.Ordinal); }
         }
 
         public bool HasFailed
@@ -127,7 +129,7 @@ namespace TrackVice
         // Deploying now: something runs, or it has just started and waits.
         public bool Running(DateTime nowUtc)
         {
-            if (Silent) return false;
+            if (Replaced || Silent) return false;
             if ((D.StateText ?? "").StartsWith("Off since", StringComparison.Ordinal)) return false;
             if (S != null && S.CountActive > 0) return true;
             if (States.IsActive(D.State)) return true;
@@ -137,7 +139,7 @@ namespace TrackVice
         // Done or failed, with nothing running any more.
         public bool Finished(DateTime nowUtc)
         {
-            if (Running(nowUtc) || Silent) return false;
+            if (Replaced || Running(nowUtc) || Silent) return false;
             if (S != null && S.Items.Count > 0) return S.CountActive == 0 && (S.Count(State.Failed) > 0 || S.CountComplete == S.Items.Count);
             return D.State == State.Succeeded || D.State == State.Failed;
         }
@@ -264,6 +266,7 @@ namespace TrackVice
             List<string> drop = new List<string>();
             foreach (string k in sessions.Keys) if (!used.Contains(k)) drop.Add(k);
             foreach (string k in drop) sessions.Remove(k);
+            OverviewModel.MarkReplaced(snap.Devices);
             return snap;
         }
 
@@ -478,6 +481,7 @@ namespace TrackVice
             if (f == null) f = new OverviewFilter();
             if (snap != null)
             {
+                MarkReplaced(snap.Devices);
                 data.HasAgents = snap.Agents;
                 data.HasSccm = snap.Sccm;
                 foreach (OverviewDevice o in snap.Devices) if (f.Shows(o)) data.Devices.Add(o);
@@ -486,9 +490,12 @@ namespace TrackVice
             DateTime weekStart = nowUtc - OverviewLoader.Window;
             List<Session> weekSessions = new List<Session>();
             List<OverviewDevice> weekWithSession = new List<OverviewDevice>();
+            List<Session> known = new List<Session>();
+            foreach (OverviewDevice o in data.Devices) if (o.S != null && o.D.LastUtc >= weekStart) known.Add(o.S);
+            ExpectedTimes history = ExpectedTimes.From(known, null, null, nowUtc);
             foreach (OverviewDevice o in data.Devices)
             {
-                if (o.Running(nowUtc)) data.Now.Add(NowOf(o));
+                if (o.Running(nowUtc)) data.Now.Add(NowOf(o, history, nowUtc));
                 if (o.Finished(nowUtc))
                 {
                     DateTime end = o.EndUtc;
@@ -521,7 +528,58 @@ namespace TrackVice
             return data;
         }
 
+        public const string ReplacedText = "Replaced by a newer deployment";
+
+        // A deployment that never finished, and that the same device started over after a reset or a reinstall, is not
+        // an agent that stopped sending: the newer deployment is the device now. Same customer, and the same device name,
+        // the same Intune, Entra or serial number, or a name the newer one lists as an earlier name of the device.
+        public static void MarkReplaced(IList<OverviewDevice> devices)
+        {
+            if (devices == null) return;
+            foreach (OverviewDevice o in devices)
+            {
+                if (o.Kind != OverviewKinds.Agents || o.D == null || States.IsFinal(o.D.State) || o.D.EndUtc.HasValue) continue;
+                DateTime start = o.D.StartUtc ?? o.D.LastUtc;
+                foreach (OverviewDevice p in devices)
+                {
+                    if (ReferenceEquals(p, o) || p.Kind != OverviewKinds.Agents || p.D == null) continue;
+                    if (!string.Equals(p.Customer ?? "", o.Customer ?? "", StringComparison.OrdinalIgnoreCase)) continue;
+                    if ((p.D.StartUtc ?? p.D.LastUtc) <= start || p.D.LastUtc <= o.D.LastUtc) continue;
+                    if (!SameDevice(o, p)) continue;
+                    o.Replaced = true;
+                    string t = o.D.StateText ?? "";
+                    if (!t.StartsWith(ReplacedText, StringComparison.Ordinal))
+                    {
+                        int dot = t.IndexOf(" \u00b7 ", StringComparison.Ordinal);
+                        o.D.StateText = ReplacedText + (t.StartsWith("No upload for", StringComparison.Ordinal) && dot >= 0 ? t.Substring(dot) : t.Length > 0 ? " \u00b7 " + t : "");
+                    }
+                    break;
+                }
+            }
+        }
+
+        static bool SameDevice(OverviewDevice a, OverviewDevice b)
+        {
+            if (!string.IsNullOrEmpty(a.D.Device) && string.Equals(a.D.Device, b.D.Device, StringComparison.OrdinalIgnoreCase)) return true;
+            string[] ids = { DeviceFacts.IntuneId, DeviceFacts.EntraId, DeviceFacts.Serial };
+            if (a.S != null && b.S != null)
+                foreach (string k in ids)
+                {
+                    string x = a.S.GetInfo(k), y = b.S.GetInfo(k);
+                    if (!string.IsNullOrEmpty(x) && string.Equals(x, y, StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            if (!string.IsNullOrEmpty(a.D.Device) && !string.IsNullOrEmpty(b.D.Serial))
+                foreach (string n in b.D.Serial.Split(new char[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries))
+                    if (string.Equals(n.Trim(), a.D.Device, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
         public static NowRow NowOf(OverviewDevice o)
+        {
+            return NowOf(o, null, DateTime.UtcNow);
+        }
+
+        public static NowRow NowOf(OverviewDevice o, ExpectedTimes history, DateTime nowUtc)
         {
             NowRow r = new NowRow();
             r.Dev = o;
@@ -529,10 +587,7 @@ namespace TrackVice
             Session s = o.S;
             if (s != null && s.Items.Count > 0)
             {
-                double prog = 0;
-                int total = 0;
-                foreach (Phase p in s.OrderedPhases) { prog += p.Progress * p.Items.Count; total += p.Items.Count; }
-                r.Percent = total == 0 ? 0 : Math.Round(prog / total * 100);
+                r.Percent = OverallProgress.Percent(s, nowUtc, history);
                 Item cur = null;
                 foreach (Item i in s.Items)
                     if (States.IsActive(i.State) && i.Key != SccmFeed.RunKey && (cur == null || i.LastUtc > cur.LastUtc)) cur = i;

@@ -95,6 +95,7 @@ namespace TrackVice.Tests
             PublishTargetTests.Run();
             GetStartedTests.Run();
             CustomerStorageLinkTests.Run();
+            EnrollmentAnchorTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

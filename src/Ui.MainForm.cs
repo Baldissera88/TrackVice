@@ -50,6 +50,9 @@ namespace TrackVice
 
         FlatButton bWatch, bOpen, bDevices, bSave, bExport, bLogVice, bCompact, bTheme, bSettings, bAbout, bAdmin;
         OverallChip overall;
+        // What items took on other devices of the customer or in the reference, for the overall percentage.
+        ExpectedTimes expected;
+        object expectedFor;
         StatChip cItems, cActive, cWaiting, cFailed, cFindings;
         string chipFilter;
 
@@ -741,11 +744,12 @@ namespace TrackVice
             if (watching && engine.S.CountActive > 0)
             {
                 overall.Elapsed = Elapsed();
+                overall.Progress = OverallProgress.Fraction(engine.S, engine.Now, expected);
                 overall.Invalidate();
                 rail.Invalidate();
                 list.Invalidate();
             }
-            if (compact != null && !compact.IsDisposed) compact.UpdateFrom(engine, watching);
+            if (compact != null && !compact.IsDisposed) { compact.Expected = expected; compact.UpdateFrom(engine, watching); }
         }
 
         void UpdateStatusRight()
@@ -796,10 +800,9 @@ namespace TrackVice
             subtitle.Text = string.Join(" · ", sub.ToArray());
 
             List<Phase> phases = new List<Phase>(s.OrderedPhases);
-            double prog = 0;
             int total = 0;
-            foreach (Phase p in phases) { prog += p.Progress * p.Items.Count; total += p.Items.Count; }
-            overall.Progress = total == 0 ? 0 : prog / total;
+            foreach (Phase p in phases) total += p.Items.Count;
+            overall.Progress = OverallProgress.Fraction(s, engine.Now, expected);
             State os = State.Unknown;
             if (s.CountActive > 0) os = State.Installing;
             else if (s.Count(State.Failed) > 0 || (s.GetInfo("Task sequence result") ?? "").StartsWith("Failed")) os = State.Failed;
@@ -832,7 +835,7 @@ namespace TrackVice
             if (tabs.Selected == TabSession) ShowSession();
             if (tabs.Selected == TabGantt) BindGantt();
             ShowSelection(false);
-            if (compact != null && !compact.IsDisposed) compact.UpdateFrom(engine, watching);
+            if (compact != null && !compact.IsDisposed) { compact.Expected = expected; compact.UpdateFrom(engine, watching); }
             UpdateStatusRight();
             Text = (s.Items.Count > 0 ? ((int)Math.Round(overall.Progress * 100)).ToString(Inv) + " % · " : "") + s.Computer + " - TrackVice";
             UpdateRecent();
@@ -1705,7 +1708,7 @@ namespace TrackVice
             compact.FormClosed += delegate { bCompact.Checked = false; compact = null; };
             compact.FullView += delegate { Activate(); };
             bCompact.Checked = true;
-            if (engine != null) compact.UpdateFrom(engine, watching);
+            if (engine != null) { compact.Expected = expected; compact.UpdateFrom(engine, watching); }
             compact.Show();
         }
 

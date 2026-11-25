@@ -285,12 +285,8 @@ namespace TrackVice
         // installed months ago and enrolled today.
         public DateTime RestartFloor(List<Obs> found, DateTime nowUtc)
         {
-            DateTime? first = null;
-            foreach (Obs o in found)
-            {
-                if (o.TimeUtc == DateTime.MinValue || o.TimeUtc < SinceUtc || o.TimeUtc > nowUtc.AddMinutes(5)) continue;
-                if (!first.HasValue || o.TimeUtc < first.Value) first = o.TimeUtc;
-            }
+            // Not from an app: its time can come from the image, months before.
+            DateTime? first = EnrollmentAnchor.Of(found, SinceUtc, nowUtc);
             DateTime floor = first.HasValue ? first.Value.AddHours(-1) : nowUtc.AddHours(-2);
             try
             {

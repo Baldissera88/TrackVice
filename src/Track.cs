@@ -103,6 +103,7 @@ namespace TrackVice
                 return c != 0 ? c : a.Seq.CompareTo(b.Seq);
             });
             foreach (Obs o in sorted) Apply(o);
+            EnrollmentAnchor.Apply(S);
         }
 
         // Names for IDs (Intune app IDs). Renames items that only had their ID.
@@ -396,6 +397,7 @@ namespace TrackVice
 
         public static void Run(Session s, DateTime nowUtc, bool live)
         {
+            EnrollmentAnchor.Apply(s);
             OffTime.Mark(s);
             List<Finding> list = new List<Finding>();
             foreach (Item i in s.Items)

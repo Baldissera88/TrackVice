@@ -710,6 +710,7 @@ namespace TrackVice
                 if (i != null) i.Events.Add(e);
             }
             foreach (Phase p in Phases) p.Items.Sort(ItemOrder);
+            EnrollmentAnchor.Apply(this);
             OffTime.Mark(this);
         }
 

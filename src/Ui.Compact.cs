@@ -42,8 +42,12 @@ namespace TrackVice
             if (IsHandleCreated) Draw.TitleBar(Handle, t);
         }
 
+        // What items took on other devices, for the overall percentage. Null: the defaults by kind.
+        public ExpectedTimes Expected;
+
         public void UpdateFrom(Engine e, bool watching)
         {
+            panel.Expected = Expected;
             panel.Set(e, watching);
             Session s = e.S;
             Text = ((int)Math.Round(panel.Overall * 100)).ToString(CultureInfo.InvariantCulture) + " % · " + s.Computer;
@@ -59,6 +63,7 @@ namespace TrackVice
     sealed class CompactPanel : FlatControl
     {
         public double Overall;
+        public ExpectedTimes Expected;
         string device = "", kind = "", phase = "", itemName = "", stateText = "", counts = "", last = "", elapsed = "";
         State itemState = State.Unknown, overallState = State.Unknown;
         int? percent;
@@ -88,10 +93,9 @@ namespace TrackVice
             DateTime now = e.Now;
             device = s.Computer;
             kind = s.Items.Count > 0 ? s.Kind : (watching ? "Watching" : "Paused");
-            double prog = 0;
             int total = 0;
-            foreach (Phase p in s.OrderedPhases) { prog += p.Progress * p.Items.Count; total += p.Items.Count; }
-            Overall = total == 0 ? 0 : prog / total;
+            foreach (Phase p in s.OrderedPhases) total += p.Items.Count;
+            Overall = OverallProgress.Fraction(s, now, Expected);
             Item pick = null;
             foreach (Item i in s.Items) if (States.IsActive(i.State) && (pick == null || i.StateUtc > pick.StateUtc)) pick = i;
             if (pick == null) foreach (Item i in s.Items) if (pick == null || i.LastUtc > pick.LastUtc) pick = i;

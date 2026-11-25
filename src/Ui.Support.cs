@@ -175,7 +175,10 @@ namespace TrackVice
             {
                 Reference r = ReferenceUi.Get(ReferenceCustomer);
                 if (r == null && engine.Mode == Modes.Demo) r = ReferenceUi.DemoReference();
-                timeLeft = TimeLeft.Estimate(s, engine.Now, AutopilotFlow.BoxedTime(s, engine.Now), r, RecentRuns());
+                UpdateExpected(s, r);
+                overall.Progress = OverallProgress.Fraction(s, engine.Now, expected);
+                overall.Invalidate();
+                timeLeft = OverallProgress.Adjust(TimeLeft.Estimate(s, engine.Now, AutopilotFlow.BoxedTime(s, engine.Now), r, RecentRuns()), s, engine.Now, expected);
             }
             catch (Exception) { timeLeft = null; }
             string left = timeLeft != null ? timeLeft.Text : "";
@@ -186,6 +189,24 @@ namespace TrackVice
                 chips.PerformLayout();
             }
             tips.SetToolTip(overall, "How far the deployment has come, counting the items TrackVice has seen. Click to show everything." + (timeLeft != null ? "\n\nTime left: " + timeLeft.Basis : ""));
+        }
+
+        // Per-item times from the other devices Overview read and from the reference, made again only when those change.
+        void UpdateExpected(Session s, Reference r)
+        {
+            OverviewSnapshot snap = overviewSnap;
+            string stamp = s.Computer + "|" + (snap != null ? snap.ReadUtc.Ticks : 0) + "|" + (r != null ? r.MarkedUtc.Ticks : 0);
+            if (expected != null && (string)expectedFor == stamp) return;
+            List<Session> others = new List<Session>();
+            if (snap != null)
+                foreach (OverviewDevice o in snap.Devices)
+                {
+                    if (o.S == null) continue;
+                    if (watchedCustomer != null && o.Customer != null && !string.Equals(o.Customer, watchedCustomer, StringComparison.OrdinalIgnoreCase)) continue;
+                    others.Add(o.S);
+                }
+            expected = ExpectedTimes.From(others, s.Computer, r, DateTime.UtcNow);
+            expectedFor = stamp;
         }
 
         // The enrollments Overview read for the last 7 days, of the customer of this device when it has one.
