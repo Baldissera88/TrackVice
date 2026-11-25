@@ -32,6 +32,7 @@ namespace TrackVice
         void ShowAgentFacts(RichTextBox r, Session s)
         {
             Section(r, "Agent");
+            Field(r, "Network outages seen by the agent", NetworkOutages.Summary(s) ?? "None reported", false);
             Field(r, "Version", string.IsNullOrEmpty(s.AppVersion) ? "Not known" : "TrackVice " + s.AppVersion, false);
             DateTime? installed = AgentVersions.Installed(s);
             DateTime? updated = AgentVersions.Updated(s);

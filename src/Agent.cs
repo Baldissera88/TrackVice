@@ -362,7 +362,7 @@ namespace TrackVice
             long pct = 0;
             int states = 0;
             foreach (Item i in s.Items) { pct += i.Percent ?? 0; states = states * 31 + (int)i.State; }
-            return s.Items.Count + "|" + s.Events.Count + "|" + s.Findings.Count + "|" + pct + "|" + states + "|" + s.Computer;
+            return s.Items.Count + "|" + s.Events.Count + "|" + s.Findings.Count + "|" + (s.Outages == null ? 0 : s.Outages.Count) + "|" + pct + "|" + states + "|" + s.Computer;
         }
 
         // The few values the list shows, saved with the session so the list needs no download.
@@ -647,6 +647,8 @@ namespace TrackVice
         DateTime lastChange, lastUpload = DateTime.MinValue;
         public int Uploads;
         public string LastError;
+        // The times uploads failed because of the network, sent with the session.
+        public readonly OutageRecorder Outages = new OutageRecorder();
         // While a resealed device waits for its user: upload only when something changed.
         public bool Paused;
 
@@ -682,10 +684,12 @@ namespace TrackVice
             try
             {
                 s.SavedUtc = nowUtc;
+                s.Outages = Outages.Snapshot();
                 store.Put(AgentData.BlobName(id), AgentData.Pack(o.Mask ? Secrets.MaskedCopy(s) : s), AgentData.Summary(s, nowUtc, idle));
                 lastUpload = nowUtc;
                 Uploads++;
                 LastError = null;
+                Outages.Success(nowUtc);
                 return true;
             }
             catch (Exception ex)
@@ -693,6 +697,7 @@ namespace TrackVice
                 // Try again at the next heartbeat, not every cycle.
                 lastUpload = nowUtc;
                 LastError = ex.Message;
+                Outages.Failure(nowUtc, ex.Message);
                 return false;
             }
         }
@@ -1045,6 +1050,7 @@ namespace TrackVice
             d.Engine.S.Computer = computer;
             DemoFacts.Vary(d.Engine.S, computer);
             AgentVersions.Demo(d.Engine.S, computer, DateTime.UtcNow);
+            NetworkOutages.Demo(d.Engine.S, computer, DateTime.UtcNow);
             devices.Add(d);
         }
 
