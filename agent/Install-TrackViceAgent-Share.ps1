@@ -30,6 +30,80 @@ if ($MaxAgeHours -gt 0) {
     }
 }
 
+# The agent is installed when TrackVice.exe is in Program Files and its scheduled task is registered.
+$programFiles = $env:ProgramW6432
+if (-not $programFiles) {
+    $programFiles = $env:ProgramFiles
+}
+$agentExe = Join-Path (Join-Path $programFiles 'TrackVice Agent') 'TrackVice.exe'
+
+function Get-AgentVersion {
+    $registered = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\TrackVice\Agent' -Name 'Version' -ErrorAction SilentlyContinue).Version
+    if ($registered) {
+        return [string]$registered
+    }
+    return [string](Get-Item -Path $agentExe).VersionInfo.ProductVersion
+}
+
+# Waits until the name of the host resolves, so a device that has just got its network does not fail on the first download.
+function Wait-ForHost {
+    param([string]$HostName, [int]$Seconds = 180)
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    while ($true) {
+        try {
+            $null = [Net.Dns]::GetHostAddresses($HostName)
+            return $true
+        }
+        catch {
+            if ((Get-Date) -ge $deadline) {
+                Write-Output "The name $HostName did not resolve within $Seconds seconds. The download is tried anyway."
+                return $false
+            }
+            Start-Sleep -Seconds 5
+        }
+    }
+}
+
+# Runs a download up to 5 times, with 5, 15, 30 and 60 seconds between the attempts. The last failure ends the script with exit code 1.
+function Invoke-WithRetry {
+    param([scriptblock]$Action, [string]$HostName, [string]$Path)
+    $delays = 5, 15, 30, 60
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            & $Action
+            return
+        }
+        catch {
+            $reason = $_.Exception.Message
+            Remove-Item -Path $Path -Force -ErrorAction SilentlyContinue
+            if ($attempt -eq 5) {
+                throw "TrackVice.exe could not be downloaded from $HostName after 5 attempts: $reason"
+            }
+            $delay = $delays[$attempt - 1]
+            Write-Output "Download attempt $attempt from $HostName failed: $reason Trying again in $delay seconds."
+            Start-Sleep -Seconds $delay
+        }
+    }
+}
+
+$agentTask = Get-ScheduledTask -TaskName 'TrackVice Agent' -ErrorAction SilentlyContinue
+$agentRegistered = $agentTask -and $agentTask.State -ne 'Disabled'
+$useInstalled = $false
+if (Test-Path -Path $agentExe) {
+    # The installed exe is the one this script installs when it has the same SHA-256. A version the agent updated itself to is replaced by the script's version only when the exe is missing.
+    $installedHash = (Get-FileHash -Path $agentExe -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
+    if ($installedHash -eq $Sha256) {
+        if ($agentRegistered) {
+            $state = if ($agentTask.State -eq 'Running') { 'installed and running' } else { 'installed and registered' }
+            Write-Output "The TrackVice agent $(Get-AgentVersion) is already $state. Nothing to do."
+            exit 0
+        }
+        # The exe is the right one but its task is missing: register it again from the installed exe, without a download.
+        Write-Output 'The TrackVice agent is installed but its scheduled task is missing. It is registered again.'
+        $useInstalled = $true
+    }
+}
+
 # Downloads go to a new folder that only SYSTEM and administrators can change, so the file that is checked is the one that runs.
 $work = Join-Path $env:TEMP ('TrackVice-' + [guid]::NewGuid().ToString('N'))
 $acl = New-Object -TypeName System.Security.AccessControl.DirectorySecurity
@@ -44,7 +118,16 @@ $exe = Join-Path $work 'TrackVice.exe'
 $out = Join-Path $work 'install.out'
 $err = Join-Path $work 'install.err'
 
-Copy-Item -LiteralPath $Download -Destination $exe -Force
+if ($useInstalled) {
+    $exe = $agentExe
+}
+else {
+    $downloadHost = ([Uri]$Download).Host
+    if ($downloadHost) {
+        $null = Wait-ForHost -HostName $downloadHost
+    }
+    Invoke-WithRetry -HostName $downloadHost -Path $exe -Action { Copy-Item -LiteralPath $Download -Destination $exe -Force }
+}
 
 $hash = (Get-FileHash -Path $exe -Algorithm SHA256).Hash
 if ($hash -ne $Sha256) {

@@ -17,6 +17,7 @@ namespace TrackVice.Tests
             ScriptForCode();
             TemplatesMatchFiles();
             PayloadAsTheScriptBuildsIt();
+            ScriptsAreRobust();
         }
 
         static CustomerCode Code(string key)
@@ -115,6 +116,30 @@ namespace TrackVice.Tests
             T.Eq(1, changed, "Customer script: only the $Customer line changes");
             T.Check(AgentScriptTemplate.Text.Contains("$Customer = ''   # The customer code"), "Customer script: the template has an empty $Customer");
             T.Check(CustomerScript.For(" " + code + " ").Contains("$Customer = '" + code + "'"), "Customer script: spaces around the code are left out");
+        }
+
+        // Run twice by Intune (device, then user) with a DNS failure in between: the second run must do nothing, and a download waits and retries.
+        static void ScriptsAreRobust()
+        {
+            string[] names = { "customer", "links", "share" };
+            string[] scripts = { AgentScriptTemplate.Text, AgentScriptTemplate.Links, AgentScriptTemplate.Share };
+            for (int i = 0; i < scripts.Length; i++)
+            {
+                string s = scripts[i].Replace("\r\n", "\n");
+                string n = "Robust " + names[i] + ": ";
+                int idem = s.IndexOf("is already $state. Nothing to do.");
+                int first = s.IndexOf("Invoke-WithRetry -HostName $");
+                T.Check(idem > 0 && first > idem, n + "the installed check comes before the first download");
+                T.Check(s.Contains("Join-Path (Join-Path $programFiles 'TrackVice Agent') 'TrackVice.exe'") && s.Contains("Get-ScheduledTask -TaskName 'TrackVice Agent'"), n + "checks the exe and the task of the agent");
+                T.Check(s.Contains("$useInstalled = $true") && s.Contains("$exe = $agentExe"), n + "registers the task again from the installed exe");
+                T.Check(s.Contains("[Net.Dns]::GetHostAddresses($HostName)") && s.Contains("[int]$Seconds = 180"), n + "waits for the name of the host");
+                T.Check(s.Contains("for ($attempt = 1; $attempt -le 5; $attempt++)") && s.Contains("$delays = 5, 15, 30, 60"), n + "downloads up to 5 times with a backoff");
+                T.Check(s.Contains("could not be downloaded from $HostName after 5 attempts: $reason"), n + "the last failure names the host and the error");
+                T.Check(first > 0 && s.IndexOf("$null = Wait-ForHost -HostName $") < first, n + "waits for the host before the first download");
+            }
+            T.Check(AgentScriptTemplate.Links.Contains("$installedHash -eq $Sha256") && AgentScriptTemplate.Share.Contains("$installedHash -eq $Sha256"), "Robust: links and share are idempotent on the SHA-256 they install");
+            T.Check(AgentScriptTemplate.Links.Contains("SecurityProtocol = [Net.SecurityProtocolType]::Tls12") && AgentScriptTemplate.Text.Contains("SecurityProtocol = [Net.SecurityProtocolType]::Tls12"), "Robust: TLS 1.2 is set");
+            T.Check(!AgentScriptTemplate.Text.Contains("Invoke-WebRequest -Uri (Get-BlobLink"), "Robust: the customer script has no direct download");
         }
 
         static void SameFile(string name, string text)
