@@ -135,7 +135,9 @@ namespace TrackVice
             {
                 if (State == UpdateState.Published) return "has " + Version;
                 if (State == UpdateState.Nothing) return "has nothing published";
-                return "has an unknown version";
+                if (State == UpdateState.NoRead) return "cannot be read from this PC (no link that can read there: Sign in to Azure and get access in Publish agent update)";
+                if (State == UpdateState.Failed) return "could not be read: " + Problem;
+                return "is not read yet";
             }
         }
 

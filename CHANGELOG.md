@@ -1,5 +1,12 @@
 # Changelog
 
+## TrackVice 2.0.9
+
+25 November 2026.
+
+- Fixed: after reinstalling the same device several times, Overview counted every earlier deployment. Agents that stopped sending listed finished deployments and ones replaced by a newer deployment of the device, Agents counted the agents of earlier deployments that no longer exist, and Failed devices listed a failure the device has since deployed past. Now only the newest deployment of each device counts there; the earlier ones stay in the lists and the statistics as history. A finished deployment is never "stopped in the middle".
+- The Agents line says why a place's version is not known, for example that this PC has no link that can read there, with the way to fix it.
+
 ## TrackVice 2.0.8
 
 25 November 2026.

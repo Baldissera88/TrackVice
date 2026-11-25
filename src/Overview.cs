@@ -108,6 +108,8 @@ namespace TrackVice
         public IOverviewSource Source;
         // A newer deployment of the same device exists, so this one will never finish: the VM or PC was reset or reinstalled.
         public bool Replaced;
+        // A newer deployment of the same device exists, finished or not: this one's agent is gone, so it is history.
+        public bool Superseded;
 
         // Intune or SCCM. A device with the agent in a task sequence is SCCM.
         public string Side
@@ -118,7 +120,7 @@ namespace TrackVice
         // The agent has not uploaded for longer than it ever waits.
         public bool Silent
         {
-            get { return !Replaced && Kind == OverviewKinds.Agents && D.StateText != null && D.StateText.StartsWith("No upload for", StringComparison.Ordinal); }
+            get { return !Replaced && !Superseded && Kind == OverviewKinds.Agents && !States.IsFinal(D.State) && !D.EndUtc.HasValue && D.StateText != null && D.StateText.StartsWith("No upload for", StringComparison.Ordinal); }
         }
 
         public bool HasFailed
@@ -552,7 +554,8 @@ namespace TrackVice
             if (devices == null) return;
             foreach (OverviewDevice o in devices)
             {
-                if (o.Kind != OverviewKinds.Agents || o.D == null || States.IsFinal(o.D.State) || o.D.EndUtc.HasValue) continue;
+                if (o.Kind != OverviewKinds.Agents || o.D == null) continue;
+                bool finished = States.IsFinal(o.D.State) || o.D.EndUtc.HasValue;
                 DateTime start = o.D.StartUtc ?? o.D.LastUtc;
                 foreach (OverviewDevice p in devices)
                 {
@@ -560,6 +563,8 @@ namespace TrackVice
                     if (!string.Equals(p.Customer ?? "", o.Customer ?? "", StringComparison.OrdinalIgnoreCase)) continue;
                     if ((p.D.StartUtc ?? p.D.LastUtc) <= start || p.D.LastUtc <= o.D.LastUtc) continue;
                     if (!SameDevice(o, p)) continue;
+                    o.Superseded = true;
+                    if (finished) break;
                     o.Replaced = true;
                     string t = o.D.StateText ?? "";
                     if (!t.StartsWith(ReplacedText, StringComparison.Ordinal))
@@ -728,7 +733,7 @@ namespace TrackVice
             foreach (OverviewDevice o in data.Devices)
             {
                 if (o.D.LastUtc < weekStart) continue;
-                if (o.HasFailed) failed.Devices.Add(o);
+                if (o.HasFailed && !o.Superseded) failed.Devices.Add(o);
                 if (o.Silent && nowUtc - o.D.LastUtc < TimeSpan.FromDays(2)) silent.Devices.Add(o);
                 bool noProgress = o.Kind == OverviewKinds.Sccm && o.D.State == State.Unknown && (o.D.StateText ?? "").StartsWith("No status since", StringComparison.Ordinal);
                 bool worth = false;

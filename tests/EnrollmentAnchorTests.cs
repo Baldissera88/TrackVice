@@ -21,6 +21,7 @@ namespace TrackVice.Tests
             TimeLeftNotBelowRunning();
             ReplacedIsNotSilent();
             NewerIsNotReplaced();
+            ManyReinstallsCountOnce();
         }
 
         static Item Add(Session s, string key, string name, string kind, string phase, State st, DateTime start, DateTime? end)
@@ -254,6 +255,27 @@ namespace TrackVice.Tests
             snap.Devices.Add(done);
             OverviewModel.MarkReplaced(snap.Devices);
             T.Check(!a.Replaced && !done.Replaced, "replaced: an older finished deployment does not replace a newer one, and a finished one is left alone");
+            T.Check(!a.Superseded && done.Superseded, "superseded: the older finished deployment is history");
+        }
+
+        static void ManyReinstallsCountOnce()
+        {
+            DateTime now = new DateTime(2026, 11, 25, 21, 0, 0, DateTimeKind.Utc);
+            OverviewSnapshot snap = new OverviewSnapshot();
+            snap.Agents = true;
+            OverviewDevice failedOld = Dev("MANSOFT-62132", State.Failed, 300, 72, "No upload for 1 h 12 min · 1 failed");
+            failedOld.D.EndUtc = failedOld.D.LastUtc;
+            OverviewDevice doneOld = Dev("MANSOFT-62132", State.Succeeded, 200, 55, "No upload for 55 min · Done, 58 items");
+            doneOld.D.EndUtc = doneOld.D.LastUtc;
+            OverviewDevice stopped = Dev("MANSOFT-62132", State.Unknown, 100, 13, "No upload for 13 min · 20 of 64 done");
+            OverviewDevice live = Dev("MANSOFT-62132", State.Installing, 30, 0, "56 of 64 done");
+            OverviewDevice doneElsewhere = Dev("PC-9", State.Succeeded, 300, 200, "No upload for 3 h · Done, 40 items");
+            doneElsewhere.D.EndUtc = doneElsewhere.D.LastUtc;
+            snap.Devices.AddRange(new OverviewDevice[] { failedOld, doneOld, stopped, live, doneElsewhere });
+            OverviewData d = OverviewModel.Build(snap, new OverviewFilter(), now, now.AddHours(-12), null);
+            T.Check(Tile(d, "silent") == null, "reinstalls: no agent counts as stopped (old ones are history, a finished one is not in the middle)");
+            T.Check(Tile(d, "failed") == null, "reinstalls: a failure replaced by a newer deployment of the device is not a failed device");
+            T.Check(failedOld.Superseded && doneOld.Superseded && stopped.Superseded && stopped.Replaced && !live.Superseded && !doneElsewhere.Superseded, "reinstalls: every older deployment of the device is superseded");
         }
     }
 }

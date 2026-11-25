@@ -225,7 +225,7 @@ namespace TrackVice
             foreach (OverviewDevice o in data.Devices)
             {
                 string v = VersionOf(o);
-                if (v == null || nowUtc - o.D.LastUtc > Recent) continue;
+                if (v == null || o.Superseded || nowUtc - o.D.LastUtc > Recent) continue;
                 versions.Add(v);
                 agents.Devices.Add(o);
                 string pub = PublishedFor(o, published, places);
