@@ -377,6 +377,7 @@ $exe = Join-Path -Path $PSScriptRoot -ChildPath 'TrackVice.exe'
 $msi = Join-Path -Path $PSScriptRoot -ChildPath 'TrackVice.msi'
 $agentScript = Join-Path -Path $PSScriptRoot -ChildPath 'agent\Install-TrackViceAgent.ps1'
 $linksScript = Join-Path -Path $PSScriptRoot -ChildPath 'agent\Install-TrackViceAgent-Links.ps1'
+$shareScript = Join-Path -Path $PSScriptRoot -ChildPath 'agent\Install-TrackViceAgent-Share.ps1'
 $customerScript = Join-Path -Path $PSScriptRoot -ChildPath 'agent\New-TrackViceCustomer.ps1'
 $sumsPath = Join-Path -Path $outDir -ChildPath 'SHA256SUMS.txt'
 
@@ -423,6 +424,7 @@ if ($PSCmdlet.ShouldProcess($outDir, 'Write SHA256SUMS.txt and release-notes.md'
         @{ Name = 'TrackVice.msi'; Path = $msi },
         @{ Name = 'Install-TrackViceAgent.ps1'; Path = $agentScript },
         @{ Name = 'Install-TrackViceAgent-Links.ps1'; Path = $linksScript },
+        @{ Name = 'Install-TrackViceAgent-Share.ps1'; Path = $shareScript },
         @{ Name = 'New-TrackViceCustomer.ps1'; Path = $customerScript }
     )
     $sums = @()
