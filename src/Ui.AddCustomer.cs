@@ -616,8 +616,10 @@ namespace TrackVice
         string code;
         readonly TextBox tAlert;
         readonly Toggle gZone;
-        readonly FlatButton bSave, bGraph, bUpdate, bLinks, bRemove;
+        readonly FlatButton bSave, bGraph, bUpdate, bCheck, bFix, bLinks, bRemove;
         WebSignIn graphIn;
+        ScriptCheck checkResult;
+        string checkText = "";
         string saveText = "", graphText = "", updateText = "", linksText = "";
 
         public CustomerCodeDialog(Theme t, Customer c, CustomerBook book, IWeb web, ISecretStore secrets, string folder, bool isDemo) : base("Customer code for " + c.Name, t, web, isDemo)
@@ -642,6 +644,8 @@ namespace TrackVice
             bGraph = Button("Sign in", delegate { SignInIntune(); });
             bUpdate = Button("Update", delegate { UpdateIntune(); });
             bUpdate.Primary = true;
+            bCheck = Button("Check", delegate { CheckIntune(); });
+            bFix = Button("Assign only to devices", delegate { FixAssignments(); });
             bLinks = Button("New links", delegate { NewLinks(); });
             bRemove = Button("Remove customer\u2026", delegate { RemoveCustomer(); });
             string upload = null;
@@ -701,6 +705,14 @@ namespace TrackVice
             l.Add(Row(Glyphs2.Sync, "Sign in to Intune", graphText.Length > 0 ? graphText : "To " + (customer.Tenant.Length > 0 ? customer.Tenant : "the tenant of the account you use") + ", with DeviceManagementScripts.ReadWrite.All. Signing in changes nothing.", bGraph));
             bUpdate.Enabled = graphIn != null && graphIn.SignedIn;
             l.Add(Row(Glyphs2.Apps, "Update the script in Intune", updateText.Length > 0 ? updateText : "Puts the script for this customer code in the platform script " + AddCustomerRun.ScriptName + ". Its assignments are kept.", bUpdate));
+            bCheck.Enabled = graphIn != null && graphIn.SignedIn;
+            l.Add(Row(Glyphs2.Apps, "Check the script in Intune", checkText.Length > 0 ? checkText : "Reads the platform script " + AddCustomerRun.ScriptName + " and its assignments, and tells if it runs as System and only for devices. Changes nothing.", bCheck));
+            if (checkResult != null && checkResult.CanFix)
+            {
+                bFix.Text = checkResult.FixButton;
+                bFix.AutoWidth();
+                l.Add(Row(Glyphs.Shield, "Assign only to a device group", "Removes: " + string.Join(", ", checkResult.RemoveNames.ToArray()) + ". Keeps: " + string.Join(", ", checkResult.KeepNames.ToArray()) + ". Asks first.", bFix));
+            }
             l.Add(new SectionTitle("Links"));
             if (container != null)
             {
@@ -783,6 +795,39 @@ namespace TrackVice
             WebSignIn s = SignIns.Get(web, customer.GraphClientId, customer.Tenant, IntuneScripts.ScriptScope);
             graphIn = s;
             SignIn(s, delegate (string text) { graphText = text; }, null, null, delegate { graphText = ""; graphIn = null; });
+        }
+
+        // GroupMember.Read.All, for the groups the script is assigned to. Null when the sign-in has no token for it.
+        Func<string> GroupToken()
+        {
+            WebSignIn g = graphIn.For(IntuneScripts.GroupScope);
+            if (!g.SignedIn && !g.Quiet()) return null;
+            return g.Token;
+        }
+
+        void CheckIntune()
+        {
+            if (busy || graphIn == null || !graphIn.SignedIn) return;
+            WebSignIn root = graphIn;
+            ScriptCheck r = null;
+            Work("Reading the script in Intune...", delegate { r = new ScriptCheckApi(web, root.Token, GroupToken()).Check(AddCustomerRun.ScriptName); }, delegate
+            {
+                checkResult = r;
+                checkText = r.Text;
+            }, delegate { checkResult = null; checkText = ""; });
+        }
+
+        void FixAssignments()
+        {
+            if (busy || graphIn == null || !graphIn.SignedIn || checkResult == null || !checkResult.CanFix) return;
+            if (!demo && MessageBox.Show(this, checkResult.FixQuestion, "Customer code", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            WebSignIn root = graphIn;
+            ScriptCheck c = checkResult;
+            Work("Changing the assignments in Intune...", delegate { new ScriptCheckApi(web, root.Token, null).Fix(c); }, delegate
+            {
+                checkResult = null;
+                checkText = "The platform script " + AddCustomerRun.ScriptName + " is now assigned only to " + string.Join(", ", c.KeepNames.ToArray()) + ". Check again to see it.";
+            }, null);
         }
 
         void UpdateIntune()
