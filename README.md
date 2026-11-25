@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.0.4" src="https://img.shields.io/badge/version-2.0.4-005fb8">
+  <img alt="Version 2.0.5" src="https://img.shields.io/badge/version-2.0.5-005fb8">
   <a href="../../actions/workflows/build.yml"><img alt="Build" src="../../actions/workflows/build.yml/badge.svg"></a>
   <img alt="Windows 10, 11 and Server 2016 or later" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078d4">
   <img alt=".NET Framework 4.5 or later, included in Windows" src="https://img.shields.io/badge/.NET%20Framework-4.5%2B%20(in%20Windows)-512bd4">
@@ -110,7 +110,7 @@ The guide has every step, the customer code, the storage layout and what to do w
 
 ### Overview and progress
 
-**Overview** (Alt+Home) is the home page on a PC that is not deploying. It shows the devices deploying now, today and the last 7 days, what needs attention (failed devices, agents that stopped sending, findings, a newer version to publish), recent and pinned devices, and setup. Choose all customers or one, and Intune, SCCM or both. It fits a narrow window.
+**Overview** (Alt+Home) is the home page on a PC that is not deploying. It shows the devices deploying now, today and the last 7 days, what needs attention (failed devices, agents that stopped sending, findings, a newer version to publish), and which version each customer's agents run and what the place they update from has, recent and pinned devices, and setup. Choose all customers or one, and Intune, SCCM or both. It fits a narrow window.
 
 <img src="docs/images/trackvice-overview.png" width="900" alt="The overview">
 
@@ -255,6 +255,9 @@ You chose **New account**, and your account cannot make the resource group. Eith
 
 **Publish says "Not published: latest.json … is signed with another update key than the one on this PC".**
 The version in your storage was signed with a different update key, often from the first PC, so devices would refuse what this PC makes. Do not make a new key: that would break every customer code. Press **Get my setup from the vault** in Publish (see [Same setup on every PC](#same-setup-on-every-pc)), or publish from the first PC.
+
+**Agents never update, and Overview says "publish here".**
+A customer made with its own storage account or a share checks that place for updates, not Your storage. Open **Settings > Agent updates > Publish agent update**: it lists every place the agents check, what is published there and whether this PC can write there. For a place without write access, press **Add a link** and paste a link with Read, Create and Write for that container, then press **Publish**. See [Update locations](docs/AGENT.md#update-locations).
 
 **No names from Intune.**
 Names come from the customer in use, so choose that customer and run **Devices > Names from Intune** for its tenant. Sign in with an account of that tenant and give consent when it asks. Each switch needs its own permission, and a lookup without it fails alone while the others still work. If the sign-in is stale, use **Settings > Intune sign-in > Sign out** and try again.

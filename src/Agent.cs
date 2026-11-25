@@ -54,7 +54,7 @@ namespace TrackVice
     }
 
     // A folder or a share. Each session is a file with a small .meta file beside it.
-    public sealed class FolderStore : ISessionStore
+    public sealed class FolderStore : ISessionStore, IFindStore
     {
         readonly string root;
 
@@ -124,6 +124,14 @@ namespace TrackVice
                 l.Add(e);
             }
             return l;
+        }
+
+        // Null when the file is not there. The folder itself must be.
+        public byte[] Find(string name)
+        {
+            if (!Directory.Exists(root)) throw new StoreException("The folder " + root + " was not found.");
+            string path = PathOf(name);
+            return File.Exists(path) ? File.ReadAllBytes(path) : null;
         }
 
         public byte[] Get(string name)

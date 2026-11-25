@@ -397,6 +397,8 @@ namespace TrackVice
                 snap.Sccm = (overviewSig ?? "").Contains("|s|");
             }
             AgentVersionUi.Wire(overviewDemo);
+            // What each location has is read away from the window, and Overview is drawn again with it.
+            if (!overviewDemo) UpdatePlacesUi.RefreshIfStale(delegate { try { BeginInvoke((MethodInvoker)delegate { RenderOverview(); }); } catch (Exception) { } });
             OverviewData d = OverviewModel.Build(snap, overviewPage.Filter, now, DateTime.Today.ToUniversalTime(), extraTiles);
             SideFacts f = Facts();
             List<SetupNeed> needs = OverviewModel.SetupNeeds(f.Storage, f.Customers, f.SccmServer, overviewPage.Filter.Side);

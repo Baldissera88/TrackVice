@@ -261,7 +261,7 @@ namespace TrackVice
     }
 
     // A container reached with a SAS link through IWeb, for agent/latest.json and the versions.
-    public sealed class WebContainer : ISessionStore
+    public sealed class WebContainer : ISessionStore, IFindStore
     {
         readonly IWeb web;
         readonly string container, sas;

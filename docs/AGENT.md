@@ -68,6 +68,7 @@ Setups made before customer codes, with a storage account and links per customer
 - [New TrackVice versions](#new-trackvice-versions)
   - [What does Publish do?](#what-does-publish-do)
 - [Agent updates](#agent-updates)
+  - [Update locations](#update-locations)
 - [Data in the customer's own Azure](#data-in-the-customers-own-azure)
 - [Change a customer later](#change-a-customer-later)
 
@@ -507,6 +508,25 @@ the update key    Publish    agent/latest.json, signed   Read    Installed agent
 
 **What is not affected.** Your customers' containers with their sessions and logs, the customer codes and links, the scripts in Intune, and GitHub.
 
+### Update locations
+
+A customer can have its own storage account or a share, so the agents of different customers do not always check the same place. Publish agent update lists every place where the agents of your customers check for updates, and publishes to all of them in one go.
+
+For each customer TrackVice takes the place from, in this order: the agent link in its customer code, the link or folder saved for Publish agent update, and last the viewer link or share of the customer (then `trackvice-agent` in the same account, or the share itself, and the row says it was taken from there). Customers that use the same container or share are one place, with all their names. Your storage is a place too.
+
+| Row | Meaning |
+| --- | --- |
+| Used by | The customers whose agents check there |
+| Published there | The version in its `agent/latest.json`, or "nothing published". It is read with a read link, so it is not known for a place that only has a write link without Read |
+| Turn on | Turned on by itself for a place that this PC can write to and that is behind the TrackVice.exe you publish. A place whose `latest.json` is signed with another update key is never turned on |
+| Add a link | For a place without write access: paste a link with Read, Create and Write for that container, made in the Azure portal under the account > Containers > the container > Shared access tokens. It is checked against the account and container, kept encrypted for the customers of the place, and used from then on. For the account of Your storage, TrackVice signs the link itself when it keeps the account key. Or set up the account as Your storage while signed in to Azure with Storage Account Contributor on it, so TrackVice gets the key itself |
+
+Press **Publish** once. Each turned on place gets its own result line: published, skipped with the reason (no write access, another update key, the same or a newer version there, the same place twice), or failed with the exact error. One place failing does not stop the others. The banner names the places, for example "Published 2.0.4 to 2 places: Your storage, trackvicemansoft2026dlb1/trackvice-agent." **Another link or folder** adds a place that is not listed.
+
+Publishing puts `agent/TrackVice-<version>.exe` and the signed `agent/latest.json` in each place. A device with a customer code reads these when it is installed, so it gets the new version at once. TrackVice does not replace the plain `TrackVice.exe` that a script from links or from a share downloads: that script fixes its SHA-256, so a new file there would make every new install fail. Devices installed by such a script get that exe, and update themselves within 6 hours. The result line says so. To give them the new version at once, make a customer code for the customer and use **Customer code... > Update the script in Intune**.
+
+**Overview** shows the same: under Agents, each place with the customers that use it, how many agents run which version, and what the place has, with "(publish here)" when it is behind. What a place has is read in the background and shown the next time Overview is drawn.
+
 **How to go back.** Installed agents never install an older version, so they keep the new one until they remove themselves: 48 hours after their deployment is done, and at the latest 30 days after they were installed, unless the customer code sets other times. For new devices, publish the older version from the command line on this PC, which has the update key: TrackVice.exe /publish-agent /to "&lt;link to trackvice-agent with Create and Write&gt;" /exe "&lt;the older TrackVice.exe&gt;". Make the link in the Azure portal. Publish in the window only offers a version newer than the published one.
 
 TrackVice never publishes by itself.
@@ -723,7 +743,7 @@ $UpdateLink = 'https://<account>.blob.core.windows.net/trackvice-agent?sp=r&...'
 
 `$UpdateLink` is a container link with **Read** only, or a folder. Use a container only you write to, such as `trackvice-agent` from [New customer with links](#new-customer-with-links), not the one the devices upload to. The script passes them to `/agent-install` as `/update-key` and `/update`. An install with a key that is not an RSA public key of at least 3072 bits, or with a link that cannot be used, fails with the reason.
 
-**Publish a version.** In **Publish agent update**, choose the TrackVice.exe, enter the link of the same container with **Create** and **Write** (it is saved for the customer in use), and press **Publish**. Or from the command line:
+**Publish a version.** In **Publish agent update**, choose the TrackVice.exe and the places to publish to (see [Update locations](#update-locations)), and press **Publish**. For a place that lists no write access, press **Add a link** and paste the link of the container with **Read**, **Create** and **Write**. Or from the command line:
 
 ```powershell
 .\TrackVice.exe /publish-agent /to "<link with Create and Write>" /exe "<path to the new TrackVice.exe>"
@@ -988,7 +1008,7 @@ The tick in Add customer and Customer code is off by default. When it is on, the
 
 | When | Do this |
 |---|---|
-| A new TrackVice version | Publish it to your storage: click **Publish** in the status bar, or **Settings > Your storage > Publish**. New devices get it at once, and installed agents within 6 hours. With links, publish it with **Publish agent update** to each customer's `trackvice-agent`, or upload the new `TrackVice.exe` over the old one and update `$Sha256` in `agent/Install-TrackViceAgent-Links.ps1` in Intune. Until the hash is updated that script fails on purpose |
+| A new TrackVice version | Publish it to your storage: click **Publish** in the status bar, or **Settings > Your storage > Publish**. Customers with their own storage or a share are not reached by those: use **Settings > Agent updates > Publish agent update**, which lists every place the agents check. New devices get it at once, and installed agents within 6 hours. With links, publish it with **Publish agent update** to each customer's `trackvice-agent`, or upload the new `TrackVice.exe` over the old one and update `$Sha256` in `agent/Install-TrackViceAgent-Links.ps1` in Intune. Until the hash is updated that script fails on purpose |
 | The customer's links expire | Upload and viewer links from Add customer are valid 2 years. Run **Add customer** again with the same name and choose **Update <name>**: it uses the container that is there, signs new links, and replaces the upload location of the customer. Put the new script in Intune (it asks before it replaces the content) |
 | The links to `trackvice-agent` expire | They are valid 5 years. **Settings > Your storage > Set up again** signs new ones. Codes made before keep the old Read link, so make them again as above before it expires |
 | Links of a setup with links expire | Run **New customer with links** again with the same customer name and the existing account, or make new links by hand. Then update `$Download`, `$Upload` and `$UpdateLink` in `agent/Install-TrackViceAgent-Links.ps1` in Intune, the task sequence steps and the upload location in TrackVice |
@@ -1056,7 +1076,7 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 | New customer with links: "Access denied" in Intune | The account needs an Intune role that can add scripts, and consent for `DeviceManagementScripts.ReadWrite.All` and `GroupMember.Read.All`. Or skip the Intune part and add the saved script by hand |
 | `agent.log` says "Self-update is off" | The reason follows: an update key but no update link, a key that is not usable, or a link that cannot be opened |
 | `agent.log` says "is not signed with the update key of this device" | The version was published with another key than the one the agent was installed with. Publish from the PC that has the key. With links, you can also update `$UpdateKey` |
-| `agent.log` says "No update information in" | Nothing is published there yet, or the link lacks Read or points at another container |
+| `agent.log` says "No update information in" | Nothing is published there yet, or the link lacks Read or points at another container. Open **Publish agent update**: the row of that place shows what it has. Its customers may use a storage account of their own, not Your storage |
 | The agent stays on its version | It checks every 6 hours. A version that is not newer than the one it runs is not installed. `agent.log` says "Update check:" with the reason |
 | The script is blocked | `TrackVice.exe` is not code signed. WDAC, AppLocker or Smart App Control can block it. Sign it with your own certificate or allow it by hash |
 

@@ -8,12 +8,21 @@ namespace TrackVice
     {
         public static void Wire(bool demo)
         {
-            if (demo) AgentVersions.Published = delegate { return YourStorageUi.RunningVersion; };
-            else AgentVersions.Published = delegate
+            AgentVersions.RunningVersion = delegate { return YourStorageUi.RunningVersion; };
+            if (demo)
             {
-                OwnStorage o = YourStorageUi.Load();
-                return o != null && !string.IsNullOrEmpty(o.PublishedVersion) ? o.PublishedVersion : null;
-            };
+                AgentVersions.Published = delegate { return YourStorageUi.RunningVersion; };
+                AgentVersions.Places = delegate { return UpdatePlacesUi.DemoPlaces(YourStorageUi.RunningVersion); };
+            }
+            else
+            {
+                AgentVersions.Published = delegate
+                {
+                    OwnStorage o = YourStorageUi.Load();
+                    return o != null && !string.IsNullOrEmpty(o.PublishedVersion) ? o.PublishedVersion : null;
+                };
+                AgentVersions.Places = delegate { return UpdatePlacesUi.Build(); };
+            }
         }
     }
 

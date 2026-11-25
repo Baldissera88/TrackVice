@@ -1000,14 +1000,15 @@ namespace TrackVice
             if (publishBanner != null) publishBanner.Working("Publishing TrackVice " + running + " to your storage...");
             YourStorageUi.PublishRunning(this, delegate (string msg, bool ok)
             {
+                if (ok) UpdateLocations.Forget();
                 if (ok && publishNote != null) publishNote.Visible = false;
                 if (publishBanner != null)
                 {
-                    if (ok) publishBanner.Say(PublishBanner.Done(running), false, "Close");
+                    if (ok) publishBanner.Say(PublishBanner.Done(running, new string[] { "Your storage" }), false, "Close");
                     else publishBanner.Say(msg, true, "Later");
                     publishBanner.Visible = true;
                 }
-                Status(ok ? PublishBanner.Done(running) : msg);
+                Status(ok ? PublishBanner.Done(running, new string[] { "Your storage" }) : msg);
             });
         }
 

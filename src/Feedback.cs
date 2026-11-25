@@ -378,6 +378,12 @@ namespace TrackVice
             return "Published " + version + ". New devices get it now; installed agents update within 6 hours.";
         }
 
+        // After a publish: the places that took it.
+        public static string Done(string version, IList<string> places)
+        {
+            return UpdateLocations.Done(version, places) + " New devices with a customer code get it now.";
+        }
+
         // What the Needs attention tile on Overview needs. publish is only kept, never called here.
         public static PublishTile Tile(bool hasStorage, string published, string running, Action publish)
         {

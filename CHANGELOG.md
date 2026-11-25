@@ -1,5 +1,13 @@
 # Changelog
 
+## TrackVice 2.0.5
+
+25 November 2026.
+
+- **Publish to every place agents check**: Publish agent update now lists every place your customers' agents check for updates (Your storage, a customer's own storage account, a share), with the customers that use it and the version published there. Places that are behind and that this PC can write to are switched on, and one press publishes to all of them, with a result line for each. A place this PC cannot write to says what is missing, and Add a link saves a link for it.
+- Overview > Agents compares each agent with the place it checks, not with Your storage, and says where to publish, for example "Contoso: 3 on 2.0.4; contosoagents/trackvice-agent has 1.4.0 (behind)".
+- Fixed: agents of a customer with its own storage account never updated, because Publish only published to Your storage.
+
 ## TrackVice 2.0.4
 
 25 November 2026.

@@ -196,8 +196,16 @@ namespace TrackVice
         // The Agents tile and, when some agents stay behind, the tile under Needs attention.
         public static List<AttentionTile> Tiles(OverviewData data, DateTime nowUtc, string published)
         {
+            return Tiles(data, nowUtc, published, null, null);
+        }
+
+        // places: where the agents of each customer check for updates, with what is published there. Without them every
+        // agent is compared with published, the version of Your storage. running is the TrackVice on this PC.
+        public static List<AttentionTile> Tiles(OverviewData data, DateTime nowUtc, string published, IList<UpdateLocation> places, string running)
+        {
             List<AttentionTile> l = new List<AttentionTile>();
             if (data == null) return l;
+            bool byPlace = places != null && places.Count > 0;
             List<string> versions = new List<string>();
             AttentionTile agents = new AttentionTile();
             agents.Key = "agents";
@@ -212,6 +220,7 @@ namespace TrackVice
             behind.Title = "Agents that do not update";
             behind.ActionText = "Show the devices";
             bool olderRunning = false;
+            string behindPublished = published;
             Dictionary<string, int> reasons = new Dictionary<string, int>();
             foreach (OverviewDevice o in data.Devices)
             {
@@ -219,20 +228,23 @@ namespace TrackVice
                 if (v == null || nowUtc - o.D.LastUtc > Recent) continue;
                 versions.Add(v);
                 agents.Devices.Add(o);
-                if (Behind(o, published, nowUtc))
+                string pub = PublishedFor(o, published, places);
+                if (Behind(o, pub, nowUtc))
                 {
+                    if (behind.Devices.Count == 0) behindPublished = pub;
                     behind.Devices.Add(o);
                     string r = Reason(State(o.S));
                     int c;
                     reasons.TryGetValue(r, out c);
                     reasons[r] = c + 1;
                 }
-                else if (Older(v, published) && !o.Silent && nowUtc - o.D.LastUtc <= Running) olderRunning = true;
+                else if (Older(v, pub) && !o.Silent && nowUtc - o.D.LastUtc <= Running) olderRunning = true;
             }
             if (versions.Count == 0) return l;
             agents.Count = agents.Devices.Count;
-            agents.Text = Counts(versions) + (olderRunning ? " (they update within 6 hours)" : "") + "."
-                + (SemVer.IsValid(published) ? " Your storage has " + published + "." : "");
+            agents.Text = byPlace
+                ? PlacesText(agents.Devices, places, running, olderRunning)
+                : Counts(versions) + (olderRunning ? " (they update within 6 hours)" : "") + "." + (SemVer.IsValid(published) ? " Your storage has " + published + "." : "");
             l.Add(agents);
             if (behind.Devices.Count > 0)
             {
@@ -242,11 +254,88 @@ namespace TrackVice
                 int most = 0;
                 foreach (KeyValuePair<string, int> kv in reasons) if (kv.Value > most) { most = kv.Value; top = kv.Key; }
                 string names = behind.Devices[0].D.Device + (behind.Count > 1 ? " and " + (behind.Count - 1) + " more" : "");
-                behind.Text = (behind.Count == 1 ? "1 device runs" : behind.Count + " devices run") + " an agent older than " + published
+                behind.Text = (behind.Count == 1 ? "1 device runs" : behind.Count + " devices run") + " an agent older than " + (behindPublished ?? published)
                     + " and has not updated for more than 6 hours: " + names + ". " + top;
                 l.Add(behind);
             }
             return l;
+        }
+
+        // The version the agent of a device should get: what its own location has, or Your storage's when it has no location.
+        static string PublishedFor(OverviewDevice o, string published, IList<UpdateLocation> places)
+        {
+            if (places == null || places.Count == 0) return published;
+            UpdateLocation p = UpdateLocations.For(places, o.Customer);
+            return p == null ? published : p.PublishedVersion;
+        }
+
+        // "Contoso: 5 agents on 1.11.11; contoso/trackvice-agent has nothing published (publish here)." for each location.
+        static string PlacesText(List<OverviewDevice> devices, IList<UpdateLocation> places, string running, bool olderRunning)
+        {
+            List<UpdateLocation> order = new List<UpdateLocation>();
+            Dictionary<UpdateLocation, List<OverviewDevice>> groups = new Dictionary<UpdateLocation, List<OverviewDevice>>();
+            List<OverviewDevice> loose = new List<OverviewDevice>();
+            foreach (OverviewDevice o in devices)
+            {
+                UpdateLocation p = UpdateLocations.For(places, o.Customer);
+                if (p == null) { loose.Add(o); continue; }
+                if (!groups.ContainsKey(p)) { groups[p] = new List<OverviewDevice>(); order.Add(p); }
+                groups[p].Add(o);
+            }
+            // Every agent is on what its location has: say so once.
+            bool current = loose.Count == 0;
+            string only = null;
+            foreach (UpdateLocation p in order)
+            {
+                foreach (OverviewDevice o in groups[p])
+                {
+                    string v = VersionOf(o);
+                    if (p.PublishedVersion == null || v != p.PublishedVersion || p.Behind(running)) current = false;
+                    if (only == null) only = v;
+                    else if (only != v) only = "";
+                }
+            }
+            if (current && !string.IsNullOrEmpty(only))
+                return "All " + devices.Count + (devices.Count == 1 ? " agent is" : " agents are") + " on " + only + ", the version published.";
+            List<string> parts = new List<string>();
+            foreach (UpdateLocation p in order)
+            {
+                List<string> vs = new List<string>();
+                List<string> names = new List<string>();
+                foreach (OverviewDevice o in groups[p])
+                {
+                    vs.Add(VersionOf(o));
+                    if (!string.IsNullOrEmpty(o.Customer) && !names.Contains(o.Customer)) names.Add(o.Customer);
+                }
+                string who = Names(names.Count > 0 ? names : p.Customers);
+                string flag = "";
+                if (p.Behind(running)) flag = p.CanWrite ? " (publish here)" : " (behind, this PC needs a write link)";
+                parts.Add((who.Length > 0 ? who + ": " : "") + Phrase(vs) + "; " + p.Short + " " + p.HasText + flag + ".");
+            }
+            if (loose.Count > 0)
+            {
+                List<string> vs = new List<string>();
+                foreach (OverviewDevice o in loose) vs.Add(VersionOf(o));
+                parts.Add(Phrase(vs) + ".");
+            }
+            if (olderRunning) parts.Add("Older agents update within 6 hours.");
+            return string.Join(" ", parts.ToArray());
+        }
+
+        static string Phrase(List<string> versions)
+        {
+            bool one = true;
+            foreach (string v in versions) if (v != versions[0]) one = false;
+            if (!one) return Counts(versions);
+            return versions.Count + (versions.Count == 1 ? " agent" : " agents") + " on " + versions[0];
+        }
+
+        static string Names(List<string> names)
+        {
+            if (names.Count == 0) return "";
+            if (names.Count == 1) return names[0];
+            if (names.Count == 2) return names[0] + " and " + names[1];
+            return names[0] + ", " + names[1] + " and " + (names.Count - 2) + " more";
         }
 
         // The agent's rows in the Deployment table of the HTML report, for a session the agent uploaded.
@@ -265,6 +354,31 @@ namespace TrackVice
 
         // Published version for Overview, set by the window. Null when Your storage is not set up.
         public static Func<string> Published;
+
+        // The update locations for Overview, from what was read last. Null when nothing is set up. Never reads the network.
+        public static Func<List<UpdateLocation>> Places;
+        // The version of TrackVice on this PC, to tell which location is behind.
+        public static Func<string> RunningVersion;
+
+        public static List<UpdateLocation> PlacesNow()
+        {
+            try
+            {
+                Func<List<UpdateLocation>> f = Places;
+                return f == null ? null : f();
+            }
+            catch (Exception) { return null; }
+        }
+
+        public static string RunningNow()
+        {
+            try
+            {
+                Func<string> f = RunningVersion;
+                return f == null ? null : f();
+            }
+            catch (Exception) { return null; }
+        }
 
         public static string PublishedNow()
         {

@@ -1,34 +1,57 @@
 namespace TrackVice
 {
     using System;
+    using System.Collections.Generic;
+    using System.Drawing;
     using System.IO;
     using System.Security.Cryptography;
     using System.Threading;
     using System.Windows.Forms;
 
-    // Publishes a TrackVice.exe for the agents to update themselves to: the exe and a signed agent/latest.json.
+    // Publishes a TrackVice.exe for the agents to update themselves to: the exe and a signed agent/latest.json, to every
+    // place where the agents of the customers check for updates.
     public sealed partial class PublishDialog : PageForm
     {
+        sealed class PlaceRow
+        {
+            public UpdateLocation Place;
+            public Toggle Tick;
+            public SettingRow Row, LinkRow;
+            public Collapsible LinkBox;
+            public TextBox LinkText;
+        }
+
         readonly IUpdateKeyStore keys;
         readonly Action<string> saveLink;
-        readonly string saved, storageLink;
-        readonly SettingRow keyRow, keyDetails, exeRow, publishRow, storageRow, noneRow, haveRow, boxRow;
-        readonly Collapsible detailsBox, storageBox, noneBox, haveBox, boxBox;
+        readonly Action<UpdateLocation, string> savePlaceLink;
+        readonly Func<string, ISessionStore> open;
+        readonly List<UpdateLocation> places;
+        readonly bool reads;
+        readonly Dictionary<string, bool> ticks = new Dictionary<string, bool>();
+        readonly List<PlaceRow> rows = new List<PlaceRow>();
+        readonly SettingRow keyRow, keyDetails, exeRow, publishRow, noneRow, haveRow, otherRow, boxRow;
+        readonly Collapsible detailsBox, noneBox, haveBox, boxBox;
         readonly FlatButton bKey, bCopy, bPublish;
+        readonly Toggle tOther;
         readonly TextBox link;
         string exePath, publicKey, note;
-        bool busy, another;
+        bool busy, touched, building, reading;
 
         // True when the person chose Set up Your storage: the caller closes this dialog and opens the guide.
         public bool WantsSetUp;
 
-        public PublishDialog(Theme t, IUpdateKeyStore keyStore, string exe, string savedLink, string storage, Action<string> save) : base("Publish agent update", t)
+        // places: where the agents of the customers check for updates. open: reads and writes a link or folder.
+        // reads: read what is published in each place now. saveLink keeps the link of Another link or folder for the customer in use.
+        public PublishDialog(Theme t, IUpdateKeyStore keyStore, string exe, List<UpdateLocation> places, Func<string, ISessionStore> open, bool reads, Action<string> saveLink, Action<UpdateLocation, string> savePlaceLink) : base("Publish agent update", t)
         {
             keys = keyStore;
-            saveLink = save;
             exePath = exe;
-            saved = savedLink ?? "";
-            storageLink = storage ?? "";
+            this.places = places ?? new List<UpdateLocation>();
+            this.open = open;
+            this.reads = reads;
+            this.saveLink = saveLink;
+            this.savePlaceLink = savePlaceLink;
+            Size = new Size(Dpi.S(860), Dpi.S(840));
 
             // Shows the details of the key, or creates the key pair when there is none yet.
             bKey = SmallButton("Details", delegate
@@ -56,15 +79,15 @@ namespace TrackVice
             link.ForeColor = t.Text;
             link.TextChanged += delegate { note = null; Refresh2(); };
 
-            FlatButton bOther = SmallButton("Use another link or folder", delegate { SetAnother(true); });
-            storageRow = new SettingRow(Glyphs2.Folder, "", "Agents read updates from the container trackvice-agent there.", bOther);
+            tOther = new Toggle();
+            tOther.Changed += delegate { if (!building) { note = null; BuildAll(); } };
+            otherRow = new SettingRow(Glyphs2.Folder, "Another link or folder", "A place that is not listed above: the link of the container the agents read updates from, with Create and Write, or a folder.", tOther);
             FlatButton bSetUp = SmallButton("Set up Your storage", delegate { WantsSetUp = true; Close(); });
             bSetUp.Primary = true;
-            noneRow = new SettingRow(Glyphs2.Folder, "Your storage is not set up", "Your storage is a storage account in your own Azure. Agents download TrackVice updates from it. Set it up once and Publish needs nothing more.", bSetUp);
+            noneRow = new SettingRow(Glyphs2.Folder, "No update location yet", "Your storage is a storage account in your own Azure. Agents download TrackVice updates from it. Set it up once and Publish needs nothing more. A customer made with its own storage or a share is listed here too.", bSetUp);
             FlatButton bHave = SmallButton("I have a link or folder already", delegate { SetAnother(true); });
             haveRow = new SettingRow(Glyphs2.Folder, "Already have a place to publish to?", "", bHave);
             boxRow = new SettingRow(Glyphs2.Folder, "Link or folder", "The link of the container the agents read updates from, with Create and Write, or a folder. Use a container only you write to, such as trackvice-agent. It is saved encrypted for the customer in use.", link);
-            storageBox = new Collapsible(storageRow);
             noneBox = new Collapsible(noneRow);
             haveBox = new Collapsible(haveRow);
             boxBox = new Collapsible(boxRow);
@@ -73,69 +96,211 @@ namespace TrackVice
             bPublish.Primary = true;
             publishRow = new SettingRow(Glyphs2.Sync, "Publish", "", new ButtonStrip(PublishExplainDialog.Button(t), bPublish));
 
+            ShowKey();
+            ShowExe0();
+            if (reads && open != null) ReadAll();
+            else ApplyDefaults();
+        }
+
+        public static PublishDialog ForCustomer(Theme t)
+        {
+            string name = "AgentUpdateStore." + (CustomerUi.CurrentName ?? CustomerBook.DefaultName);
+            return new PublishDialog(t, new DpapiKeyStore(), Program.Location, UpdatePlacesUi.Build(), UpdateLocations.OpenWith(YourStorageUi.Web), true,
+                delegate (string v) { Secret.Save(name, v); },
+                delegate (UpdateLocation p, string v) { UpdatePlacesUi.SaveLink(p, v); });
+        }
+
+        // Made-up key and places, for screenshots. page is publish (three places), publish-none or publish-link (no place, box shown).
+        public static PublishDialog ForDemo(Theme t, string page)
+        {
+            MemoryKeyStore ks = new MemoryKeyStore();
+            bool created;
+            using (UpdateKeys.LoadOrCreate(ks, out created)) { }
+            bool none = page == "publish-none" || page == "publish-link";
+            Dictionary<string, Dictionary<string, byte[]>> files = new Dictionary<string, Dictionary<string, byte[]>>();
+            Func<string, ISessionStore> demoOpen = delegate (string where)
+            {
+                Dictionary<string, byte[]> f;
+                if (!files.TryGetValue(where, out f)) { f = new Dictionary<string, byte[]>(); files[where] = f; }
+                return new UpdatePlacesUi.DemoStore(where, f);
+            };
+            List<UpdateLocation> places = none ? new List<UpdateLocation>() : UpdatePlacesUi.DemoPlaces(YourStorageUi.RunningVersion);
+            PublishDialog d = new PublishDialog(t, ks, Program.Location, places, demoOpen, false, null, delegate (UpdateLocation p, string v) { });
+            if (page == "publish-link") d.SetAnother(true);
+            if (page == "publish-vault") { VaultSetupUi.DemoAddress = true; d.Say("Not published: latest.json in contosoagents " + OtherKeyMarker + ", so devices would refuse what this PC makes."); }
+            return d;
+        }
+
+        string ExeVersion()
+        {
+            return File.Exists(exePath) ? SemVer.OfFile(exePath) : null;
+        }
+
+        // The places that are behind this TrackVice.exe and that this PC can write to, until the person turns something on or off.
+        void ApplyDefaults()
+        {
+            if (!touched)
+            {
+                string v = ExeVersion();
+                ticks.Clear();
+                foreach (UpdateLocation p in places) ticks[p.Key] = v != null && p.Wanted(v);
+            }
+            BuildAll();
+        }
+
+        // Reads agent/latest.json of every place, away from the window.
+        void ReadAll()
+        {
+            reading = true;
+            string pub = publicKey;
+            List<UpdateLocation> list = new List<UpdateLocation>(places);
+            Func<string, ISessionStore> o = open;
+            Thread th = new Thread(delegate ()
+            {
+                try
+                {
+                    foreach (UpdateLocation p in list) UpdateLocations.Refresh(p, o, pub);
+                    UpdateLocations.Remember(list, DateTime.UtcNow);
+                }
+                catch (Exception) { }
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate { reading = false; ApplyDefaults(); });
+                }
+                catch (Exception) { }
+            });
+            th.IsBackground = true;
+            th.Start();
+            BuildAll();
+        }
+
+        bool AnotherOn
+        {
+            get { return tOther != null && tOther.On; }
+        }
+
+        void SetAnother(bool on)
+        {
+            building = true;
+            tOther.On = on;
+            building = false;
+            note = null;
+            BuildAll();
+        }
+
+        string DescOf(UpdateLocation p)
+        {
+            List<string> s = new List<string>();
+            if (p.Customers.Count > 0) s.Add("Used by " + string.Join(", ", p.Customers.ToArray()) + ".");
+            else if (p.IsYourStorage) s.Add("Customers made with Your storage use it.");
+            s.Add("Published there: " + (reading && p.State == UpdateState.NotRead ? "reading..." : p.VersionText) + ".");
+            if (p.CanWrite) s.Add(p.IsFolder ? "This PC writes to the folder." : "This PC can publish here.");
+            else s.Add("Cannot publish from this PC yet. " + p.Missing);
+            if (!p.Confirmed) s.Add("Taken from the viewer link of the customer: its agents are expected to check here.");
+            return string.Join(" ", s.ToArray());
+        }
+
+        // Puts every row of the page in again, from the places and what was turned on.
+        void BuildAll()
+        {
+            building = true;
+            foreach (PlaceRow r in rows) if (r.Tick != null) ticks[r.Place.Key] = r.Tick.On;
+            ClearItems();
+            rows.Clear();
             Add(new SectionTitle("Signing key"));
             Add(keyRow);
             Add(detailsBox);
             Add(new SectionTitle("Version to publish"));
             Add(exeRow);
             Add(new SectionTitle("Publish to"));
-            Add(storageBox);
+            foreach (UpdateLocation p in places)
+            {
+                PlaceRow r = MakeRow(p);
+                rows.Add(r);
+                Add(r.Row);
+                Add(r.LinkBox);
+            }
+            noneBox.Shown = haveBox.Shown = places.Count == 0 && !AnotherOn;
             Add(noneBox);
             Add(haveBox);
+            if (places.Count > 0) Add(otherRow);
+            boxBox.Shown = AnotherOn;
             Add(boxBox);
             Add(publishRow);
             AddVaultRow();
-
-            // A saved folder is shown in the box, as it was before.
-            if (PublishTarget.Decide(saved, storageLink, false, "").Kind == PublishTargetKind.UseLink) { another = true; link.Text = saved; }
-            ShowKey();
-            ShowExe();
-        }
-
-        public static PublishDialog ForCustomer(Theme t)
-        {
-            string name = "AgentUpdateStore." + (CustomerUi.CurrentName ?? CustomerBook.DefaultName);
-            OwnStorage own = YourStorageUi.Load();
-            return new PublishDialog(t, new DpapiKeyStore(), Program.Location, Secret.Load(name), own != null ? own.AgentWrite : "", delegate (string v) { Secret.Save(name, v); });
-        }
-
-        // Made-up key, for screenshots. page is publish (storage set up), publish-none or publish-link (not set up, box shown).
-        public static PublishDialog ForDemo(Theme t, string page)
-        {
-            MemoryKeyStore ks = new MemoryKeyStore();
-            bool created;
-            using (UpdateKeys.LoadOrCreate(ks, out created)) { }
-            string storage = page == "publish" || page == null ? "https://contosotrackvice.blob.core.windows.net/trackvice-agent?sv=2022-11-02&sp=cw&sig=made-up" : "";
-            PublishDialog d = new PublishDialog(t, ks, Program.Location, "", storage, null);
-            if (page == "publish-link") d.SetAnother(true);
-            if (page == "publish-vault") { VaultSetupUi.DemoAddress = true; d.Say("Not published: latest.json in contosoagents " + OtherKeyMarker + ", so devices would refuse what this PC makes."); }
-            return d;
-        }
-
-        PublishTarget Target()
-        {
-            return PublishTarget.Decide(saved, storageLink, another, link.Text);
-        }
-
-        void SetAnother(bool on)
-        {
-            another = on;
-            note = null;
+            building = false;
             Refresh2();
         }
 
-        // Shows the part of the page that fits where to publish to, and the Publish button with its reason.
+        PlaceRow MakeRow(UpdateLocation p)
+        {
+            PlaceRow r = new PlaceRow();
+            r.Place = p;
+            Control accessory;
+            if (p.CanWrite)
+            {
+                r.Tick = new Toggle();
+                bool on;
+                ticks.TryGetValue(p.Key, out on);
+                r.Tick.On = on;
+                r.Tick.Changed += delegate { if (!building) { touched = true; note = null; Refresh2(); } };
+                accessory = r.Tick;
+            }
+            else accessory = SmallButton("Add a link", delegate { r.LinkBox.Shown = !r.LinkBox.Shown; Relayout(); if (r.LinkBox.Shown) r.LinkText.Focus(); });
+            r.Row = new SettingRow(Glyphs2.Folder, p.Long, DescOf(p), accessory);
+            r.LinkText = new TextBox();
+            r.LinkText.Width = Dpi.S(300);
+            r.LinkText.Font = Fonts.Mono;
+            r.LinkText.BorderStyle = BorderStyle.FixedSingle;
+            r.LinkText.BackColor = theme.Field;
+            r.LinkText.ForeColor = theme.Text;
+            FlatButton save = SmallButton("Use this link", delegate { UseLink(r); });
+            string who = p.Customers.Count > 0 ? string.Join(", ", p.Customers.ToArray()) : "this location";
+            r.LinkRow = new SettingRow(Glyphs.Shield, "Link for " + p.Container, "A link with Read, Create and Write for " + p.Container + " in " + p.Account + ", from the portal: " + p.Account + " > Containers > " + p.Container + " > Shared access tokens. It is saved encrypted for " + who + ".", new ButtonStrip(r.LinkText, save));
+            r.LinkBox = new Collapsible(r.LinkRow);
+            r.LinkBox.Shown = false;
+            return r;
+        }
+
+        void UseLink(PlaceRow r)
+        {
+            string problem = UpdateLocations.WriteLinkProblem(r.Place, r.LinkText.Text, DateTime.UtcNow);
+            if (problem != null) { r.LinkRow.Desc = problem; r.LinkRow.Invalidate(); Relayout(); return; }
+            UpdateLocations.UseWriteLink(r.Place, r.LinkText.Text);
+            if (savePlaceLink != null) savePlaceLink(r.Place, r.LinkText.Text.Trim());
+            touched = false;
+            note = null;
+            if (reads && open != null) ReadAll();
+            else ApplyDefaults();
+        }
+
+        // The places that are turned on, and the other link or folder when it is on. problem says what is wrong with the latter.
+        List<UpdateLocation> Chosen(out string problem)
+        {
+            problem = null;
+            List<UpdateLocation> l = new List<UpdateLocation>();
+            foreach (PlaceRow r in rows) if (r.Tick != null && r.Tick.On) l.Add(r.Place);
+            if (AnotherOn)
+            {
+                UpdateLocation o = UpdateLocations.FromLink(link.Text);
+                if (link.Text.Trim().Length == 0) problem = "Enter a link or a folder to publish to, or turn Another link or folder off.";
+                else if (o == null) problem = "Enter a link that starts with https://, or a folder such as \\\\server\\share\\agent.";
+                else if (!o.CanWrite) problem = o.Missing;
+                else l.Add(o);
+            }
+            return l;
+        }
+
+        // Shows the Publish button and its reason.
         void Refresh2()
         {
-            PublishTarget p = Target();
-            storageBox.Shown = !another && p.Kind == PublishTargetKind.SetUp;
-            noneBox.Shown = haveBox.Shown = !another && p.Kind == PublishTargetKind.NotSetUp;
-            boxBox.Shown = another;
-            storageRow.Title = "Publishing to your storage " + p.Account;
-            storageRow.Invalidate();
+            string problem;
+            List<UpdateLocation> chosen = Chosen(out problem);
             bool ok = File.Exists(exePath) && SemVer.OfFile(exePath) != null;
-            bPublish.Enabled = ok && p.CanPublish && !busy;
-            publishRow.Desc = note ?? (!p.CanPublish ? p.Reason : !ok ? "The version of TrackVice.exe could not be read. Choose another file." : "Uploads TrackVice-<version>.exe and agent/latest.json, signed with the update key. Agents check every 6 hours and never install an older version.");
+            bPublish.Enabled = ok && chosen.Count > 0 && !busy && problem == null;
+            string idle = places.Count == 0 && !AnotherOn ? "Set up Your storage, or use a link or folder you have, to publish." : "Turn on at least one place.";
+            publishRow.Desc = note ?? (problem != null ? problem : !ok ? "The version of TrackVice.exe could not be read. Choose another file." : chosen.Count == 0 ? idle
+                : "Uploads TrackVice-<version>.exe and agent/latest.json, signed with the update key, to " + chosen.Count + (chosen.Count == 1 ? " place" : " places") + ". Agents check every 6 hours and never install an older version.");
             publishRow.Invalidate();
             Relayout();
         }
@@ -162,12 +327,11 @@ namespace TrackVice
             Relayout();
         }
 
-        void ShowExe()
+        void ShowExe0()
         {
-            string v = File.Exists(exePath) ? SemVer.OfFile(exePath) : null;
+            string v = ExeVersion();
             exeRow.Desc = exePath + (v != null ? " · version " + v : " · the version could not be read");
             exeRow.Invalidate();
-            Refresh2();
         }
 
         void Browse()
@@ -179,7 +343,9 @@ namespace TrackVice
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 exePath = d.FileName;
             }
-            ShowExe();
+            touched = false;
+            ShowExe0();
+            ApplyDefaults();
         }
 
         void Say(string text)
@@ -195,20 +361,24 @@ namespace TrackVice
         void Run(bool publish)
         {
             if (busy) return;
-            PublishTarget target = Target();
-            string to = target.Link;
-            string exe = exePath;
-            if (publish && !target.CanPublish)
+            string problem = null;
+            List<UpdateLocation> chosen = new List<UpdateLocation>();
+            if (publish)
             {
-                Say(target.Reason);
-                return;
+                chosen = Chosen(out problem);
+                if (problem == null && chosen.Count == 0) problem = "Turn on at least one place to publish to.";
+                if (problem != null) { Say(problem); return; }
             }
+            bool other = AnotherOn;
+            string exe = exePath;
             busy = true;
             bPublish.Enabled = bKey.Enabled = false;
             Say(publish ? "Publishing..." : "Creating the key...");
             Thread th = new Thread(delegate ()
             {
                 string result;
+                List<PublishLine> lines = null;
+                string version = null;
                 try
                 {
                     bool created;
@@ -217,18 +387,12 @@ namespace TrackVice
                         if (!publish) result = "The key is created. Copy it into $UpdateKey before you publish.";
                         else
                         {
-                            OwnStorage own = YourStorageUi.Load();
-                            if (own != null && own.AgentWrite.Length > 0 && own.AgentWrite == to)
-                            {
-                                string keyProblem = OwnPublish.KeyProblem(YourStorageUi.Web, own, UpdateKeys.PublicKey(key));
-                                if (keyProblem != null) throw new SetupException(keyProblem);
-                            }
-                            ISessionStore store = Stores.Open(to);
-                            string version = SemVer.OfFile(exe);
+                            version = SemVer.OfFile(exe);
                             if (version == null) throw new ArgumentException("The version of " + exe + " could not be read.");
-                            UpdateManifest m = UpdatePublisher.Publish(store, File.ReadAllBytes(exe), version, key, DateTime.UtcNow);
-                            if (saveLink != null && target.Kind == PublishTargetKind.UseLink) saveLink(to);
-                            result = "Published version " + m.Version + " to " + store.Title + (created ? ". A new key was made: copy it into $UpdateKey, or the agents ignore this version." : ". Agents with this key install it within 6 hours.");
+                            lines = UpdateLocations.PublishTo(chosen, File.ReadAllBytes(exe), version, key, DateTime.UtcNow, open ?? UpdateLocations.OpenWith(YourStorageUi.Web));
+                            result = UpdateLocations.Summary(lines, version);
+                            if (created) result += " A new key was made: copy it into $UpdateKey, or the agents ignore this version.";
+                            foreach (PublishLine l in lines) result += "\n" + l.Full;
                         }
                     }
                 }
@@ -240,8 +404,10 @@ namespace TrackVice
                         busy = false;
                         bKey.Enabled = true;
                         note = null;
+                        if (lines != null) Published(lines, version, other);
                         ShowKey();
-                        ShowExe();
+                        ShowExe0();
+                        BuildAll();
                         Say(result);
                     });
                 }
@@ -249,6 +415,27 @@ namespace TrackVice
             });
             th.IsBackground = true;
             th.Start();
+        }
+
+        // Keeps what changed: the version in Your storage, the link of Another link or folder, and what Overview shows.
+        void Published(List<PublishLine> lines, string version, bool other)
+        {
+            foreach (PublishLine l in lines)
+            {
+                if (l.Outcome != PublishOutcome.Published) continue;
+                if (l.Place.IsYourStorage && !YourStorageUi.Demo)
+                {
+                    try
+                    {
+                        OwnStorage own = YourStorageUi.Load();
+                        if (own != null) { own.PublishedVersion = version; own.Save(YourStorageUi.Secrets); }
+                    }
+                    catch (Exception) { }
+                }
+                if (other && saveLink != null && l.Place.Customers.Count == 0 && !l.Place.IsYourStorage && !places.Contains(l.Place) && l.Place.WriteLink.Length > 0)
+                    saveLink(l.Place.WriteLink);
+            }
+            UpdateLocations.Remember(places, DateTime.UtcNow);
         }
     }
 }
