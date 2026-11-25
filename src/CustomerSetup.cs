@@ -426,6 +426,8 @@ namespace TrackVice
     public sealed class AzureAccount
     {
         public string Id, Name, Location, ResourceGroup, Kind, BlobEndpoint;
+        // The account does not allow shared key access, so a link cannot be signed with its key.
+        public bool SharedKeyOff;
 
         public override string ToString() { return Name + "  (" + ResourceGroup + ", " + Location + ")"; }
     }
@@ -567,6 +569,7 @@ namespace TrackVice
             Dictionary<string, object> p = ImeJson.Get(d, "properties") as Dictionary<string, object>;
             Dictionary<string, object> ep = ImeJson.Get(p, "primaryEndpoints") as Dictionary<string, object>;
             a.BlobEndpoint = Http.Str(ep, "blob");
+            a.SharedKeyOff = ImeJson.Get(p, "allowSharedKeyAccess") is bool && !(bool)ImeJson.Get(p, "allowSharedKeyAccess");
             if (string.IsNullOrEmpty(a.BlobEndpoint)) a.BlobEndpoint = "https://" + a.Name + ".blob.core.windows.net/";
             if (!a.BlobEndpoint.EndsWith("/")) a.BlobEndpoint += "/";
             return a;
@@ -671,6 +674,15 @@ namespace TrackVice
             if (r.Status == 200 || r.Status == 201) return true;
             if (r.Status == 409) return false;
             throw Fail(r, "create the container " + name);
+        }
+
+        // True when the container is there, false when it is not. Reads only.
+        public bool ContainerExists(AzureAccount a, string name)
+        {
+            WebReply r = Call("GET", a.Id + "/blobServices/default/containers/" + Esc(name) + "?api-version=" + StorageApi, null);
+            if (r.Status == 200) return true;
+            if (r.Status == 404) return false;
+            throw Fail(r, "read the container " + name);
         }
 
         public static Dictionary<string, object> CleanupRule(int days)
