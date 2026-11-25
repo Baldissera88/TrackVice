@@ -1040,6 +1040,8 @@ namespace TrackVice
             foreach (Finding f in engine.S.Findings) if (f.ItemKey == i.Key && f.Severity >= 2) explained = true;
             Section(r, States.IsActive(i.State) ? "Now" : "Result");
             if (!explained && i.ExitCode.HasValue && i.ExitCode.Value != 0) Field(r, i.State == State.Failed ? "Error" : "Exit code", Errors.Describe(i.ExitCode.Value), false);
+            string noNet = NetworkOutages.NearItem(engine.S, i);
+            if (noNet != null) Plain(r, noNet, theme.WarnFg, null);
             Field(r, "Installer exit code", i.Get("Installer exit code"), true);
             if (States.IsActive(i.State) && i.Percent.HasValue) Field(r, "Progress", i.Percent.Value + " %", false);
             if (i.StartUtc.HasValue) Field(r, "Started", Txt.Local(i.StartUtc.Value), false);

@@ -307,6 +307,7 @@ namespace TrackVice
             if (Mode == Modes.Agent)
             {
                 if (b.Replace != null) Finder.Run(S, clockAtUpload, true);
+                if (b.Replace != null) NetworkOutages.AddEvents(S);
                 MarkSilent();
                 return;
             }

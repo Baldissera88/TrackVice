@@ -543,6 +543,8 @@ namespace TrackVice
         [DataMember] public List<string> Notes = new List<string>();
         [DataMember] public List<Pair> Names = new List<Pair>();
         [DataMember] public List<Pair> Aliases = new List<Pair>();
+        // Times the agent could not reach the storage; older sessions have none.
+        [DataMember] public List<NetOutage> Outages = new List<NetOutage>();
 
         Dictionary<string, Item> keys;
         Dictionary<string, Phase> phaseKeys;
@@ -774,6 +776,7 @@ namespace TrackVice
             if (Notes == null) Notes = new List<string>();
             if (Names == null) Names = new List<Pair>();
             if (Aliases == null) Aliases = new List<Pair>();
+            if (Outages == null) Outages = new List<NetOutage>();
             foreach (Item i in Items)
             {
                 if (i.Attempts == null) i.Attempts = new List<Attempt>();
