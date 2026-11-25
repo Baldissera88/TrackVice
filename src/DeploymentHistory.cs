@@ -315,11 +315,11 @@ namespace TrackVice
             return Percentile(l, 0.5);
         }
 
-        // The deployments of this profile when there are enough, else all of the customer and kind. Null when there are none.
-        public HistoryStats Get(string customer, string kind, string profile)
+        // The deployments of this profile when there are enough, else all of the customer and kind. Empty when there are none.
+        public List<HistoryRun> Select(string customer, string kind, string profile, out string used)
         {
             List<HistoryRun> runs = new List<HistoryRun>();
-            string used = null;
+            used = null;
             lock (gate)
             {
                 List<HistoryRun> exact;
@@ -344,6 +344,22 @@ namespace TrackVice
                     if (same && !string.IsNullOrEmpty(only)) used = only;
                 }
             }
+            return runs;
+        }
+
+        // The earlier deployments of this kind, newest first, for the apps they usually had.
+        public List<HistoryRun> Recent(string customer, string kind, string profile)
+        {
+            string used;
+            List<HistoryRun> runs = Select(customer, kind, profile, out used);
+            runs.Sort(delegate (HistoryRun a, HistoryRun b) { return b.EndUtc.CompareTo(a.EndUtc); });
+            return runs;
+        }
+
+        public HistoryStats Get(string customer, string kind, string profile)
+        {
+            string used;
+            List<HistoryRun> runs = Select(customer, kind, profile, out used);
             if (runs.Count == 0) return null;
             return Stats(runs, used);
         }

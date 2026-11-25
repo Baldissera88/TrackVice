@@ -184,6 +184,13 @@ namespace TrackVice
             D("names.profiles", Intune, "Configuration profiles", "Read every configuration profile Intune has for the device, with its state. Needs DeviceManagementConfiguration.Read.All.",
                 null, "names from intune policy", "IntuneNames.Profiles", "0"),
 
+            D("expected.intune", Intune, "Expected apps from Intune", "List the apps Intune has assigned as required to the device and its user from the start, as waiting, instead of letting the count grow while the user apps arrive. Needs an Intune sign-in for the customer.",
+                "TrackVice asks Intune which apps it will deliver to this device and its user (the app list of the device in the Intune admin center, read with Microsoft Graph) and shows the ones the device has not shown yet as Expected. They count in the totals, the percentage and the time left, never as failed, and are not saved or uploaded. If the deployment is done and an app never came, Findings says it was not installed. It uses the permission DeviceManagementManagedDevices.Read.All of the sign-in, and DeviceManagementApps.Read.All if Intune asks for it (tick App names). If Intune cannot be read, the earlier deployments are used instead.",
+                "expected apps required list totals percentage", "Expected.Intune", "1"),
+            D("expected.history", Intune, "Expected apps from earlier deployments", "List the apps that earlier deployments of the same customer and profile usually had, from the start, as waiting. No sign-in needed.",
+                "An app counts as expected when it was in at least 60 % of the last ten earlier deployments of the customer and profile, and there are at least two of them. When the deployment is done, apps that did not come are dropped without a finding.",
+                "expected apps history usual earlier totals percentage", "Expected.History", "1"),
+
             // SCCM / on-premises
             D("smsprovider", Sccm, "SMS Provider", "The server that runs the SMS Provider, usually the site server.",
                 "It is saved with the customer in use, so a customer can have Intune and SCCM. TrackVice uses your Windows account, as the console does.",

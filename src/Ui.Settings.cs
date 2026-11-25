@@ -775,6 +775,24 @@ namespace TrackVice
             l.Add(NameRow("names.apps", Glyphs2.Apps));
             l.Add(NameRow("names.remediations", Glyphs.Shield));
             l.Add(NameRow("names.profiles", Glyphs2.Device));
+            l.Add(new SectionTitle("Expected apps"));
+            l.Add(ExpectedRow("expected.intune", Glyphs2.Apps, kept != null
+                ? "Reads the apps assigned to the device from Intune with the sign-in of " + kept + "."
+                : "Not signed in for " + who + ", so this source is not used until you sign in."));
+            l.Add(ExpectedRow("expected.history", Glyphs2.Calendar, null));
+        }
+
+        // The apps a deployment is expected to bring, listed as waiting from the start. Each source has its own switch.
+        SettingRow ExpectedRow(string id, string glyph, string desc)
+        {
+            SettingDef d = SettingsCatalog.Find(id);
+            string key = d.Keys[0];
+            Toggle tg = new Toggle();
+            tg.On = Prefs.GetBool(key, d.Defaults[0] == "1");
+            tg.Changed += Safe.Wrap(delegate { Prefs.SetBool(key, tg.On); });
+            SettingRow row = Bind(id, new SettingRow(glyph, d.Title, null, tg));
+            if (desc != null) row.Desc = desc + " " + row.Desc;
+            return row;
         }
 
         // The lookups Devices > Names from Intune starts with ticked. Each needs a permission of its own.

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.0.7" src="https://img.shields.io/badge/version-2.0.7-005fb8">
+  <img alt="Version 2.0.8" src="https://img.shields.io/badge/version-2.0.8-005fb8">
   <a href="../../actions/workflows/build.yml"><img alt="Build" src="../../actions/workflows/build.yml/badge.svg"></a>
   <img alt="Windows 10, 11 and Server 2016 or later" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078d4">
   <img alt=".NET Framework 4.5 or later, included in Windows" src="https://img.shields.io/badge/.NET%20Framework-4.5%2B%20(in%20Windows)-512bd4">
@@ -34,6 +34,7 @@ TrackVice 2.0.0 brings together everything since 1.10.0. The full list is in [CH
 - **Your storage in one step.** Sign in to Azure, pick the subscription, make or choose the storage account and set it up. The subscription box, the ID line and the account list always belong to the same subscription, also in New customer and Add customer.
 - **The same setup on every PC.** Customers, Your storage and the update key are saved to your own Key Vault and fetched on another PC after an Entra ID sign-in.
 - **Names from Intune** for platform scripts, apps, remediations and configuration profiles.
+- **Expected apps** from Intune or earlier deployments, listed as waiting from the start, so the count and the percentage do not grow while the user apps arrive. An option.
 - **Downloads** of a deployment's scripts and apps, by permission.
 - **A narrow overview.** Tiles shrink and wrap instead of disappearing, down to about 700 pixels.
 - **Clearer errors.** Errors wrap in the footer, and subscriptions show the start of their ID.

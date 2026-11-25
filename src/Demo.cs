@@ -31,6 +31,8 @@ namespace TrackVice
         public readonly List<Pair> Info = new List<Pair>();
         public readonly Dictionary<string, string> Names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public readonly Dictionary<string, string> Paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // What Intune would say the device is assigned, for the Expected apps option. Null for scenarios without it.
+        public ExpectedSet Expected;
 
         double at;
 
@@ -396,6 +398,18 @@ namespace TrackVice
             for (int k = 1; k <= 11; k++)
                 d.At(32.2 + k * 5).Line("AppWorkload", "AppWorkload", 2, "[Win32App][Win32AppExecutionExecutor] Waiting for app with id: " + acrobat + ": the installer process is still running after " + (k * 5) + " minutes.");
             d.At(82.0).Line("IntuneManagementExtension", "IntuneManagementExtension", 2, "[Win32App] ESP time limit reached for app with id: " + acrobat + " while the installer process is still running.");
+            // The apps Intune has assigned as required to this device and its user, which the user apps of the demo come from.
+            // The Intranet shortcut never arrives in the demo, so one expected app stays waiting.
+            ExpectedSet ex = new ExpectedSet();
+            ex.Source = ExpectedSources.Intune;
+            ex.ReadUtc = DateTime.UtcNow;
+            foreach (string id in new string[] { m365, vpn, zip, cp, support, teams, sheet, acrobat, expenses, "7a2c9e41-6d3b-4f85-b1a0-3e5d7c9f2b13" })
+            {
+                string n;
+                d.Names.TryGetValue(id, out n);
+                ex.Apps.Add(new ExpectedApp { Id = id, Name = n ?? "Contoso Intranet Shortcut" });
+            }
+            d.Expected = ex;
             d.Sort();
             d.StartAt = 30.6 * 60;
             return d;

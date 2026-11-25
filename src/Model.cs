@@ -284,6 +284,10 @@ namespace TrackVice
         [DataMember] public List<Pair> Info = new List<Pair>();
         // The times the device was off, set by OffTime.Mark, not saved.
         public OffSpans Off;
+        // An app the deployment is expected to bring that the device has not shown yet (ExpectedApps). It exists only in the
+        // viewer, is never saved or uploaded, and ExpectedSource says where the expectation comes from.
+        public bool Expected;
+        public string ExpectedSource;
 
         List<TEvent> events;
 
@@ -417,6 +421,17 @@ namespace TrackVice
             return n;
         }
 
+        // Only apps that are expected and not on the device yet: the phase does not say what kind of deployment this is.
+        public bool AllExpected
+        {
+            get
+            {
+                if (Items.Count == 0) return false;
+                foreach (Item i in Items) if (!i.Expected) return false;
+                return true;
+            }
+        }
+
         public int Done
         {
             get { return Count(delegate (Item i) { return States.IsComplete(i.State); }); }
@@ -499,6 +514,7 @@ namespace TrackVice
         public const string SlowDownload = "Slow download";
         public const string ScriptRerun = "Script run again";
         public const string ScriptUsers = "Script runs for users";
+        public const string ExpectedMissing = "Not installed";
     }
 
     [DataContract]
@@ -545,6 +561,9 @@ namespace TrackVice
         [DataMember] public List<Pair> Aliases = new List<Pair>();
         // Times the agent could not reach the storage; older sessions have none.
         [DataMember] public List<NetOutage> Outages = new List<NetOutage>();
+
+        // "Expected: 9 apps (Intune)", set by ExpectedApps for the viewer. Not saved.
+        public string ExpectedText;
 
         Dictionary<string, Item> keys;
         Dictionary<string, Phase> phaseKeys;
@@ -673,7 +692,7 @@ namespace TrackVice
                 bool ts = false, esp = false, cm = false, intune = false;
                 foreach (Phase p in Phases)
                 {
-                    if (p.Items.Count == 0) continue;
+                    if (p.Items.Count == 0 || p.AllExpected) continue;
                     if (p.Key.StartsWith("ts:")) ts = true;
                     else if (p.Key.StartsWith("esp:")) esp = true;
                     else if (p.Key.StartsWith("cm:")) cm = true;
@@ -728,11 +747,16 @@ namespace TrackVice
         public void Save(string path)
         {
             SavedUtc = DateTime.UtcNow;
-            using (FileStream fs = File.Create(path))
-            using (System.Xml.XmlDictionaryWriter w = JsonReaderWriterFactory.CreateJsonWriter(fs, Encoding.UTF8, true, true, "  "))
+            ExpectedHold hold = ExpectedApps.Detach(this);
+            try
             {
-                Serializer().WriteObject(w, this);
+                using (FileStream fs = File.Create(path))
+                using (System.Xml.XmlDictionaryWriter w = JsonReaderWriterFactory.CreateJsonWriter(fs, Encoding.UTF8, true, true, "  "))
+                {
+                    Serializer().WriteObject(w, this);
+                }
             }
+            finally { ExpectedApps.Attach(this, hold); }
         }
 
         public static Session Load(string path)
@@ -759,11 +783,16 @@ namespace TrackVice
 
         public string ToJson()
         {
-            using (MemoryStream ms = new MemoryStream())
+            ExpectedHold hold = ExpectedApps.Detach(this);
+            try
             {
-                Serializer().WriteObject(ms, this);
-                return Encoding.UTF8.GetString(ms.ToArray());
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    Serializer().WriteObject(ms, this);
+                    return Encoding.UTF8.GetString(ms.ToArray());
+                }
             }
+            finally { ExpectedApps.Attach(this, hold); }
         }
 
         void Fix()

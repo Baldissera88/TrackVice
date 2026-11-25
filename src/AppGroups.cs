@@ -21,7 +21,8 @@ namespace TrackVice
         public const string InCompanyPortal = "Available in Company Portal";
         public const string Dependencies = "Dependencies";
         public const string Uninstalls = "Uninstall";
-        public static readonly string[] Order = { DeviceWaits, AccountWaits, DeviceAfter, UserAfter, InCompanyPortal, Dependencies, Uninstalls };
+        public const string ExpectedApps = "Expected, not on the device yet";
+        public static readonly string[] Order = { DeviceWaits, AccountWaits, DeviceAfter, UserAfter, ExpectedApps, InCompanyPortal, Dependencies, Uninstalls };
 
         const string ZeroGuid = "00000000-0000-0000-0000-000000000000";
 
@@ -89,6 +90,7 @@ namespace TrackVice
         public static string Group(Item i)
         {
             if (i == null || !IsApp(i)) return null;
+            if (i.Expected) return ExpectedApps;
             if (i.PhaseKey == Phases.DeviceSetup) return DeviceWaits;
             if (i.PhaseKey == Phases.AccountSetup) return AccountWaits;
             if (i.PhaseKey != Phases.IntuneApps) return null;
@@ -119,6 +121,7 @@ namespace TrackVice
 
         public static string StateLabel(Item i)
         {
+            if (i != null && i.Expected && i.State == State.Pending) return "Expected";
             return Idle(i) ? "Available" : TsPlan.DisabledLabel(i) ?? States.Label(i.State);
         }
 

@@ -43,7 +43,7 @@ namespace TrackVice.Tests
                 }
             }
             string[] saved = { "Theme", "WatchOnStart", "UpdateCheck", "Hours", "UseWmi", "UseEvents", "PollMs", "StuckMinutes",
-                "IntuneNames.Scripts", "IntuneNames.Apps", "IntuneNames.Remediations", "IntuneNames.Profiles",
+                "IntuneNames.Scripts", "IntuneNames.Apps", "IntuneNames.Remediations", "IntuneNames.Profiles", "Expected.Intune", "Expected.History",
                 "SccmServer", "SccmSite", "SccmEarlierRuns", "LogVicePath" };
             foreach (string k in saved)
             {

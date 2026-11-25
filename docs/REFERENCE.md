@@ -12,7 +12,7 @@ Looking for setup? Start with the [Quick start](../README.md#quick-start). The a
 - [Findings](#findings)
 - [Gantt](#gantt)
 - [Where to run it](#where-to-run-it)
-- [Percentage and time left](#percentage-and-time-left)
+- [Percentage and time left](#percentage-and-time-left): [Expected apps](#expected-apps)
 - [Other devices](#other-devices): [Autopilot in Intune](#autopilot-in-intune), [Task sequences in SCCM](#task-sequences-in-sccm), [Devices with the TrackVice agent](#devices-with-the-trackvice-agent), [Wall view](#wall-view), [Check devices before enrollment](#check-devices-before-enrollment), [Customers](#customers), [Statistics](#statistics), [Compare](#compare), [Reference enrollment](#reference-enrollment), [Names from Intune](#names-from-intune), [Logs from the device](#logs-from-the-device)
 - [Watch, save and share](#watch-save-and-share)
 - [Settings](#settings) and [Updates](#updates)
@@ -144,6 +144,19 @@ The expected times come from the finished deployments TrackVice has seen of the 
 The time left counts what runs now (what is expected minus what has run, at least 30 seconds), what waits (apps one after the other, policies side by side and small) and the restarts still to come. Items that are not visible yet are covered by the historical total times what is left of it; the larger of the two is shown. With three or more earlier deployments the range is the spread; with fewer there is only the point. The finish time is now plus the point. The estimate never shows a time that has passed: when the deployment has run longer than the high end of the spread, it says "taking longer than usual (usually 35 min)".
 
 The chip reads like `about 25 min left · 20–35 · done ~16:35`, with the basis (`Based on 6 earlier deployments of <profile>`) in its tooltip. In a narrow window the range is dropped first, then the clock. The Compact window and the Now rows of Overview show the same estimate, and the window title keeps the percentage only.
+
+### Expected apps
+
+A device only learns of the apps for the user when Intune delivers them after sign-in, so an Autopilot deployment that starts at "2 of 2" apps grows to "8 of 9", and the percentage and the time left jump with it. **Settings > Intune / cloud > Expected apps** lists the whole set from the start, as waiting items in the Apps phase. Each source has its own switch, both on by default:
+
+| Source | What it uses |
+|---|---|
+| Expected apps from Intune | The apps Intune has assigned as required to the device and its user. It reads the device (by its Intune device ID, else its serial number, else its name) and its primary user, then `beta/users/{id}/mobileAppIntentAndStates/{device id}`, the app list the Intune admin center shows for a device. Required installs (`requiredInstall`, `requiredAndAvailableInstall`) are expected, required removals are listed apart with their own wording, and apps already installed or not applicable are left out. It needs an Intune sign-in for the customer and uses `DeviceManagementManagedDevices.Read.All` of that sign-in, and `DeviceManagementApps.Read.All` if Intune asks for it (tick App names under Names from Intune). It is read once, every 5 minutes while the deployment runs, and once more when the user phase starts. There is no fallback that works out the assignments from groups, because that needs permission to read groups and directory objects |
+| Expected apps from earlier deployments | The apps seen in at least 60 % of the newest ten finished deployments of the same customer, kind and profile (see [Percentage and time left](#percentage-and-time-left)), when there are at least two. No sign-in needed. Used when Intune is off, not signed in or cannot be read |
+
+Expected apps the device has not shown yet are items in the Apps phase, in their own group "Expected, not on the device yet", dimmed and labelled Expected, with where the expectation comes from: "Assigned in Intune, not on the device yet" or "Usually installed (in 4 of 5 earlier deployments)". They count in the phase totals ("2 of 9"), the overall percentage and the time left, weighed by how long that app took before. They are never failed and never raise an alert, are not part of the Enrollment Status Page logic, are not in the Timeline or the Gantt, and exist only in the viewer: a saved or uploaded session does not have them. When the real item shows up, matched by app ID and else by name, its placeholder goes. The Session tab says `Expected: 9 apps (Intune)` or `(from 5 earlier deployments)`.
+
+A deployment is done when everything seen is done or failed and nothing new has come for 15 minutes; an Autopilot device that waits for its user to sign in is given an hour. Then the apps that never came are dropped. For the Intune source, an app that was required but never seen is a warning on the Findings tab, "Not installed: assigned but not seen on the device", unless something failed. Switch both sources off and the Apps phase shows only what the device has shown.
 
 ## Other devices
 
@@ -445,6 +458,7 @@ What the agent sends:
 - Microsoft does not document the log formats of the Intune Management Extension and HealthScripts.log, the ESP registry layout, or the fields of the Autopilot events. TrackVice follows them as they are today, and they can change.
 - Autopilot device preparation keeps the progress of its own page in no documented place, so that progress is not shown.
 - Configuration profiles from Names from Intune are what the device last reported to Intune, not what it has right now.
+- Expected apps from Intune reads a beta Graph API and shows what Intune says at that time; the permission it needs is not documented in one place and could not be checked against every tenant. Expected apps from earlier deployments know apps by name only, so a renamed app counts as a new one.
 - LogVice 1.5 and older cannot open a log at a line, so TrackVice says in the status bar which line to look for. LogVice 2.0 or later opens at the line.
 - The Intune Management Extension log format changes between IME versions. Lines TrackVice does not recognise are left out, and the ESP and Win32Apps registry keys still give the state.
 - The Windows PE part of a task sequence needs WinPE-NetFx in the boot image for TrackVice to start there.
@@ -497,6 +511,7 @@ TrackVice is plain C# 5 and Windows Forms on .NET Framework 4.5, with no NuGet p
 | `src/Agent.cs`, `src/AgentAlerts.cs`, `src/AgentTs.cs` | The agent, its stores, alerts, log uploads, and the agent in task sequences |
 | `src/Insights.cs`, `src/Compare.cs` | Masking, statistics, alerts, log bundles, and the comparison of two enrollments |
 | `src/Customers.cs`, `src/IntuneLookup.cs`, `src/DeviceLogs.cs` | Customers, names from Intune, and the logs a device uploaded |
+| `src/ExpectedApps.cs`, `src/ExpectedIntune.cs`, `src/Ui.Expected.cs` | Expected apps: the merge into a session, the Graph read of the apps assigned to a device, and the settings and refresh in the window |
 | `src/Report.cs`, `src/ReportFleet.cs` | HTML report, fleet report, CSV and the zip bundle |
 | `src/WallModel.cs`, `src/AgentUpdate.cs`, `src/Readiness.cs`, `src/Restarts.cs`, `src/Downloads.cs`, `src/Reference.cs`, `src/DataExport.cs`, `src/CustomerSetup*.cs` | Wall view, agent updates, check before enrollment, restarts, downloads, the reference and ready to ship report, the Power BI export and New customer with links |
 | `src/CustomerCode.cs`, `src/CustomerInstall.cs`, `src/CustomerScript.cs`, `src/AddCustomer.cs`, `src/AddCustomerGroups.cs` | The customer code, `/customer`, the platform script for a code, Your storage, Add customer and its group search |

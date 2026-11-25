@@ -659,6 +659,7 @@ namespace TrackVice
             busyBar.Running = false;
             if (intuneNames != null && err == null) e.AddNames(intuneNames);
             if (err == null) IntuneOnLoad(e);
+            if (err == null && start.Shot == null) ReadExpectedFromIntune();
             if (err != null) Status("Reading failed: " + err.Message);
             lastUpdate = DateTime.UtcNow;
             bool first = !loadedOnce;
@@ -740,6 +741,12 @@ namespace TrackVice
         {
             if (engine == null) return;
             UpdateStatusRight();
+            // Time passes for the expected apps too: a deployment that went quiet is done and gives up what never came.
+            if (watching && start.Shot == null)
+            {
+                if (RefreshExpectedApps()) Bind();
+                ReadExpectedFromIntune();
+            }
             // Running items get their durations moved on even when nothing new arrived.
             if (watching && engine.S.CountActive > 0)
             {
@@ -782,6 +789,7 @@ namespace TrackVice
         void Bind()
         {
             if (start.Shot == null) FetchUnknownNames();
+            RefreshExpectedApps();
             Session s = engine.S;
             BindReference();
             List<string> sub = new List<string>();
@@ -1038,7 +1046,7 @@ namespace TrackVice
 
             bool explained = false;
             foreach (Finding f in engine.S.Findings) if (f.ItemKey == i.Key && f.Severity >= 2) explained = true;
-            Section(r, States.IsActive(i.State) ? "Now" : "Result");
+            Section(r, States.IsActive(i.State) ? "Now" : i.Expected ? "Not on the device yet" : "Result");
             if (!explained && i.ExitCode.HasValue && i.ExitCode.Value != 0) Field(r, i.State == State.Failed ? "Error" : "Exit code", Errors.Describe(i.ExitCode.Value), false);
             string noNet = NetworkOutages.NearItem(engine.S, i);
             if (noNet != null) Plain(r, noNet, theme.WarnFg, null);
@@ -1047,7 +1055,7 @@ namespace TrackVice
             if (i.StartUtc.HasValue) Field(r, "Started", Txt.Local(i.StartUtc.Value), false);
             if (i.EndUtc.HasValue) Field(r, "Ended", Txt.Local(i.EndUtc.Value), false);
             Field(r, States.IsActive(i.State) ? "Running for" : "Took", Txt.Duration(i.Duration(now)), false);
-            Field(r, "Last heard of", i.LastUtc > DateTime.MinValue ? Txt.Local(i.LastUtc) + " (" + Txt.Ago(i.LastUtc, now) + ")" : null, false);
+            Field(r, "Last heard of", !i.Expected && i.LastUtc > DateTime.MinValue ? Txt.Local(i.LastUtc) + " (" + Txt.Ago(i.LastUtc, now) + ")" : null, false);
 
             if (i.Attempts.Count > 0)
             {
@@ -1206,6 +1214,11 @@ namespace TrackVice
             Begin(r);
             Heading(r, s.Computer);
             Line(r, engine.Mode == Modes.Live ? "This device" : engine.Mode == Modes.Demo ? "Demo" : engine.Mode == Modes.File ? "Saved session" : engine.Mode == Modes.Intune ? "Intune" : engine.Mode == Modes.Sccm ? "SCCM" : engine.Mode == Modes.Agent ? "Uploaded by the TrackVice agent" : "Log folder", theme.Accent, s.Kind, theme.Text3);
+            if (s.ExpectedText != null)
+            {
+                Section(r, "Expected apps");
+                Field(r, "Apps the deployment should bring", s.ExpectedText, false);
+            }
             WriteSupport(r, s);
             Section(r, "Device");
             Field(r, "Windows", s.OsVersion, false);

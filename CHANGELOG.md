@@ -1,5 +1,11 @@
 # Changelog
 
+## TrackVice 2.0.8
+
+25 November 2026.
+
+- **Expected apps** (an option in Settings > Intune / cloud): the Apps phase shows every app the deployment is going to install from the start, instead of growing one by one when Intune delivers the user's apps after sign-in. With an Intune sign-in for the customer, TrackVice asks Intune which apps are required for this user on this device. Without one, it uses the apps of earlier deployments of the same profile. Expected apps are dimmed, marked "Expected" with the reason, count in the phase, the % and the time left, and are replaced by the real item when it appears. They never count as failed, send no alerts and are not uploaded. When the deployment is done, an app assigned in Intune that never came is a finding. Each source can be turned off.
+
 ## TrackVice 2.0.7
 
 25 November 2026.

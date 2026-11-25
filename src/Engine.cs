@@ -272,11 +272,41 @@ namespace TrackVice
             return T.Changes - before;
         }
 
+        // The apps the deployment is expected to bring, for the viewer. Null when the option is off or nothing is known.
+        public ExpectedSet Expect;
+
+        // Not while a saved session or a folder is read once: nothing more will come to it.
+        bool Watched
+        {
+            get { return Mode != Modes.File && Mode != Modes.Folder; }
+        }
+
+        // Sets what is expected and merges it into the session. True when what the session shows of it changed.
+        public bool SetExpected(ExpectedSet set)
+        {
+            Expect = set;
+            return RefreshExpected();
+        }
+
+        // Merges again, for time passing or new names. True when the placeholders or their findings changed.
+        public bool RefreshExpected()
+        {
+            string before = ExpectedApps.Signature(S);
+            ExpectedApps.Merge(S, Expect, Now, Watched);
+            return before != ExpectedApps.Signature(S);
+        }
+
         public void Apply(Batch b)
         {
             if (b == null) return;
+            // The expected apps are taken out while the readers work and merged in again after Finder.Run.
+            ExpectedApps.Strip(S);
             try { ApplyBatch(b); }
-            finally { if (extraNames.Count > 0) T.AddNames(extraNames); }
+            finally
+            {
+                if (extraNames.Count > 0) T.AddNames(extraNames);
+                ExpectedApps.Merge(S, Expect, Now, Watched);
+            }
         }
 
         void ApplyBatch(Batch b)

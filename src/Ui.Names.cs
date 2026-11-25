@@ -238,6 +238,7 @@ namespace TrackVice
             intuneNames = null;
             AgentCatalog.KnownNames = null;
             unknownAsked.Clear();
+            ForgetExpected();
             profilesFor = null;
             profileDiff = null;
             diffFor = null;

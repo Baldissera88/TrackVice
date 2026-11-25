@@ -390,6 +390,8 @@ namespace TrackVice
             // A sub-header inside a phase, such as the groups of the Apps phase. Item is null.
             public string Group;
             public int GroupCount;
+            // After the count of a group: where an expected app comes from.
+            public string GroupNote;
         }
 
         readonly List<Row> rows = new List<Row>();
@@ -551,6 +553,7 @@ namespace TrackVice
                 h.Phase = p;
                 h.Group = g;
                 h.GroupCount = l.Count;
+                if (g == AppGroups.ExpectedApps) h.GroupNote = l[0].ExpectedSource == ExpectedSources.Intune ? "assigned in Intune" : "usual in earlier deployments";
                 rows.Add(h);
                 foreach (Item i in l)
                 {
@@ -783,7 +786,8 @@ namespace TrackVice
             int nw = TextRenderer.MeasureText(row.Group, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width;
             Rectangle tr = new Rectangle(x, r.Y + Dpi.S(8), Math.Max(0, Math.Min(nw + 2, r.Width - x - Dpi.S(60))), r.Height - Dpi.S(8));
             TextRenderer.DrawText(g, row.Group, Fonts.SmallSemibold, tr, T.Text2, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
-            TextRenderer.DrawText(g, count, Fonts.Small, new Rectangle(tr.Right + Dpi.S(8), tr.Y, Dpi.S(50), tr.Height), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+            string tail = row.GroupNote != null ? count + "  ·  " + row.GroupNote : count;
+            TextRenderer.DrawText(g, tail, Fonts.Small, new Rectangle(tr.Right + Dpi.S(8), tr.Y, Math.Max(Dpi.S(50), r.Right - tr.Right - Dpi.S(24)), tr.Height), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
             using (Pen pen = new Pen(Theme.Mix(T.Card, T.Divider, 0.6f))) g.DrawLine(pen, x, r.Bottom - 1, r.Right - Dpi.S(8), r.Bottom - 1);
         }
 
@@ -796,11 +800,12 @@ namespace TrackVice
                 if (sel) Shapes.Fill(g, new RectangleF(hr.X, hr.Y + Dpi.S(9), Dpi.S(3), hr.Height - Dpi.S(18)), Dpi.S(1.5f), T.Accent);
             }
             float ic = Dpi.S(18);
-            StateLook.Icon(g, i.State, new RectangleF(r.X + Dpi.S(26), r.Y + (r.Height - ic) / 2, ic, ic), T, spin);
+            // An expected app that is not on the device yet is drawn dimmed, as a dotted circle.
+            StateLook.Icon(g, i.Expected ? State.Unknown : i.State, new RectangleF(r.X + Dpi.S(26), r.Y + (r.Height - ic) / 2, ic, ic), T, spin);
             int rightW = Dpi.S(250);
             int x = r.X + Dpi.S(56);
             int tw = Math.Max(Dpi.S(80), r.Width - x - rightW - Dpi.S(12));
-            Color nameC = i.State == State.Skipped || i.State == State.NotApplicable ? T.Text3 : T.Text;
+            Color nameC = i.Expected || i.State == State.Skipped || i.State == State.NotApplicable ? T.Text3 : T.Text;
             TextRenderer.DrawText(g, i.DisplayName, Fonts.Ui, new Rectangle(x, r.Y + Dpi.S(7), tw, Fonts.Ui.Height + 2), nameC, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
             string sub = Sub(i, p);
             TextRenderer.DrawText(g, sub, Fonts.Small, new Rectangle(x, r.Y + Dpi.S(27), tw, Fonts.Small.Height + 2), T.Text3, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
@@ -808,7 +813,7 @@ namespace TrackVice
             // Right side: state (with a bar while running), tries, duration.
             int durW = Dpi.S(74);
             int sx = r.Right - rightW;
-            Color sc = StateLook.Color(i.State, T);
+            Color sc = i.Expected ? T.Text3 : StateLook.Color(i.State, T);
             string st = StateLook.StateText(i);
             bool active = States.IsActive(i.State);
             int stateW = rightW - durW - Dpi.S(16);
@@ -848,6 +853,11 @@ namespace TrackVice
             List<string> parts = new List<string>();
             if (!string.IsNullOrEmpty(i.Kind)) parts.Add(i.Kind);
             parts.AddRange(AppGroups.Tags(i));
+            if (i.Expected)
+            {
+                parts.Add(i.Get(ExpectedApps.WhyKey));
+                return string.Join("  ·  ", parts.ToArray());
+            }
             // The ESP step Apps says which apps it waits for.
             string apps = AppGroups.IsAppsStep(i) ? AppGroups.StepText(p, i) : null;
             if (apps != null)

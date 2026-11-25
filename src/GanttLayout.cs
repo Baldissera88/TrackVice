@@ -75,6 +75,8 @@ namespace TrackVice
                 List<GanttRow> items = new List<GanttRow>();
                 foreach (Item i in p.Items)
                 {
+                    // An expected app that has not shown up has no time to draw.
+                    if (i.Expected) continue;
                     GanttRow r = new GanttRow();
                     r.Phase = p;
                     r.Item = i;
