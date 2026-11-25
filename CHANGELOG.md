@@ -1,5 +1,16 @@
 # Changelog
 
+## TrackVice 2.0.7
+
+25 November 2026.
+
+- **Install scripts that do not fail for nothing**: the agent scripts (customer code, links and share) end with success when the agent is already installed and running, and download nothing. A self-updated agent is never replaced by an older one. Before a download they wait up to 3 minutes for the network and try up to 5 times. Update the script in Intune to get this (Customer code... > Update the script in Intune).
+- **Check the script in Intune**: Customer code... shows whether the agent script runs as System and which groups it is assigned to, and warns when a group with users or All users is targeted, because the script then also runs when a user signs in. **Assign only to the device group** removes those assignments after asking.
+- A later failed run of the agent's own script, while the agent runs, is a warning instead of a failed deployment. For other platform scripts that first succeeded and then failed when they ran again, the details say when, and whether the second run was for the user, with a finding when a script runs for users too. A network error is said in plain words.
+- **Get publish access by signing in**: in Publish agent update, a place this PC cannot write to has **Sign in to Azure and get access**. TrackVice finds the storage account in your subscriptions, reads its key and makes the link itself, or says exactly which role is missing. Add a link shows the portal steps with the account and container filled in and checks the pasted link.
+- **Agents update sooner**: an installed agent checks every 30 minutes during a deployment and every 6 hours after it, and tries again after 5 to 40 minutes after a network error, or after 30 minutes when nothing is published yet. Its log no longer repeats the same line.
+- **Network outages**: the agent records when it could not reach the storage. They show in the timeline ("No network to the storage"), on the Session tab, and in the details of a failure in the same minute.
+
 ## TrackVice 2.0.6
 
 25 November 2026.

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.0.6" src="https://img.shields.io/badge/version-2.0.6-005fb8">
+  <img alt="Version 2.0.7" src="https://img.shields.io/badge/version-2.0.7-005fb8">
   <a href="../../actions/workflows/build.yml"><img alt="Build" src="../../actions/workflows/build.yml/badge.svg"></a>
   <img alt="Windows 10, 11 and Server 2016 or later" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078d4">
   <img alt=".NET Framework 4.5 or later, included in Windows" src="https://img.shields.io/badge/.NET%20Framework-4.5%2B%20(in%20Windows)-512bd4">

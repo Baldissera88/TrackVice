@@ -118,7 +118,7 @@ TrackVice lists and follows it  <-----------------------------------------------
 | Idle | With nothing running and nothing new for 30 minutes it reads every 15 seconds and uploads every 5 minutes. It wakes up when something starts, such as account setup after pre-provisioning |
 | Logs | Uploads a zip of the device's logs when something fails, when it goes idle and at the end. See [Logs from the device](#logs-from-the-device) |
 | Alerts | With an alert link, posts to Teams when something fails and when the deployment is finished. See [Alerts in Teams](#alerts-in-teams) |
-| Updates | Checks your storage for a newer signed TrackVice at start and every 6 hours, and replaces itself. See [New TrackVice versions](#new-trackvice-versions) |
+| Updates | Checks your storage for a newer signed TrackVice at start, every 30 minutes during a deployment and every 6 hours after it, and replaces itself. A check that failed for a passing reason is tried again sooner. See [New TrackVice versions](#new-trackvice-versions) |
 | End | 48 hours after the deployment is done it uploads one last time and removes its task and the saved link. Something new that starts in that time, such as an app or a restart, makes it count again when that is done. After pre-provisioning it waits for the user phase without counting. In any case it removes itself 30 days after it was installed |
 
 The first minutes of a deployment happen before Intune can run anything on the device. They are still in the session, because the agent reads the logs and the ESP registry keys back to the Windows install.
@@ -487,7 +487,7 @@ You publish a version once, to your storage. Every customer gets it from there.
 
 **New devices** download the newest published version when the script runs.
 
-**Installed agents** check `agent/latest.json` at start and every 6 hours, and install a newer version signed with the key in their customer code. A version that is the same or older is not installed. How the replacement works is in [Agent updates](#agent-updates).
+**Installed agents** check `agent/latest.json` at start, every 30 minutes while the deployment runs and every 6 hours after it, and install a newer version signed with the key in their customer code. A version that is the same or older is not installed. How the replacement works is in [Agent updates](#agent-updates).
 
 If publishing makes a new update key, because this PC had none, TrackVice says so. Codes made before have the old key, so their devices refuse the new version. See [Maintenance](#maintenance).
 
@@ -504,7 +504,7 @@ the update key    Publish    agent/latest.json, signed   Read    Installed agent
 
 **What is sent.** This TrackVice.exe, as agent/TrackVice-&lt;version&gt;.exe, and agent/latest.json, which names that version, its size and its SHA-256 and is signed with the update key on this PC. The exe goes first and agent/latest.json last. Nothing else is sent, and only to trackvice-agent in your storage.
 
-**Who gets it, and when.** New devices: the platform script reads agent/latest.json when it runs at enrollment, checks the signature, size and SHA-256, and installs that version. Installed agents: they check at their start and every 6 hours, and install it when it is newer than their own and signed with the key in their customer code. The platform script in Intune is not changed. The agent in an SCCM task sequence does not update itself: its package decides the version.
+**Who gets it, and when.** New devices: the platform script reads agent/latest.json when it runs at enrollment, checks the signature, size and SHA-256, and installs that version. Installed agents: they check at their start, every 30 minutes during the deployment and every 6 hours after it, and install it when it is newer than their own and signed with the key in their customer code. The platform script in Intune is not changed. The agent in an SCCM task sequence does not update itself: its package decides the version.
 
 **What is not affected.** Your customers' containers with their sessions and logs, the customer codes and links, the scripts in Intune, and GitHub.
 
@@ -755,7 +755,7 @@ Without `/exe` it publishes itself. It uploads `agent/TrackVice-<version>.exe` f
 
 | | |
 |---|---|
-| When | At start and every 6 hours, while the installed agent runs |
+| When | At start, every 30 minutes while the deployment runs and every 6 hours after it. After a network error it tries again after 5, 10, 20 and 40 minutes; when nothing is published yet, after 30 minutes. A refused link or a bad signature waits for the normal interval |
 | Check | Reads `agent/latest.json`, checks the signature with its key, and installs only a newer version. The same version does nothing, and an older one is not installed |
 | Download | Downloads `agent/TrackVice-<version>.exe` into the `update` folder of the agent, and checks its size and SHA-256 against the signed ones |
 | Replace | Starts a copy of itself, `TrackVice-apply.exe`, makes its last upload and exits. The copy waits up to a minute for it, replaces `TrackVice.exe`, keeps the one before as `TrackVice.exe.old`, checks the hash again and starts the task |
@@ -1034,6 +1034,9 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 | "Your account may not create the resource group ..." (Azure: not authorized to perform `Microsoft.Resources/subscriptions/resourcegroups/write`) | You chose **New account**. Either the box shows the wrong subscription (check the ID line), or your account lacks **Contributor** or **Owner** on it. An Owner of the subscription gives the role in the Azure portal: Access control (IAM), Add role assignment. Or choose **Existing account**, which makes no resource group and needs only **Storage Account Contributor** on the account |
 | Publish: "Not published: latest.json in ... is signed with another update key than the one on this PC, so devices would refuse what this PC makes." | The version in `trackvice-agent` was signed with another key, usually from the first PC. Press **Get my setup from the vault** in Publish, or publish from the first PC. Do not make a new key: every customer code holds the old public key, so devices would refuse the new version |
 | Vault: "Your account needs the role Key Vault Secrets User on this vault (Secrets Officer to add or change)." | Ask an owner of the vault to give the role. The vault must use Azure role-based access control |
+| Publish: a row says "Cannot publish from this PC yet" | This PC has no link it may write with for that place, usually a customer with its own storage account. Press **Sign in to Azure and get access**: TrackVice finds the account in your subscriptions, reads its key and makes a link for `trackvice-agent` itself. It needs **Storage Account Contributor** or **Owner** on the account and changes nothing in Azure. Or press **Add a link** and follow the steps it shows |
+| The agent script shows Failed in Intune, but the agent runs | The script ran a second time, often when a user signed in, and failed on a short network outage. From 2.0.7 the script ends with success when the agent is already installed, waits for the network and retries the download. Use **Customer code... > Check the script in Intune**: it shows whether the script runs as System and whether it is also assigned to groups with users, and **Assign only to the device group** fixes that. TrackVice shows such a later failed run of its own script as a warning, not as a failed deployment |
+| "No network to the storage" in the timeline | The agent could not upload for that time: name resolution, could not connect, connection closed or timeout. The Session tab counts these outages, and a failure in the same minute says the device had no network then |
 | Vault: "This account can read the setup but not the update key (the vault answered 403)." | The role on the secret `trackvice-setup-updatekey` is missing. Ask for **Key Vault Secrets User** on that secret, or publish from a PC that has the key |
 
 <img src="images/trackvice-publish-vault.png" width="620" alt="Publish when the published version is signed with another update key">
@@ -1077,7 +1080,7 @@ Remove-Item 'C:\Program Files\TrackVice Agent' -Recurse
 | `agent.log` says "Self-update is off" | The reason follows: an update key but no update link, a key that is not usable, or a link that cannot be opened |
 | `agent.log` says "is not signed with the update key of this device" | The version was published with another key than the one the agent was installed with. Publish from the PC that has the key. With links, you can also update `$UpdateKey` |
 | `agent.log` says "Nothing is published in ... yet" | agent/latest.json is missing there: nothing was published, or the link points at another container (a link without Read says "Could not read" instead). Open **Publish agent update**: the row of that place shows what it has. Its customers may use a storage account of their own, not Your storage |
-| The agent stays on its version | It checks every 6 hours. A version that is not newer than the one it runs is not installed. `agent.log` says "Update check:" with the reason |
+| The agent stays on its version | It checks every 30 minutes during a deployment and every 6 hours after it. A version that is not newer than the one it runs is not installed. `agent.log` says "Update check:" with the reason |
 | The script is blocked | `TrackVice.exe` is not code signed. WDAC, AppLocker or Smart App Control can block it. Sign it with your own certificate or allow it by hash |
 
 ## Where the logs are
