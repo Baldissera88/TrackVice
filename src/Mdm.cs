@@ -536,12 +536,12 @@ namespace TrackVice
     public sealed class ScriptLog
     {
         static readonly Regex RxStart = new Regex(@"\[PowerShell\] Processing policy with id = (?<id>[0-9A-Fa-f-]{36}) for user (?<u>[0-9A-Fa-f-]{36})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        static readonly Regex RxResult = new Regex(@"\[PowerShell\] User Id = [0-9A-Fa-f-]{36}, Policy id = (?<id>[0-9A-Fa-f-]{36}), policy result = (?<r>\w+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        static readonly Regex RxFile = new Regex(@"\\Policies\\Scripts\\[0-9A-Fa-f-]{36}_(?<id>[0-9A-Fa-f-]{36})\.ps1", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxResult = new Regex(@"\[PowerShell\] User Id = (?<u>[0-9A-Fa-f-]{36}), Policy id = (?<id>[0-9A-Fa-f-]{36}), policy result = (?<r>\w+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxFile = new Regex(@"\\Policies\\Scripts\\(?<u>[0-9A-Fa-f-]{36})_(?<id>[0-9A-Fa-f-]{36})\.ps1", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         static readonly Regex RxExit = new Regex(@"^Powershell exit code is (?<c>-?\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         static readonly Regex RxSpace = new Regex(@"\s+", RegexOptions.Compiled);
 
-        string current;
+        string current, currentUser;
         string host;
         long? exit;
         string error;
@@ -603,6 +603,7 @@ namespace TrackVice
                 Obs o = For(l, source, m.Groups["id"].Value);
                 bool ok = m.Groups["r"].Value.Equals("Success", StringComparison.OrdinalIgnoreCase);
                 o.State = ok ? State.Succeeded : State.Failed;
+                o.AddInfo("Context", m.Groups["u"].Value.StartsWith("00000000") ? "Device" : "User");
                 if (!ok) o.Severity = 2;
                 o.Text = "Script finished: " + m.Groups["r"].Value;
                 // The result never comes before the start of its own run, also when the clock of the log moved in between.
@@ -620,6 +621,7 @@ namespace TrackVice
             if (f.Success && t.StartsWith("Adding argument", StringComparison.OrdinalIgnoreCase))
             {
                 current = f.Groups["id"].Value;
+                currentUser = f.Groups["u"].Value;
                 host = null;
                 exit = null;
                 error = null;
@@ -634,6 +636,7 @@ namespace TrackVice
                 o.State = State.Installing;
                 o.NewAttempt = true;
                 o.Text = "PowerShell started, " + host;
+                if (!string.IsNullOrEmpty(currentUser)) o.AddInfo("Context", currentUser.StartsWith("00000000") ? "Device" : "User");
                 output.Add(o);
                 return true;
             }

@@ -252,6 +252,8 @@ namespace TrackVice
         [DataMember] public long? ExitCode;
         [DataMember] public bool Reboot;
         [DataMember] public string Command;
+        // "User" or "Device": whose context a platform script ran in.
+        [DataMember] public string Context;
 
         public State State
         {
@@ -495,6 +497,8 @@ namespace TrackVice
         public const string WaitingRestart = "Waiting for a restart";
         public const string CommonCause = "Common cause";
         public const string SlowDownload = "Slow download";
+        public const string ScriptRerun = "Script run again";
+        public const string ScriptUsers = "Script runs for users";
     }
 
     [DataContract]
