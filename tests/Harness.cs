@@ -42,6 +42,7 @@ namespace TrackVice.Tests
             MdmTests.Run();
             GanttTests.Run();
             WhyTests.Run();
+            ScriptRerunTests.Run();
             FleetTests.Run();
             AgentAlertTests.Run();
             CompareTests.Run();

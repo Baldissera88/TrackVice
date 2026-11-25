@@ -344,6 +344,8 @@ namespace TrackVice
                     i.Reboot = false;
                 }
             }
+            if (a != null && o.Info != null)
+                foreach (Pair p in o.Info) if (p.Key == "Context" && !string.IsNullOrEmpty(p.Value)) a.Context = p.Value;
             if (!string.IsNullOrEmpty(o.Command))
             {
                 if (a != null) a.Command = o.Command;
@@ -400,6 +402,7 @@ namespace TrackVice
             EnrollmentAnchor.Apply(s);
             OffTime.Mark(s);
             List<Finding> list = new List<Finding>();
+            ScriptRerun.Settle(s);
             foreach (Item i in s.Items)
             {
                 // The run item of a remote task sequence fails with it; the Task sequence failed finding covers that.
@@ -495,6 +498,7 @@ namespace TrackVice
                 list.Add(f);
             }
 
+            ScriptRerun.Add(s, list);
             AutopilotFlow.Apply(s, list, nowUtc);
             OffTime.Apply(s, list, nowUtc);
             DeviceClock.Apply(s, list, nowUtc);

@@ -68,7 +68,7 @@ namespace TrackVice
                 f.Hint = "Set \"Run script in 64 bit PowerShell Host\" to Yes in the script's settings, or start the 64-bit host from the script through %windir%\\SysNative.";
             }
             else f.Hint = Explain.Hint(i);
-            f.Message = msg;
+            f.Message = msg + ScriptRerun.Extra(i);
         }
 
         static void Office(Finding f, Item i)
