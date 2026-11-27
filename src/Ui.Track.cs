@@ -394,24 +394,46 @@ namespace TrackVice
             public string GroupNote;
         }
 
+        // A pill that changes state fades from the old colour to the new one.
+        sealed class Fade
+        {
+            public Color From, To;
+            public int Start;
+        }
+
+        const int FadeMs = 150;
+        const int AppearMs = 180;
+
         readonly List<Row> rows = new List<Row>();
         readonly HashSet<string> collapsed = new HashSet<string>();
         readonly Timer anim = new Timer();
+        readonly Timer fadeTimer = new Timer();
+        readonly Dictionary<string, State> lastState = new Dictionary<string, State>();
+        readonly Dictionary<string, Fade> fades = new Dictionary<string, Fade>();
+        // Items seen for the first time after the list had items: they fade in.
+        readonly Dictionary<string, int> born = new Dictionary<string, int>();
         Func<DateTime> now = delegate { return DateTime.UtcNow; };
         IEnumerable<Phase> source = new Phase[0];
         int top, hot = -1, selected = -1;
         float spin;
         bool dragging;
         int dragOffset;
+        Font nameFont, nameBold;
+        string nameFamily;
         public Func<Item, bool> Filter;
         public string EmptyText = "Nothing to show yet.";
         public event EventHandler SelectionChanged;
         public event Action<Phase> SpinTick;
         public Action<ContextMenuStrip, Item> MenuExtras;
 
-        int ItemH { get { return Dpi.S(48); } }
-        int PhaseH { get { return Dpi.S(36); } }
+        int ItemH { get { return Dpi.S(56); } }
+        int PhaseH { get { return Dpi.S(48); } }
+        int GroupH { get { return Dpi.S(36); } }
         int BarW { get { return Dpi.S(6); } }
+        // Names and sub-headers start here, in line with the item names; the chevron sits over the tiles.
+        int TextX { get { return Dpi.S(64); } }
+        // From this width the state, tries and time sit in columns on one line; below it they stack at the right.
+        int WideAt { get { return Dpi.S(600); } }
 
         public ItemList()
         {
@@ -424,6 +446,12 @@ namespace TrackVice
                 if (HasActiveVisible()) Invalidate();
             };
             anim.Start();
+            fadeTimer.Interval = 15;
+            fadeTimer.Tick += delegate
+            {
+                if (!PruneFades()) fadeTimer.Stop();
+                Invalidate();
+            };
             ContextMenuStrip m = new ContextMenuStrip();
             m.Opening += delegate (object s, System.ComponentModel.CancelEventArgs e)
             {
@@ -445,8 +473,25 @@ namespace TrackVice
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) anim.Dispose();
+            if (disposing)
+            {
+                anim.Dispose();
+                fadeTimer.Dispose();
+                if (nameFont != null) nameFont.Dispose();
+                if (nameBold != null) nameBold.Dispose();
+            }
             base.Dispose(disposing);
+        }
+
+        // 15 px names, made again only when the UI font changes.
+        void EnsureFonts()
+        {
+            if (nameFont != null && nameFamily == Fonts.Ui.Name) return;
+            if (nameFont != null) nameFont.Dispose();
+            if (nameBold != null) nameBold.Dispose();
+            nameFamily = Fonts.Ui.Name;
+            nameFont = new Font(Fonts.Ui.FontFamily, 11.25f, Fonts.Ui.Style);
+            nameBold = new Font(Fonts.UiSemibold.FontFamily, 11.25f, Fonts.UiSemibold.Style);
         }
 
         public void SetData(IEnumerable<Phase> phases, Func<DateTime> clock)
@@ -458,6 +503,20 @@ namespace TrackVice
 
         public void Rebuild()
         {
+            NoteStates();
+            // The first row in view stays where it is, whatever comes or goes above it.
+            string anchor = null;
+            int anchorOff = 0;
+            if (top > 0)
+            {
+                int y = -top;
+                for (int k = 0; k < rows.Count; k++)
+                {
+                    int h = H(k);
+                    if (y + h > 0) { anchor = RowId(rows[k]); anchorOff = y; break; }
+                    y += h;
+                }
+            }
             string keepItem = SelectedItem != null ? SelectedItem.Key : null;
             string keepPhase = SelectedItem == null && SelectedPhase != null ? SelectedPhase.Key : null;
             rows.Clear();
@@ -520,8 +579,78 @@ namespace TrackVice
                 if (keepItem != null && rows[k].Item != null && rows[k].Item.Key == keepItem) selected = k;
                 if (keepPhase != null && IsPhaseRow(k) && rows[k].Phase.Key == keepPhase) selected = k;
             }
+            if (anchor != null)
+            {
+                for (int k = 0; k < rows.Count; k++)
+                    if (RowId(rows[k]) == anchor) { top = Y(k) - anchorOff; break; }
+            }
             ClampTop();
             Invalidate();
+        }
+
+        static string RowId(Row r)
+        {
+            if (r.Item != null) return "i:" + r.Item.Key;
+            if (r.Group != null) return "g:" + r.Phase.Key + ":" + r.Group;
+            return "p:" + r.Phase.Key;
+        }
+
+        // Starts the fades: a pill whose state changed, an item that was not there before.
+        void NoteStates()
+        {
+            bool motion = ListLook.Animations;
+            // Keys of deployments looked at long ago are let go.
+            if (lastState.Count > 4000) lastState.Clear();
+            bool known = lastState.Count > 0;
+            int tick = Environment.TickCount;
+            foreach (Phase p in source)
+            {
+                foreach (Item i in p.Items)
+                {
+                    if (i.Key == null) continue;
+                    State old;
+                    if (!lastState.TryGetValue(i.Key, out old))
+                    {
+                        if (known && motion) born[i.Key] = tick;
+                    }
+                    else if (old != i.State && motion)
+                    {
+                        Fade f = new Fade();
+                        Fade cur;
+                        f.From = fades.TryGetValue(i.Key, out cur) ? FadeColor(cur) : StateLook.Color(old, T);
+                        f.To = StateLook.Color(i.State, T);
+                        f.Start = tick;
+                        fades[i.Key] = f;
+                    }
+                    lastState[i.Key] = i.State;
+                }
+            }
+            if ((fades.Count > 0 || born.Count > 0) && !fadeTimer.Enabled) fadeTimer.Start();
+        }
+
+        static Color FadeColor(Fade f)
+        {
+            return Theme.Mix(f.From, f.To, ListLook.EaseOut(f.Start, FadeMs));
+        }
+
+        // Drops the fades that are over. True while some still run.
+        bool PruneFades()
+        {
+            int tick = Environment.TickCount;
+            List<string> over = new List<string>();
+            foreach (KeyValuePair<string, Fade> kv in fades) if (unchecked(tick - kv.Value.Start) >= FadeMs) over.Add(kv.Key);
+            foreach (string k in over) fades.Remove(k);
+            over.Clear();
+            foreach (KeyValuePair<string, int> kv in born) if (unchecked(tick - kv.Value) >= AppearMs) over.Add(kv.Key);
+            foreach (string k in over) born.Remove(k);
+            return fades.Count > 0 || born.Count > 0;
+        }
+
+        Color PillColor(Item i)
+        {
+            Fade f;
+            if (i.Key != null && fades.TryGetValue(i.Key, out f)) return FadeColor(f);
+            return StateLook.Color(i.State, T);
         }
 
         // The apps of the Apps phase in their groups, each after a sub-header row. Null entries in the list stand for the headers.
@@ -569,6 +698,11 @@ namespace TrackVice
         bool IsPhaseRow(int k)
         {
             return k >= 0 && k < rows.Count && rows[k].Item == null && rows[k].Group == null;
+        }
+
+        bool IsGroupRow(int k)
+        {
+            return k >= 0 && k < rows.Count && rows[k].Group != null;
         }
 
         public Item SelectedItem
@@ -645,8 +779,6 @@ namespace TrackVice
             if (SelectionChanged != null) SelectionChanged(this, EventArgs.Empty);
         }
 
-        int GroupH { get { return Dpi.S(28); } }
-
         int H(int k)
         {
             return rows[k].Group != null ? GroupH : rows[k].Item == null ? PhaseH : ItemH;
@@ -674,10 +806,12 @@ namespace TrackVice
             top = Math.Max(0, Math.Min(top, ContentHeight - Height));
         }
 
+        // Rows under a phase are scrolled clear of the phase header that stays pinned at the top.
         void EnsureVisible(int k)
         {
             int y = Y(k), h = H(k);
-            if (y < top) top = y;
+            bool under = !IsPhaseRow(k);
+            if (y < top + (under ? PhaseH : 0)) top = Math.Max(0, under ? y - PhaseH : y);
             else if (y + h > top + Height) top = y + h - Height;
             ClampTop();
         }
@@ -699,8 +833,38 @@ namespace TrackVice
             return false;
         }
 
+        // The phase header that stays at the top while its rows scroll under it, and where it sits: the next header pushes it up.
+        int Pinned(out int pinY)
+        {
+            pinY = 0;
+            if (top <= 0 || rows.Count == 0) return -1;
+            int y = -top, k0 = -1;
+            for (int k = 0; k < rows.Count; k++)
+            {
+                int h = H(k);
+                if (y + h > 0) { k0 = k; break; }
+                y += h;
+            }
+            if (k0 < 0) return -1;
+            if (IsPhaseRow(k0) && y >= 0) return -1;
+            int ph = -1;
+            for (int k = k0; k >= 0; k--) if (IsPhaseRow(k)) { ph = k; break; }
+            if (ph < 0) return -1;
+            int ny = y;
+            for (int k = k0; k < rows.Count; k++)
+            {
+                if (k > k0 && IsPhaseRow(k)) { pinY = Math.Min(0, ny - PhaseH); break; }
+                ny += H(k);
+                if (ny > PhaseH * 2) break;
+            }
+            return ph;
+        }
+
         int RowAt(int py)
         {
+            int pinY;
+            int pin = Pinned(out pinY);
+            if (pin >= 0 && py >= pinY && py < pinY + PhaseH) return pin;
             int y = -top;
             for (int k = 0; k < rows.Count; k++)
             {
@@ -711,14 +875,22 @@ namespace TrackVice
             return -1;
         }
 
+        // ---------- painting ----------
+
+        // The surface of the selected row: one step up from the card, with a trace of the accent.
+        Color Raised
+        {
+            get { return T.IsDark ? Theme.Mix(Theme.Mix(T.Card, T.Text, 0.05f), T.Accent, 0.05f) : Theme.Mix(T.Card, T.Accent, 0.05f); }
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.Clear(T.Card);
+            EnsureFonts();
             if (rows.Count == 0)
             {
-                Rectangle er = new Rectangle(Dpi.S(24), Dpi.S(40), Math.Max(0, Width - Dpi.S(48)), Dpi.S(120));
-                TextRenderer.DrawText(g, EmptyText, Fonts.Ui, er, T.Text3, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak);
+                PaintEmpty(g);
                 return;
             }
             int y = -top;
@@ -731,121 +903,256 @@ namespace TrackVice
                 {
                     Rectangle r = new Rectangle(0, y, w, h);
                     if (rows[k].Group != null) PaintGroup(g, rows[k], r);
-                    else if (rows[k].Item == null) PaintPhase(g, rows[k].Phase, r, k == selected, k == hot, nowUtc);
-                    else PaintItem(g, rows[k].Item, rows[k].Phase, r, k == selected, k == hot, nowUtc);
+                    else if (rows[k].Item == null) PaintPhase(g, k, r, nowUtc);
+                    else PaintItem(g, k, r, nowUtc);
                 }
                 y += h;
                 if (y > Height) break;
             }
+            int pinY;
+            int pin = Pinned(out pinY);
+            if (pin >= 0)
+            {
+                PaintPhase(g, pin, new Rectangle(0, pinY, w, PhaseH), nowUtc);
+                // A soft edge under the pinned header, so the rows read as passing beneath it.
+                Rectangle sh = new Rectangle(0, pinY + PhaseH, Width, Dpi.S(6));
+                using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(sh.X, sh.Y - 1, sh.Width, sh.Height + 2), Color.FromArgb(T.IsDark ? 70 : 22, 0, 0, 0), Color.FromArgb(0, 0, 0, 0), LinearGradientMode.Vertical))
+                    g.FillRectangle(b, sh);
+            }
             PaintScroll(g);
         }
 
-        void PaintPhase(Graphics g, Phase p, Rectangle r, bool sel, bool hover, DateTime nowUtc)
+        void PaintEmpty(Graphics g)
         {
-            Rectangle band = new Rectangle(r.X, r.Y, r.Width + BarW + Dpi.S(4), r.Height);
-            using (SolidBrush b = new SolidBrush(sel ? T.AccentSoft : hover ? Theme.Mix(T.CardAlt, T.Hover, 0.5f) : T.CardAlt)) g.FillRectangle(b, band);
-            using (Pen pen = new Pen(T.Divider)) g.DrawLine(pen, 0, r.Bottom - 1, band.Right, r.Bottom - 1);
-            bool open = !collapsed.Contains(p.Key);
-            float cx = r.X + Dpi.S(18), cy = r.Y + r.Height / 2f, a = Dpi.S(3.5f);
-            using (Pen pen = new Pen(T.Text3, Dpi.S(1.4f)))
+            if (Filter == null)
+            {
+                Rectangle er = new Rectangle(Dpi.S(24), Dpi.S(40), Math.Max(0, Width - Dpi.S(48)), Dpi.S(120));
+                TextRenderer.DrawText(g, EmptyText, Fonts.Ui, er, T.Text3, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak);
+                return;
+            }
+            int w = Math.Max(0, Width - Dpi.S(48));
+            TextRenderer.DrawText(g, "Nothing matches", nameBold, new Rectangle(Dpi.S(24), Dpi.S(48), w, nameBold.Height + 4), T.Text2, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+            TextRenderer.DrawText(g, "Try other words, or clear the filters.", Fonts.Ui, new Rectangle(Dpi.S(24), Dpi.S(48) + nameBold.Height + Dpi.S(6), w, Dpi.S(60)), T.Text3, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.NoPadding | TextFormatFlags.WordBreak);
+        }
+
+        void PaintPhase(Graphics g, int k, Rectangle r, DateTime nowUtc)
+        {
+            Phase p = rows[k].Phase;
+            bool sel = k == selected, hover = k == hot;
+            Color bg = sel ? Theme.Mix(T.CardAlt, T.Accent, Focused ? 0.1f : 0.06f) : hover ? Theme.Mix(T.CardAlt, T.Hover, 0.7f) : T.CardAlt;
+            using (SolidBrush b = new SolidBrush(bg)) g.FillRectangle(b, 0, r.Y, Width, r.Height);
+            using (Pen pen = new Pen(Theme.Mix(bg, T.Divider, 0.85f)))
+            {
+                if (k > 0 || r.Y > 0) g.DrawLine(pen, 0, r.Y, Width, r.Y);
+                g.DrawLine(pen, 0, r.Bottom - 1, Width, r.Bottom - 1);
+            }
+            if (sel) Shapes.Fill(g, new RectangleF(r.X, r.Y + Dpi.S(12), Dpi.S(3), r.Height - Dpi.S(24)), Dpi.S(1.5f), T.Accent);
+
+            float cx = r.X + Dpi.S(36), cy = r.Y + r.Height / 2f, a = Dpi.S(3.5f);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (Pen pen = new Pen(hover || sel ? T.Text2 : T.Text3, Math.Max(1.25f, Dpi.S(1.5f))))
             {
                 pen.StartCap = pen.EndCap = LineCap.Round;
                 pen.LineJoin = LineJoin.Round;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                if (open) g.DrawLines(pen, new PointF[] { new PointF(cx - a, cy - a / 2), new PointF(cx, cy + a / 2), new PointF(cx + a, cy - a / 2) });
+                if (!collapsed.Contains(p.Key)) g.DrawLines(pen, new PointF[] { new PointF(cx - a, cy - a / 2), new PointF(cx, cy + a / 2), new PointF(cx + a, cy - a / 2) });
                 else g.DrawLines(pen, new PointF[] { new PointF(cx - a / 2, cy - a), new PointF(cx + a / 2, cy), new PointF(cx - a / 2, cy + a) });
             }
-            int x = r.X + Dpi.S(34);
-            string name = p.Name;
-            int nw = TextRenderer.MeasureText(name, Fonts.UiSemibold, Size.Empty, TextFormatFlags.NoPadding).Width;
-            TextRenderer.DrawText(g, name, Fonts.UiSemibold, new Rectangle(x, r.Y, Math.Min(nw + 4, r.Width / 2), r.Height), T.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+
+            int x = r.X + TextX;
+            int right = r.Right - Dpi.S(16);
+            int nw = TextRenderer.MeasureText(p.Name, nameBold, Size.Empty, TextFormatFlags.NoPadding).Width;
+            int nameW = Math.Max(Dpi.S(60), Math.Min(nw + 2, (r.Width - x) / 2));
+            TextRenderer.DrawText(g, p.Name, nameBold, new Rectangle(x, r.Y, nameW, r.Height), T.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+            int px = x + Math.Min(nw, nameW) + Dpi.S(12);
             State st = p.State;
-            string pill = States.Label(st);
             if (st != State.Unknown)
             {
-                Size ps = TextRenderer.MeasureText(pill, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding);
-                Color c = StateLook.Color(st, T);
-                RectangleF pr = new RectangleF(x + Math.Min(nw, r.Width / 2) + Dpi.S(10), cy - ps.Height / 2f - Dpi.S(2), ps.Width + Dpi.S(14), ps.Height + Dpi.S(4));
-                Shapes.Fill(g, pr, pr.Height / 2, Theme.Mix(T.CardAlt, c, T.IsDark ? 0.22f : 0.13f));
-                TextRenderer.DrawText(g, pill, Fonts.SmallSemibold, Rectangle.Round(pr), c, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                string pill = States.Label(st);
+                int pw = ListLook.PillWidth(pill), ph = ListLook.PillH;
+                if (px + pw <= right)
+                {
+                    ListLook.Pill(g, pill, new RectangleF(px, (float)Math.Round(cy - ph / 2f), pw, ph), StateLook.Color(st, T), bg, T, false);
+                    px += pw + Dpi.S(16);
+                }
             }
-            string right = p.Done + " of " + p.Items.Count + " done";
-            if (p.FailedCount > 0) right += " · " + p.FailedCount + " failed";
+
+            // Right: "9 of 10 done · 1 failed · 11 min 33 s" and a slim bar. Narrow: the bar goes first, then the time.
+            Font f = T.Num(Fonts.Ui);
+            string done = p.Done + " of " + p.Items.Count + " done";
+            string failed = p.FailedCount > 0 ? p.FailedCount + " failed" : null;
             string dur = Txt.Duration(p.Duration(nowUtc));
-            if (dur.Length > 0) right += " · " + dur;
-            int bw = Dpi.S(90);
-            int rw = TextRenderer.MeasureText(right, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding).Width;
-            TextRenderer.DrawText(g, right, Fonts.Small, new Rectangle(r.Right - Dpi.S(16) - bw - Dpi.S(14) - rw, r.Y, rw + 2, r.Height), T.Text3, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            StateLook.Bar(g, new RectangleF(r.Right - Dpi.S(16) - bw, cy - Dpi.S(2), bw, Dpi.S(4)), p.Progress, StateLook.Color(st, T), T.Divider);
+            int bw = Dpi.S(96);
+            for (int fit = 0; fit < 3; fit++)
+            {
+                bool bar = fit == 0;
+                List<string> parts = new List<string>();
+                List<Color> colors = new List<Color>();
+                parts.Add(done); colors.Add(T.Text2);
+                if (failed != null) { parts.Add(failed); colors.Add(T.ErrFg); }
+                if (dur.Length > 0 && fit < 2) { parts.Add(dur); colors.Add(T.Text3); }
+                int tw = RunsWidth(parts, f);
+                int end = bar ? right - bw - Dpi.S(14) : right;
+                if (end - tw < px && fit < 2) continue;
+                if (bar) ListLook.Bar(g, new RectangleF(right - bw, cy - Dpi.S(2), bw, Dpi.S(4)), p.Progress, StateLook.Color(st, T), Theme.Mix(bg, T.Text3, T.IsDark ? 0.24f : 0.2f));
+                DrawRuns(g, parts, colors, f, Math.Max(px, end - tw), end, r.Y, r.Height);
+                break;
+            }
+        }
+
+        static string Dot { get { return "  ·  "; } }
+
+        // A middle dot between runs, with even room on both sides whatever the font does with spaces.
+        static int SepW(Font f)
+        {
+            return TextRenderer.MeasureText("·", f, Size.Empty, TextFormatFlags.NoPadding).Width + Dpi.S(14);
+        }
+
+        static int RunsWidth(List<string> parts, Font f)
+        {
+            int w = 0;
+            for (int k = 0; k < parts.Count; k++)
+            {
+                if (k > 0) w += SepW(f);
+                w += TextRenderer.MeasureText(parts[k], f, Size.Empty, TextFormatFlags.NoPadding).Width;
+            }
+            return w;
+        }
+
+        void DrawRuns(Graphics g, List<string> parts, List<Color> colors, Font f, int x, int end, int y, int h)
+        {
+            TextFormatFlags fl = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+            for (int k = 0; k < parts.Count && x < end; k++)
+            {
+                if (k > 0)
+                {
+                    int sw = SepW(f);
+                    TextRenderer.DrawText(g, "·", f, new Rectangle(x, y, Math.Max(0, Math.Min(sw, end - x)), h), T.Text3, fl | TextFormatFlags.HorizontalCenter);
+                    x += sw;
+                }
+                int w = TextRenderer.MeasureText(parts[k], f, Size.Empty, TextFormatFlags.NoPadding).Width;
+                TextRenderer.DrawText(g, parts[k], f, new Rectangle(x, y, Math.Max(0, Math.Min(w + 2, end - x)), h), colors[k], fl);
+                x += w;
+            }
         }
 
         void PaintGroup(Graphics g, Row row, Rectangle r)
         {
-            int x = r.X + Dpi.S(56);
-            string count = row.GroupCount.ToString(CultureInfo.InvariantCulture);
+            int x = r.X + TextX;
+            Rectangle tr = new Rectangle(x, r.Y + Dpi.S(14), 0, r.Height - Dpi.S(18));
             int nw = TextRenderer.MeasureText(row.Group, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width;
-            Rectangle tr = new Rectangle(x, r.Y + Dpi.S(8), Math.Max(0, Math.Min(nw + 2, r.Width - x - Dpi.S(60))), r.Height - Dpi.S(8));
-            TextRenderer.DrawText(g, row.Group, Fonts.SmallSemibold, tr, T.Text2, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
-            string tail = row.GroupNote != null ? count + "  ·  " + row.GroupNote : count;
-            TextRenderer.DrawText(g, tail, Fonts.Small, new Rectangle(tr.Right + Dpi.S(8), tr.Y, Math.Max(Dpi.S(50), r.Right - tr.Right - Dpi.S(24)), tr.Height), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
-            using (Pen pen = new Pen(Theme.Mix(T.Card, T.Divider, 0.6f))) g.DrawLine(pen, x, r.Bottom - 1, r.Right - Dpi.S(8), r.Bottom - 1);
+            tr.Width = Math.Max(0, Math.Min(nw + 2, r.Right - x - Dpi.S(60)));
+            TextRenderer.DrawText(g, row.Group, Fonts.SmallSemibold, tr, T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+            string count = row.GroupCount.ToString(CultureInfo.InvariantCulture);
+            string tail = row.GroupNote != null ? count + Dot + row.GroupNote : count;
+            TextRenderer.DrawText(g, tail, T.Num(Fonts.Small), new Rectangle(tr.Right + Dpi.S(8), tr.Y, Math.Max(Dpi.S(50), r.Right - tr.Right - Dpi.S(24)), tr.Height), Theme.Mix(T.Card, T.Text3, 0.7f), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
         }
 
-        void PaintItem(Graphics g, Item i, Phase p, Rectangle r, bool sel, bool hover, DateTime nowUtc)
+        void PaintItem(Graphics g, int k, Rectangle r, DateTime nowUtc)
         {
+            Item i = rows[k].Item;
+            bool sel = k == selected, hover = k == hot;
+            Color under = T.Card;
             if (sel || hover)
             {
-                RectangleF hr = new RectangleF(r.X + Dpi.S(6), r.Y + Dpi.S(3), r.Width - Dpi.S(8), r.Height - Dpi.S(6));
-                Shapes.Fill(g, hr, Dpi.S(6), sel ? T.AccentSoft : T.Hover);
-                if (sel) Shapes.Fill(g, new RectangleF(hr.X, hr.Y + Dpi.S(9), Dpi.S(3), hr.Height - Dpi.S(18)), Dpi.S(1.5f), T.Accent);
+                RectangleF hr = new RectangleF(r.X + Dpi.S(8), r.Y + Dpi.S(2), r.Width - Dpi.S(10), r.Height - Dpi.S(4));
+                float rad = Dpi.S(10);
+                under = sel ? Raised : T.Hover;
+                Shapes.Fill(g, hr, rad, under);
+                if (sel)
+                {
+                    Color edge = Focused ? Theme.Mix(under, T.Accent, 0.7f) : Theme.Mix(under, T.Text3, T.IsDark ? 0.3f : 0.35f);
+                    Shapes.Stroke(g, new RectangleF(hr.X + 0.5f, hr.Y + 0.5f, hr.Width - 1, hr.Height - 1), rad, edge, 1f);
+                    Shapes.Fill(g, new RectangleF(hr.X + Dpi.S(4), hr.Y + Dpi.S(14), Dpi.S(3), hr.Height - Dpi.S(28)), Dpi.S(1.5f), T.Accent);
+                }
             }
-            float ic = Dpi.S(18);
-            // An expected app that is not on the device yet is drawn dimmed, as a dotted circle.
-            StateLook.Icon(g, i.Expected ? State.Unknown : i.State, new RectangleF(r.X + Dpi.S(26), r.Y + (r.Height - ic) / 2, ic, ic), T, spin);
-            int rightW = Dpi.S(250);
-            int x = r.X + Dpi.S(56);
-            int tw = Math.Max(Dpi.S(80), r.Width - x - rightW - Dpi.S(12));
-            Color nameC = i.Expected || i.State == State.Skipped || i.State == State.NotApplicable ? T.Text3 : T.Text;
-            TextRenderer.DrawText(g, i.DisplayName, Fonts.Ui, new Rectangle(x, r.Y + Dpi.S(7), tw, Fonts.Ui.Height + 2), nameC, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
-            string sub = Sub(i, p);
-            TextRenderer.DrawText(g, sub, Fonts.Small, new Rectangle(x, r.Y + Dpi.S(27), tw, Fonts.Small.Height + 2), T.Text3, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+            bool dim = i.Expected || i.State == State.Skipped || i.State == State.NotApplicable;
+            int tile = Dpi.S(32);
+            ListLook.Tile(g, i, new RectangleF(r.X + Dpi.S(20), r.Y + (r.Height - tile) / 2, tile, tile), T, under);
 
-            // Right side: state (with a bar while running), tries, duration.
-            int durW = Dpi.S(74);
-            int sx = r.Right - rightW;
-            Color sc = i.Expected ? T.Text3 : StateLook.Color(i.State, T);
-            string st = StateLook.StateText(i);
-            bool active = States.IsActive(i.State);
-            int stateW = rightW - durW - Dpi.S(16);
-            TextRenderer.DrawText(g, st, i.State == State.Failed ? Fonts.SmallSemibold : Fonts.Small, new Rectangle(sx, r.Y + (active ? Dpi.S(9) : 0), stateW, active ? Fonts.Small.Height + 2 : r.Height), sc,
-                (active ? TextFormatFlags.Top : TextFormatFlags.VerticalCenter) | TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
-            if (active)
-            {
-                RectangleF br = new RectangleF(sx, r.Y + Dpi.S(29), stateW - Dpi.S(16), Dpi.S(4));
-                if (i.Percent.HasValue) StateLook.Bar(g, br, i.Percent.Value / 100.0, sc, T.Divider);
-                else Indeterminate(g, br, sc);
-            }
-            if (i.Attempts.Count > 1)
-            {
-                string tries = "×" + i.Attempts.Count;
-                Size ts = TextRenderer.MeasureText(tries, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding);
-                Color tc = i.FailedAttempts > 0 ? T.WarnFg : T.Text3;
-                RectangleF tr = new RectangleF(r.Right - durW - Dpi.S(12) - ts.Width - Dpi.S(10), r.Y + (r.Height - ts.Height - Dpi.S(4)) / 2f, ts.Width + Dpi.S(10), ts.Height + Dpi.S(4));
-                Shapes.Fill(g, tr, tr.Height / 2, Theme.Mix(T.Card, tc, T.IsDark ? 0.22f : 0.12f));
-                TextRenderer.DrawText(g, tries, Fonts.SmallSemibold, Rectangle.Round(tr), tc, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            }
+            int x = r.X + TextX;
+            int right = r.Right - Dpi.S(16);
+            bool active = States.IsActive(i.State) && !i.Expected;
+            Color sc = i.Expected ? T.Text3 : PillColor(i);
             string dur = Txt.Duration(i.Duration(nowUtc));
-            TextRenderer.DrawText(g, dur, T.Num(Fonts.Small), new Rectangle(r.Right - durW - Dpi.S(8), r.Y, durW, r.Height), T.Text2, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
-            using (Pen pen = new Pen(Theme.Mix(T.Card, T.Divider, 0.6f))) g.DrawLine(pen, x, r.Bottom - 1, r.Right - Dpi.S(8), r.Bottom - 1);
+            string tries = i.Attempts.Count > 1 ? "×" + i.Attempts.Count : null;
+            Font num = T.Num(Fonts.Ui);
+            Color durC = dim ? T.Text3 : T.Text2;
+            int ph = ListLook.PillH;
+            int metaY = r.Y + Dpi.S(30);
+            int nameRight, metaRight;
+            if (r.Width >= WideAt)
+            {
+                // One line: pill column (with its bar while running), tries, time.
+                string st = StateLook.StateText(i);
+                int durW = Dpi.S(84), col = Dpi.S(136);
+                int pillX = right - durW - Dpi.S(48) - col;
+                int pw = Math.Min(col, ListLook.PillWidth(st));
+                float py = active ? r.Y + Dpi.S(12) : r.Y + (r.Height - ph) / 2;
+                ListLook.Pill(g, st, new RectangleF(pillX, py, pw, ph), sc, under, T, i.Expected);
+                if (active) Progress(g, i, new RectangleF(pillX + Dpi.S(1), r.Y + Dpi.S(40), col - Dpi.S(24), Dpi.S(4)), sc, under);
+                if (tries != null) Tries(g, i, tries, right - durW - Dpi.S(10), r.Y + r.Height / 2f, under);
+                TextRenderer.DrawText(g, dur, num, new Rectangle(right - durW, r.Y, durW, r.Height), durC, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                nameRight = metaRight = pillX - Dpi.S(16);
+            }
+            else
+            {
+                // Stacked at the right: the pill beside the name, the time (and the bar while running) beside the meta line.
+                string st = AppGroups.StateLabel(i) + (i.State == State.Failed && i.ExitCode.HasValue ? " · " + Errors.Short(i.ExitCode) : "");
+                int pw = Math.Min(Dpi.S(150), ListLook.PillWidth(st));
+                RectangleF pr = new RectangleF(right - pw, r.Y + Dpi.S(7), pw, ph);
+                ListLook.Pill(g, st, pr, sc, under, T, i.Expected);
+                nameRight = (int)pr.X;
+                if (tries != null) nameRight = Tries(g, i, tries, (int)pr.X - Dpi.S(6), pr.Y + ph / 2f, under);
+                int dw = dur.Length > 0 ? TextRenderer.MeasureText(dur, num, Size.Empty, TextFormatFlags.NoPadding).Width : 0;
+                Rectangle dr = new Rectangle(right - dw - Dpi.S(2), metaY, dw + Dpi.S(2), Fonts.Ui.Height + 2);
+                TextRenderer.DrawText(g, dur, num, dr, durC, TextFormatFlags.Right | TextFormatFlags.Top | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                metaRight = right - dw;
+                if (active)
+                {
+                    int bw = Dpi.S(48);
+                    RectangleF br = new RectangleF(metaRight - (dw > 0 ? Dpi.S(10) : 0) - bw, metaY + Fonts.Ui.Height / 2f - Dpi.S(2), bw, Dpi.S(4));
+                    Progress(g, i, br, sc, under);
+                    metaRight = (int)br.X;
+                }
+                nameRight -= Dpi.S(14);
+                metaRight -= Dpi.S(14);
+            }
+
+            TextFormatFlags tf = TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
+            TextRenderer.DrawText(g, i.DisplayName, nameFont, new Rectangle(x, r.Y + Dpi.S(8), Math.Max(Dpi.S(40), nameRight - x), nameFont.Height + 2), dim ? T.Text3 : T.Text, tf);
+            Color metaC = i.Expected ? Theme.Mix(under, T.Text3, 0.85f) : T.Text3;
+            TextRenderer.DrawText(g, Sub(i, rows[k].Phase), Fonts.Ui, new Rectangle(x, metaY, Math.Max(Dpi.S(40), metaRight - x), Fonts.Ui.Height + 2), metaC, tf);
+
+            // A hairline under the row, left out next to a raised or hovered row and above a phase header.
+            bool nextLifted = k + 1 < rows.Count && (k + 1 == selected || k + 1 == hot);
+            if (!sel && !hover && !nextLifted && !IsPhaseRow(k + 1) && k + 1 < rows.Count)
+                using (Pen pen = new Pen(Theme.Mix(T.Card, T.Divider, 0.55f))) g.DrawLine(pen, x, r.Bottom - 1, right, r.Bottom - 1);
+
+            int b0;
+            if (i.Key != null && born.TryGetValue(i.Key, out b0))
+            {
+                // A new row comes in from the card colour.
+                int alpha = (int)Math.Round(255 * (1f - ListLook.EaseOut(b0, AppearMs)));
+                if (alpha > 0) using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, T.Card))) g.FillRectangle(b, r.X, r.Y, r.Width, r.Height);
+            }
         }
 
-        void Indeterminate(Graphics g, RectangleF r, Color c)
+        void Progress(Graphics g, Item i, RectangleF br, Color c, Color under)
         {
-            Shapes.Fill(g, r, r.Height / 2, T.Divider);
-            float seg = r.Width * 0.3f;
-            float pos = (float)((spin / 360.0) * (r.Width + seg)) - seg;
-            float x0 = Math.Max(r.X, r.X + pos), x1 = Math.Min(r.Right, r.X + pos + seg);
-            if (x1 - x0 > 1) Shapes.Fill(g, new RectangleF(x0, r.Y, x1 - x0, r.Height), r.Height / 2, c);
+            Color track = Theme.Mix(under, T.Text3, T.IsDark ? 0.24f : 0.2f);
+            if (i.Percent.HasValue) ListLook.Bar(g, br, i.Percent.Value / 100.0, c, track);
+            else ListLook.Sliding(g, br, spin / 360f, c, track);
+        }
+
+        // The ×3 badge for an item that ran more than once, right-aligned at right. Returns its left edge.
+        int Tries(Graphics g, Item i, string tries, int right, float cy, Color under)
+        {
+            Size ts = TextRenderer.MeasureText(tries, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding);
+            Color tc = i.FailedAttempts > 0 ? T.WarnFg : T.Text3;
+            RectangleF tr = new RectangleF(right - ts.Width - Dpi.S(12), (float)Math.Round(cy - Dpi.S(10)), ts.Width + Dpi.S(12), Dpi.S(20));
+            Shapes.Fill(g, tr, tr.Height / 2, ListLook.Tint(tc, under, T));
+            TextRenderer.DrawText(g, tries, Fonts.SmallSemibold, Rectangle.Round(tr), tc, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            return (int)tr.X;
         }
 
         static string Sub(Item i, Phase p)
@@ -856,14 +1163,14 @@ namespace TrackVice
             if (i.Expected)
             {
                 parts.Add(i.Get(ExpectedApps.WhyKey));
-                return string.Join("  ·  ", parts.ToArray());
+                return string.Join(Dot, parts.ToArray());
             }
             // The ESP step Apps says which apps it waits for.
             string apps = AppGroups.IsAppsStep(i) ? AppGroups.StepText(p, i) : null;
             if (apps != null)
             {
                 parts.Add(apps);
-                return string.Join("  ·  ", parts.ToArray());
+                return string.Join(Dot, parts.ToArray());
             }
             // A log line says more than a registry or WMI state, so the newest log line wins.
             string last = null, any = null;
@@ -876,7 +1183,7 @@ namespace TrackVice
             }
             if (last == null) last = any;
             if (last != null) parts.Add(Clean(last));
-            return string.Join("  ·  ", parts.ToArray());
+            return string.Join(Dot, parts.ToArray());
         }
 
         // Log lines start with [Win32App][Handler] tags; the list shows the words.
@@ -907,6 +1214,8 @@ namespace TrackVice
             return new RectangleF(Width - BarW - Dpi.S(6), ty, BarW + Dpi.S(6), th);
         }
 
+        // ---------- input ----------
+
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             top -= e.Delta / 120 * Dpi.S(96);
@@ -928,6 +1237,7 @@ namespace TrackVice
                 return;
             }
             int h = Thumb().Contains(e.Location) ? -2 : RowAt(e.Y);
+            if (IsGroupRow(h)) h = -1;
             if (h != hot) { hot = h; Invalidate(); }
             base.OnMouseMove(e);
         }
@@ -952,7 +1262,8 @@ namespace TrackVice
             int k = RowAt(e.Y);
             if (k >= 0)
             {
-                if (e.Button == MouseButtons.Left && IsPhaseRow(k) && e.X < Dpi.S(34) + TextRenderer.MeasureText(rows[k].Phase.Name, Fonts.UiSemibold).Width) Toggle(k);
+                EnsureFonts();
+                if (e.Button == MouseButtons.Left && IsPhaseRow(k) && e.X < TextX + TextRenderer.MeasureText(rows[k].Phase.Name, nameBold, Size.Empty, TextFormatFlags.NoPadding).Width + Dpi.S(8)) Toggle(k);
                 else if (rows[k].Group == null) Select(k);
             }
             base.OnMouseDown(e);
@@ -993,25 +1304,44 @@ namespace TrackVice
             return base.IsInputKey(keyData);
         }
 
+        // The keyboard moves over phases and items; the sub-headers between them are skipped.
+        int Step(int from, int dir)
+        {
+            int k = from + dir;
+            while (IsGroupRow(k)) k += dir;
+            return k >= 0 && k < rows.Count ? k : from;
+        }
+
+        int Land(int k, int dir)
+        {
+            k = Math.Max(0, Math.Min(rows.Count - 1, k));
+            if (!IsGroupRow(k)) return k;
+            int s = Step(k, dir);
+            return s != k ? s : Step(k, -dir);
+        }
+
         protected override void OnKeyDown(KeyEventArgs e)
         {
             int page = Math.Max(1, Height / ItemH - 1);
-            switch (e.KeyCode)
+            if (rows.Count > 0)
             {
-                case Keys.Down: Select(Math.Min(rows.Count - 1, selected + 1)); break;
-                case Keys.Up: Select(Math.Max(0, selected - 1)); break;
-                case Keys.Home: Select(0); break;
-                case Keys.End: Select(rows.Count - 1); break;
-                case Keys.PageDown: Select(Math.Min(rows.Count - 1, selected + page)); break;
-                case Keys.PageUp: Select(Math.Max(0, selected - page)); break;
-                case Keys.Left:
-                    if (IsPhaseRow(selected) && !collapsed.Contains(rows[selected].Phase.Key)) Toggle(selected);
-                    else if (selected >= 0 && !IsPhaseRow(selected)) { for (int k = selected; k >= 0; k--) if (IsPhaseRow(k)) { Select(k); break; } }
-                    break;
-                case Keys.Right:
-                case Keys.Enter:
-                    if (IsPhaseRow(selected) && collapsed.Contains(rows[selected].Phase.Key)) Toggle(selected);
-                    break;
+                switch (e.KeyCode)
+                {
+                    case Keys.Down: Select(selected < 0 ? 0 : Step(selected, 1)); break;
+                    case Keys.Up: Select(selected < 0 ? 0 : Step(selected, -1)); break;
+                    case Keys.Home: Select(Land(0, 1)); break;
+                    case Keys.End: Select(Land(rows.Count - 1, -1)); break;
+                    case Keys.PageDown: Select(Land(selected + page, 1)); break;
+                    case Keys.PageUp: Select(Land(selected - page, -1)); break;
+                    case Keys.Left:
+                        if (IsPhaseRow(selected) && !collapsed.Contains(rows[selected].Phase.Key)) Toggle(selected);
+                        else if (selected >= 0 && !IsPhaseRow(selected)) { for (int k = selected; k >= 0; k--) if (IsPhaseRow(k)) { Select(k); break; } }
+                        break;
+                    case Keys.Right:
+                    case Keys.Enter:
+                        if (IsPhaseRow(selected) && collapsed.Contains(rows[selected].Phase.Key)) Toggle(selected);
+                        break;
+                }
             }
             base.OnKeyDown(e);
         }
