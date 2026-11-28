@@ -1771,6 +1771,7 @@ namespace TrackVice
             else if (start.Page == "newcustomer") page = NewCustomerDialog.ForDemo(theme, start.Tab, start.Select == "share");
             else if (Array.IndexOf(AddCustomerUi.Pages, start.Page) >= 0) page = ShotAddCustomer();
             else if (start.Page == "readiness") { ReadinessDialog rd = new ReadinessDialog(theme, new DemoReadinessGraph(DateTime.UtcNow), null, true); rd.RunAtStart = true; page = rd; }
+            else if (start.Page == "preflight") page = PreflightDialog.ForShot(theme, start.Select);
             else if (Array.IndexOf(UpdatePages, start.Page) >= 0) page = ShotUpdate();
             else if (Array.IndexOf(FeedbackPages, start.Page) >= 0) page = ShotFeedback();
             else if (Array.IndexOf(LogVicePages, start.Page) >= 0) page = ShotLogVice();

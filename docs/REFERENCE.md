@@ -13,7 +13,7 @@ Looking for setup? Start with the [Quick start](../README.md#quick-start). The a
 - [Gantt](#gantt)
 - [Where to run it](#where-to-run-it)
 - [Percentage and time left](#percentage-and-time-left): [Expected apps](#expected-apps)
-- [Other devices](#other-devices): [Autopilot in Intune](#autopilot-in-intune), [Task sequences in SCCM](#task-sequences-in-sccm), [Devices with the TrackVice agent](#devices-with-the-trackvice-agent), [Wall view](#wall-view), [Check devices before enrollment](#check-devices-before-enrollment), [Customers](#customers), [Statistics](#statistics), [Compare](#compare), [Reference enrollment](#reference-enrollment), [Names from Intune](#names-from-intune), [Logs from the device](#logs-from-the-device)
+- [Other devices](#other-devices): [Autopilot in Intune](#autopilot-in-intune), [Task sequences in SCCM](#task-sequences-in-sccm), [Devices with the TrackVice agent](#devices-with-the-trackvice-agent), [Wall view](#wall-view), [Check devices before enrollment](#check-devices-before-enrollment), [Pre-flight check](#pre-flight-check), [Customers](#customers), [Statistics](#statistics), [Compare](#compare), [Reference enrollment](#reference-enrollment), [Names from Intune](#names-from-intune), [Logs from the device](#logs-from-the-device)
 - [Watch, save and share](#watch-save-and-share)
 - [Settings](#settings) and [Updates](#updates)
 - [Command line](#command-line)
@@ -168,7 +168,7 @@ A switch at the top of the Devices menu chooses one of two sides, and the menu s
 
 | Side | Holds |
 |---|---|
-| Intune / cloud | Autopilot in Intune, devices with the TrackVice agent, Check devices before enrollment, Names from Intune, Add customer, Customers and New customer with links |
+| Intune / cloud | Autopilot in Intune, devices with the TrackVice agent, Check devices before enrollment, Pre-flight check, Names from Intune, Add customer, Customers and New customer with links |
 | SCCM / on-premises | Task sequences in SCCM, devices with the agent in a task sequence, the SMS Provider connection, and Add the agent to a task sequence |
 | Both | Statistics, Wall view, Compare, the reference, Watch this device, and **Demos** |
 
@@ -251,6 +251,31 @@ Move the mouse to show the filters: All, Running, Failed or Finished today, a se
 | Prediction | How long those apps took in the agents' uploads of the last 30 days, a warning near the time limit, and apps that failed often |
 
 It needs `DeviceManagementServiceConfig.Read.All`. Two switches add more: the names of the blocking apps with `DeviceManagementApps.Read.All` (on at first), and the device's groups with `Device.Read.All`, to tell which group-targeted ESP applies. The prediction uses the uploads of the agent list you connected to. **Export CSV** and **Export HTML** save the result.
+
+### Pre-flight check
+
+**Devices > Intune / cloud > Pre-flight check** asks Intune whether a device will deploy, before it is turned on, and answers with a checklist. Paste one or more serial numbers (one per line, or a CSV such as a hardware hash export), pick the customer at the top right, and press **Check** (Ctrl+Enter). It uses the Intune sign-in of that customer and asks for the permissions it lacks. It only reads.
+
+Each device gets a verdict, **Ready**, **Check** or **Will fail**, and its lines: ✓ fine, ! look at this, ✕ this stops the deployment. A line that is not fine comes with the fix. A device that is ready starts closed; click its row to open it.
+
+| Part | What it checks |
+|---|---|
+| Windows Autopilot | Registered or not, or more than once; the group tag, model, assigned user, enrollment state and last contact; whether a deployment profile is assigned, pending, out of sync or failed, and its name |
+| Groups | The groups of the Entra device, and of the assigned user when they can be read |
+| Enrollment Status Page | Which ESP the device gets (its groups, else all users, else the default), the time limit, and what it blocks on: the selected apps or every required app. Apps in the blocking list that are gone from Intune. A Win32 app that installs for the user but is assigned to the device and blocks. How long the blocking apps usually take against the time limit |
+| Required apps | The Windows apps required for the device's groups and the user's groups, with All devices, All users and exclusions. An app that is both required and set to uninstall. A dependency that is not installed automatically and is not required for the device. Supersedence that goes in a circle. Line-of-business MSI apps next to Win32 apps |
+
+The times are the medians of the finished Autopilot deployments TrackVice has seen for the customer on this PC ([Percentage and time left](#percentage-and-time-left)); without them no time is estimated. **Copy as text** puts the whole checklist on the clipboard, for a ticket or a mail.
+
+| Permission | Read with it |
+|---|---|
+| `DeviceManagementServiceConfig.Read.All` | Autopilot devices, deployment profiles and Enrollment Status Pages. Always needed |
+| `DeviceManagementApps.Read.All` | Apps with their assignments, dependencies and supersedence. Switch **Apps** |
+| `DeviceManagementConfiguration.Read.All` | The names of assignment filters. Asked for with **Apps** |
+| `Device.Read.All` | The groups of the device. Switch **Groups** |
+| `GroupMember.Read.All` | Group names, and the groups of the assigned user. Asked for with **Groups** |
+
+A read that is refused says which permission is missing, as a line of its own, and the other checks go on. With a switch off, the sign-in does not ask for its permissions and the lines say what was left out.
 
 ### Customers
 
@@ -440,7 +465,7 @@ The exit code is 0 when done, 1 on an error and 2 when failed items were found (
 
 TrackVice only reads. It never starts, retries or cancels a deployment, and writes nothing to the device except its own settings in `HKCU\Software\TrackVice` and the files you save. At every start and every 6 hours while it is open it asks `api.github.com` for the latest TrackVice release, unless that is turned off in Settings > Updates or by the policy value `DisableUpdateCheck`; it sends nothing about you or your devices, and downloads an update only when you press Install. Otherwise it makes no network connections unless you open something under **Devices**, **Your storage** or **Publish agent update**: then it talks to Microsoft Graph, to the SMS Provider you name, to the upload location you enter, and in **Your storage**, **Add customer** and **New customer with links** to Azure, and nothing else. The upload locations of your customers and the Intune sign-in are encrypted for your Windows account. Once Your storage is set up, TrackVice also reads `agent/latest.json` from it at start, to offer a newer version for publishing.
 
-These change something outside your PC, and only when you press their button: **Your storage** creates the storage account and container in your Azure. **Add customer** and **New customer with links** create the customer's storage, and, if you choose, the group and the platform script in Intune. **Customer code…** replaces the content of the platform script after you confirm. **Publish** and **Publish agent update** write a new version to your storage or the location you give. The account key of your storage and the customer codes are kept encrypted for your Windows account. Check devices before enrollment only reads. The signing key for agent updates is kept in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted for your Windows account.
+These change something outside your PC, and only when you press their button: **Your storage** creates the storage account and container in your Azure. **Add customer** and **New customer with links** create the customer's storage, and, if you choose, the group and the platform script in Intune. **Customer code…** replaces the content of the platform script after you confirm. **Publish** and **Publish agent update** write a new version to your storage or the location you give. The account key of your storage and the customer codes are kept encrypted for your Windows account. Check devices before enrollment and Pre-flight check only read. The signing key for agent updates is kept in `%LOCALAPPDATA%\TrackVice\agent-update-key.bin`, encrypted for your Windows account.
 
 The agent is the one exception, and only where you install it: it adds a scheduled task, a folder in Program Files and a registry key, uploads the device's session to the location you gave it, and removes its task and key when its time is up. With an update key it replaces its own TrackVice.exe in its folder with a version signed with that key, and keeps the one before as `TrackVice.exe.old`. In a task sequence it installs nothing; it keeps its log and a small state file under `%WINDIR%\Temp\TrackVice`.
 
@@ -467,6 +492,7 @@ What the agent sends:
 - Restarts come from the System event log of the device. A folder of logs, Intune and SCCM have none, and the agent in Windows PE reads no event logs.
 - Download size and time are what `AppWorkload.log` says. Delivery Optimization keeps its own data in no documented place, so bytes from peers show only when a log line names them.
 - The wall view reads only what each upload says about itself. An agent older than 1.1.0 does not say when it finished, so the wall counts from when it first saw it finished.
+- Pre-flight check reads beta Graph APIs for Autopilot, the ESPs and the apps, and shows what Intune has at that time. Assignment filters are named but not evaluated, because a filter looks at the enrolled device. An ESP or an app for users is only known for a device with an assigned user; in self-deploying mode nothing that targets users counts. Apps of other platforms are left out. Times match apps by name.
 - Check devices before enrollment reads beta Graph APIs, and shows what Intune has at that time. Without `Device.Read.All` it cannot tell which group-targeted ESP applies, and an ESP for users is only known for a device with an assigned user. The prediction matches apps by name, over at most 300 enrollments.
 - References are kept per Windows user on one PC. `/ship-report` on another PC, such as the device itself, has no reference and judges only the device.
 - Only an installed agent updates itself, not one in a task sequence or started with `/agent`. The signing key cannot be moved to another PC or Windows user; a new key means new customer codes, or a new `$UpdateKey` in a script with links.
@@ -513,6 +539,7 @@ TrackVice is plain C# 5 and Windows Forms on .NET Framework 4.5, with no NuGet p
 | `src/Customers.cs`, `src/IntuneLookup.cs`, `src/DeviceLogs.cs` | Customers, names from Intune, and the logs a device uploaded |
 | `src/ExpectedApps.cs`, `src/ExpectedIntune.cs`, `src/Ui.Expected.cs` | Expected apps: the merge into a session, the Graph read of the apps assigned to a device, and the settings and refresh in the window |
 | `src/Report.cs`, `src/ReportFleet.cs` | HTML report, fleet report, CSV and the zip bundle |
+| `src/Preflight.cs`, `src/PreflightGraph.cs`, `src/Ui.Preflight.cs` | The pre-flight check: the evaluation, the Graph reads and the page |
 | `src/WallModel.cs`, `src/AgentUpdate.cs`, `src/Readiness.cs`, `src/Restarts.cs`, `src/Downloads.cs`, `src/Reference.cs`, `src/DataExport.cs`, `src/CustomerSetup*.cs` | Wall view, agent updates, check before enrollment, restarts, downloads, the reference and ready to ship report, the Power BI export and New customer with links |
 | `src/CustomerCode.cs`, `src/CustomerInstall.cs`, `src/CustomerScript.cs`, `src/AddCustomer.cs`, `src/AddCustomerGroups.cs` | The customer code, `/customer`, the platform script for a code, Your storage, Add customer and its group search |
 | `src/Welcome.cs`, `src/DeviceSides.cs`, `src/AppUpdate.cs` | The welcome and Getting started, the two sides of Devices, and updates from GitHub |

@@ -335,6 +335,7 @@ namespace TrackVice
                 case DeviceMenu.SmsProvider: OpenSccmSetup(false); break;
                 case DeviceMenu.TsAgent: OpenTsAgent(); break;
                 case DeviceMenu.Readiness: OpenReadiness(false); break;
+                case DeviceMenu.Preflight: OpenPreflight(false); break;
                 case DeviceMenu.Names: NamesFromIntune(); break;
                 case DeviceMenu.NewCustomer: OpenNewCustomer(false); break;
                 case DeviceMenu.Stats: OpenStats(false); break;
@@ -347,6 +348,7 @@ namespace TrackVice
                 case DeviceMenu.DemoWall: OpenWall(null, true); break;
                 case DeviceMenu.DemoCompare: using (CompareDialog d = CompareDialog.ForDemo(theme)) d.ShowDialog(this); break;
                 case DeviceMenu.DemoReadiness: OpenReadiness(true); break;
+                case DeviceMenu.DemoPreflight: OpenPreflight(true); break;
                 case DeviceMenu.DemoNewCustomer: OpenNewCustomer(true); break;
                 case DeviceMenu.DemoAddCustomer: OpenAddCustomer(true); break;
             }
