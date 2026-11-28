@@ -105,6 +105,7 @@ namespace TrackVice
         {
             Guard();
             XmlDocument d = new XmlDocument();
+            d.XmlResolver = null;
             d.LoadXml(SequenceXml(id));
             foreach (TsEdit e in edits)
             {
