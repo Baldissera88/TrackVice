@@ -2,6 +2,8 @@ namespace TrackVice
 {
     using System;
     using System.Drawing;
+    using System.Drawing.Drawing2D;
+    using System.Collections.Generic;
     using System.Globalization;
     using System.Windows.Forms;
 
@@ -23,7 +25,7 @@ namespace TrackVice
             ShowInTaskbar = true;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
-            ClientSize = new Size(Dpi.S(480), Dpi.S(236));
+            ClientSize = new Size(Dpi.S(460), Dpi.S(212));
             Rectangle wa = Screen.PrimaryScreen.WorkingArea;
             Location = new Point(wa.Right - Width - Dpi.S(24), wa.Bottom - Height - Dpi.S(24));
             panel.Dock = DockStyle.Fill;
@@ -68,7 +70,9 @@ namespace TrackVice
         string device = "", kind = "", phase = "", itemName = "", stateText = "", counts = "", last = "", elapsed = "";
         State itemState = State.Unknown, overallState = State.Unknown;
         int? percent;
-        float spin;
+        float spin, ring;
+        bool ringSet;
+        readonly List<StripSeg> strip = new List<StripSeg>();
         readonly Timer anim = new Timer();
 
         public CompactPanel()
@@ -84,7 +88,7 @@ namespace TrackVice
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) anim.Dispose();
+            if (disposing) { anim.Dispose(); Motion.Cancel(this); }
             base.Dispose(disposing);
         }
 
@@ -97,6 +101,15 @@ namespace TrackVice
             int total = 0;
             foreach (Phase p in s.OrderedPhases) total += p.Items.Count;
             Overall = OverallProgress.Fraction(s, now, Expected);
+            RingTo(Overall);
+            strip.Clear();
+            foreach (Phase sp in s.OrderedPhases)
+            {
+                StripSeg sg = new StripSeg();
+                sg.Fraction = sp.Items.Count == 0 ? 0f : (float)sp.Done / sp.Items.Count;
+                sg.State = sp.State;
+                strip.Add(sg);
+            }
             Item pick = null;
             foreach (Item i in s.Items) if (States.IsActive(i.State) && (pick == null || i.StateUtc > pick.StateUtc)) pick = i;
             if (pick == null) foreach (Item i in s.Items) if (pick == null || i.LastUtc > pick.LastUtc) pick = i;
@@ -141,43 +154,98 @@ namespace TrackVice
             return t.TrimStart('+', ' ');
         }
 
+        // The ring eases to the new value when the numbers change.
+        void RingTo(double target)
+        {
+            if (!ringSet) { ring = (float)target; ringSet = true; return; }
+            Motion.Animate(ring, (float)target, 180, Motion.EaseOut, delegate (float v) { ring = v; Invalidate(); }, this);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.Clear(T.Bg);
-            int pad = Dpi.S(18), w = Width - pad * 2;
-            Draw.Mark(g, new RectangleF(pad, Dpi.S(14), Dpi.S(22), Dpi.S(22)));
-            TextRenderer.DrawText(g, device + "  ·  " + kind, Fonts.SmallSemibold, new Rectangle(pad + Dpi.S(30), Dpi.S(14), w - Dpi.S(110), Dpi.S(22)), T.Text2, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-            if (elapsed.Length > 0) TextRenderer.DrawText(g, elapsed, Fonts.Small, new Rectangle(Width - pad - Dpi.S(90), Dpi.S(14), Dpi.S(90), Dpi.S(22)), T.Text3, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            int pad = Dpi.S(14), w = Width - pad * 2;
+            TextFormatFlags ell = TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter;
+            // Header: mark, device, deployment kind, time since start.
+            Draw.Mark(g, new RectangleF(pad, Dpi.S(10), Dpi.S(18), Dpi.S(18)));
+            int ew = elapsed.Length > 0 ? Dpi.S(80) : 0;
+            TextRenderer.DrawText(g, device + "  ·  " + kind, Fonts.SmallSemibold, new Rectangle(pad + Dpi.S(26), Dpi.S(8), w - Dpi.S(26) - ew, Dpi.S(22)), T.Text2, ell);
+            if (ew > 0) TextRenderer.DrawText(g, elapsed, Fonts.Small, new Rectangle(Width - pad - ew, Dpi.S(8), ew, Dpi.S(22)), T.Text3, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 
-            int y = Dpi.S(50);
-            TextRenderer.DrawText(g, phase, Fonts.SmallSemibold, new Rectangle(pad, y, w, Dpi.S(16)), T.Text3, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            // The card with the ring and what runs now.
+            Rectangle card = new Rectangle(pad, Dpi.S(36), w, Dpi.S(108));
+            RectangleF cf = new RectangleF(card.X + 0.5f, card.Y + 0.5f, card.Width - 1f, card.Height - 1f);
+            Shapes.Fill(g, cf, Dpi.S(12), T.Card);
+            Shapes.Stroke(g, cf, Dpi.S(12), T.Divider, 1f);
+            int rs = Dpi.S(76);
+            RectangleF rr = new RectangleF(card.X + Dpi.S(14), card.Y + (card.Height - rs) / 2f, rs, rs);
+            Color rc = overallState == State.Failed ? T.ErrFg : overallState == State.Succeeded ? T.OkFg : T.Accent;
+            float rw = Dpi.S(7);
+            RectangleF ri = new RectangleF(rr.X + rw / 2, rr.Y + rw / 2, rr.Width - rw, rr.Height - rw);
+            using (Pen p = new Pen(Theme.Mix(T.Card, T.Text3, 0.28f), rw)) g.DrawEllipse(p, ri);
+            float sweep = 360f * Math.Max(0f, Math.Min(1f, ring));
+            if (sweep > 0.5f)
+                using (Pen p = new Pen(rc, rw))
+                {
+                    p.StartCap = LineCap.Round;
+                    p.EndCap = LineCap.Round;
+                    g.DrawArc(p, ri, -90f, Math.Min(sweep, 359.5f));
+                }
+            string pct = ((int)Math.Round(Overall * 100)).ToString(CultureInfo.InvariantCulture);
+            TextRenderer.DrawText(g, pct, Fonts.Title, Rectangle.Round(new RectangleF(rr.X, rr.Y, rr.Width, rr.Height - Dpi.S(6))), T.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, "%", Fonts.Small, Rectangle.Round(new RectangleF(rr.X, rr.Y + rr.Height * 0.62f, rr.Width, Dpi.S(14))), T.Text3, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
+
+            int tx = card.X + Dpi.S(14) + rs + Dpi.S(16), tw = card.Right - Dpi.S(14) - tx;
+            bool bar = States.IsActive(itemState) && percent.HasValue && percent.Value > 0 && percent.Value < 100;
+            int y = card.Y + (card.Height - Dpi.S(bar ? 90 : 80)) / 2;
+            TextRenderer.DrawText(g, phase, Fonts.SmallSemibold, new Rectangle(tx, y, tw, Dpi.S(16)), T.Text3, ell);
+            y += Dpi.S(18);
+            StateLook.Icon(g, itemState, new RectangleF(tx, y + Dpi.S(3), Dpi.S(18), Dpi.S(18)), T, spin);
+            TextRenderer.DrawText(g, itemName, Fonts.UiSemibold, new Rectangle(tx + Dpi.S(26), y, tw - Dpi.S(26), Dpi.S(24)), T.Text, ell);
+            y += Dpi.S(26);
+            TextRenderer.DrawText(g, stateText, Fonts.SmallSemibold, new Rectangle(tx, y, tw, Dpi.S(18)), StateLook.Color(itemState, T), ell);
             y += Dpi.S(20);
-            StateLook.Icon(g, itemState, new RectangleF(pad, y + Dpi.S(4), Dpi.S(22), Dpi.S(22)), T, spin);
-            TextRenderer.DrawText(g, itemName, Fonts.Title, new Rectangle(pad + Dpi.S(32), y, w - Dpi.S(32), Fonts.Title.Height + 2), T.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
-            y += Fonts.Title.Height + Dpi.S(4);
-            TextRenderer.DrawText(g, stateText, Fonts.UiSemibold, new Rectangle(pad + Dpi.S(32), y, w - Dpi.S(32), Fonts.Ui.Height + 2), StateLook.Color(itemState, T), TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-            y += Fonts.Ui.Height + Dpi.S(2);
-            if (States.IsActive(itemState) && percent.HasValue && percent.Value > 0 && percent.Value < 100)
+            if (bar)
             {
-                StateLook.Bar(g, new RectangleF(pad + Dpi.S(32), y + Dpi.S(2), Math.Min(Dpi.S(220), w - Dpi.S(32)), Dpi.S(4)), percent.Value / 100.0, StateLook.Color(itemState, T), T.Divider);
+                StateLook.Bar(g, new RectangleF(tx, y + Dpi.S(2), Math.Min(Dpi.S(200), tw), Dpi.S(4)), percent.Value / 100.0, StateLook.Color(itemState, T), T.Divider);
                 y += Dpi.S(10);
             }
-            TextRenderer.DrawText(g, last, Fonts.Small, new Rectangle(pad + Dpi.S(32), y, w - Dpi.S(32), Fonts.Small.Height + 2), T.Text3, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, last, Fonts.Small, new Rectangle(tx, y, tw, Dpi.S(16)), T.Text3, ell);
 
-            int by = Height - Dpi.S(58);
-            string pct = ((int)Math.Round(Overall * 100)).ToString(CultureInfo.InvariantCulture) + " %";
-            TextRenderer.DrawText(g, pct, Fonts.UiSemibold, new Rectangle(Width - pad - Dpi.S(60), by - Dpi.S(4), Dpi.S(60), Dpi.S(20)), T.Text, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            StateLook.Bar(g, new RectangleF(pad, by + Dpi.S(3), w - Dpi.S(70), Dpi.S(6)), Overall, overallState == State.Failed ? T.ErrFg : overallState == State.Succeeded ? T.OkFg : T.Accent, T.Divider);
-            // The time left stands above the bar: the first text that fits, as the window is wide.
+            // Time left and the finish clock.
+            int ly = card.Bottom + Dpi.S(10);
             string est = null;
             foreach (string v in left)
             {
                 est = v;
                 if (TextRenderer.MeasureText(v, Fonts.SmallSemibold, Size.Empty, TextFormatFlags.NoPadding).Width <= w) break;
             }
-            if (est != null) TextRenderer.DrawText(g, est, Fonts.SmallSemibold, new Rectangle(pad, by - Dpi.S(24), w, Dpi.S(18)), T.Text2, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-            TextRenderer.DrawText(g, counts, Fonts.Small, new Rectangle(pad, by + Dpi.S(20), w, Dpi.S(18)), T.Text3, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            if (est != null) TextRenderer.DrawText(g, est, Fonts.SmallSemibold, new Rectangle(pad, ly, w, Dpi.S(18)), T.Text, ell);
+
+            // The thin phase strip: one rounded segment per phase.
+            int sy = ly + Dpi.S(26), n = strip.Count;
+            if (n > 0)
+            {
+                int gap = Dpi.S(3);
+                float sw = (w - gap * (n - 1)) / (float)n;
+                for (int k = 0; k < n; k++)
+                {
+                    RectangleF seg = new RectangleF(pad + k * (sw + gap), sy, sw, Dpi.S(5));
+                    Shapes.Fill(g, seg, Dpi.S(2.5f), T.Divider);
+                    float f = strip[k].Fraction;
+                    Color c = strip[k].State == State.Failed ? T.ErrFg : strip[k].State == State.Succeeded ? T.OkFg : T.Accent;
+                    if (f > 0.01f) Shapes.Fill(g, new RectangleF(seg.X, seg.Y, Math.Max(seg.Height, seg.Width * f), seg.Height), Dpi.S(2.5f), c);
+                }
+            }
+            TextRenderer.DrawText(g, counts, Fonts.Small, new Rectangle(pad, sy + Dpi.S(9), w, Dpi.S(16)), T.Text3, ell);
         }
+    }
+
+    struct StripSeg
+    {
+        public float Fraction;
+        public State State;
     }
 }

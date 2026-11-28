@@ -93,14 +93,23 @@ namespace TrackVice
             tip.OwnerDraw = true;
             tip.Popup += delegate (object s, PopupEventArgs e)
             {
-                Size ts = TextRenderer.MeasureText(tipText ?? "", Fonts.Small);
+                Size ts = TextRenderer.MeasureText(tipText ?? "", Fonts.SmallSemibold);
                 e.ToolTipSize = new Size(ts.Width + Dpi.S(16), ts.Height + Dpi.S(12));
             };
             tip.Draw += delegate (object s, DrawToolTipEventArgs e)
             {
                 using (SolidBrush b = new SolidBrush(T.Card)) e.Graphics.FillRectangle(b, e.Bounds);
                 using (Pen p = new Pen(T.Divider)) e.Graphics.DrawRectangle(p, 0, 0, e.Bounds.Width - 1, e.Bounds.Height - 1);
-                TextRenderer.DrawText(e.Graphics, e.ToolTipText, Fonts.Small, new Point(Dpi.S(8), Dpi.S(6)), T.Text, TextFormatFlags.NoPadding);
+                // The name on the first line stands out; the times under it are quieter.
+                string all = e.ToolTipText ?? "";
+                int nl = all.IndexOf('\n');
+                string head = nl < 0 ? all : all.Substring(0, nl);
+                TextRenderer.DrawText(e.Graphics, head, Fonts.SmallSemibold, new Point(Dpi.S(8), Dpi.S(6)), T.Text, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                if (nl >= 0)
+                {
+                    int lh = TextRenderer.MeasureText("Ag", Fonts.Small).Height;
+                    TextRenderer.DrawText(e.Graphics, all.Substring(nl + 1), Fonts.Small, new Point(Dpi.S(8), Dpi.S(6) + lh), T.Text2, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                }
             };
         }
 
@@ -170,7 +179,7 @@ namespace TrackVice
             }
             int cl = ChartL, cr = ChartR;
             List<GanttTick> ticks = axis.Bands.Count > 0 ? axis.Ticks(cr - cl, Dpi.S(84), TimeZoneInfo.Local) : GanttLayout.Ticks(fromUtc, toUtc, GanttLayout.Step(toUtc - fromUtc, cr - cl, Dpi.S(84)), TimeZoneInfo.Local);
-            Color grid = Theme.Mix(T.Card, T.Divider, 0.55f);
+            Color grid = Theme.Mix(T.Card, T.Divider, 0.35f);
             using (Pen pen = new Pen(grid)) foreach (GanttTick k in ticks) { float x = X(k.Utc); g.DrawLine(pen, x, AxisH, x, Height); }
 
             g.SetClip(new Rectangle(0, AxisH, Width, Math.Max(0, Height - AxisH)));
@@ -238,7 +247,11 @@ namespace TrackVice
                 // A time off has its band and label.
                 if (axis.Bands.Exists(delegate (OffSpan b) { return b.FromUtc == k.Utc; })) continue;
                 float x = X(k.Utc);
-                using (Pen pen = new Pen(T.WarnFg, Math.Max(1f, Dpi.S(1f)))) g.DrawLine(pen, x, AxisH, x, Height);
+                using (Pen pen = new Pen(T.WarnFg, Math.Max(1f, Dpi.S(1f))))
+                {
+                    pen.DashStyle = DashStyle.Dash;
+                    g.DrawLine(pen, x, AxisH, x, Height);
+                }
                 Size ts = TextRenderer.MeasureText(k.Label, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding);
                 int pad = Dpi.S(5), w = ts.Width + pad * 2, h = ts.Height + Dpi.S(4);
                 int lx = (int)x + Dpi.S(4);
@@ -289,7 +302,7 @@ namespace TrackVice
         void PaintItem(Graphics g, GanttRow row, Rectangle r, bool hover)
         {
             Item i = row.Item;
-            if (hover) using (SolidBrush b = new SolidBrush(T.Hover)) g.FillRectangle(b, r);
+            if (hover) using (SolidBrush b = new SolidBrush(Theme.Mix(T.Card, T.Hover, 0.7f))) g.FillRectangle(b, r);
             Color nameC = i.State == State.Skipped || i.State == State.NotApplicable ? T.Text3 : T.Text;
             Rectangle tr = new Rectangle(Dpi.S(24), r.Y, LabelW - Dpi.S(12), r.Height);
             TextRenderer.DrawText(g, i.DisplayName, Fonts.Small, tr, nameC, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
@@ -306,9 +319,12 @@ namespace TrackVice
             }
             else
             {
-                float x1 = Math.Max(X(row.EndUtc), x0 + Dpi.S(3));
-                float h = Dpi.S(12);
-                Shapes.Fill(g, new RectangleF(x0, cy - h / 2, x1 - x0, h), Dpi.S(3), c);
+                float x1 = Math.Max(X(row.EndUtc), x0 + Dpi.S(6));
+                float h = Dpi.S(14);
+                RectangleF bar = new RectangleF(x0, cy - h / 2, x1 - x0, h);
+                bool running = States.IsActive(i.State) && i.EndUtc == null;
+                if (running) Shapes.Fill(g, new RectangleF(bar.X - 2, bar.Y - 2, bar.Width + 4, bar.Height + 4), Dpi.S(7), Color.FromArgb(T.IsDark ? 40 : 30, c));
+                Shapes.Fill(g, bar, Math.Min(Dpi.S(5), bar.Width / 2), c);
                 end = x1;
                 string dur = Txt.DurationShort(row.Duration);
                 int dw = TextRenderer.MeasureText(dur, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding).Width;

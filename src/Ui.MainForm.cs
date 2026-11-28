@@ -350,6 +350,7 @@ namespace TrackVice
             timeline.ForeColor = delegate (TEvent e) { return e.Severity >= 2 ? theme.ErrFg : e.Severity == 1 ? theme.WarnFg : Color.Empty; };
             timeline.SelectionChanged += delegate { ShowEvent(timeline.Current); };
             timeline.EmptyText = "No events match.";
+            SecondaryViews.AttachTimeline(timeline, delegate { return theme; });
             timeline.MenuExtras = delegate (ContextMenuStrip m, TEvent e)
             {
                 if (e.Evidence != null && e.Evidence.Text != null) Menus.Add(m, "Copy the raw line", delegate { Menus.Copy(e.Evidence.Text); });
@@ -371,6 +372,7 @@ namespace TrackVice
             findings.Col("Kind", 150, delegate (Finding f) { return f.Kind; });
             findings.Col("Time", 92, delegate (Finding f) { return Txt.LocalTime(f.TimeUtc); });
             findings.ForeColor = delegate (Finding f) { return f.Severity >= 2 ? theme.ErrFg : f.Severity == 1 ? theme.WarnFg : Color.Empty; };
+            SecondaryViews.AttachFindings(findings, delegate { return theme; });
             findings.SelectionChanged += delegate { ShowFinding(findings.Current); };
             findings.EmptyText = "Nothing needs attention right now.";
             findings.MenuExtras = delegate (ContextMenuStrip m, Finding f)

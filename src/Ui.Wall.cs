@@ -15,6 +15,12 @@ namespace TrackVice
         public readonly AgentCatalog Catalog;
         // Shows the filters when the window opens. Off for screenshots without them.
         public bool FiltersAtStart = true;
+        // Whose devices these are, for the header and the tiles. Empty when not known.
+        public string Customer
+        {
+            get { return header.Customer; }
+            set { header.Customer = tiles.Customer = value ?? ""; header.Invalidate(); tiles.Invalidate(); }
+        }
 
         static readonly int[] KeepHours = { 1, 2, 4, 8 };
         Theme theme;
@@ -55,6 +61,7 @@ namespace TrackVice
             header.Dock = DockStyle.Top;
             header.Height = Dpi.S(96);
             header.Source = demo ? "Demo data: made-up devices." : c.Source;
+            if (demo) header.Customer = tiles.Customer = "Contoso";
             header.Close.Click += delegate { Close(); };
             tiles.Dock = DockStyle.Fill;
             tiles.Picked += delegate (object s, EventArgs e) { Pick(tiles.Clicked); };
@@ -262,13 +269,16 @@ namespace TrackVice
             DateTime now = DateTime.UtcNow;
             DateTime today = WallModel.TodayStartUtc(now);
             List<WallTile> l = board.Shown(Filter, search.Text, now, today, TimeSpan.FromHours(KeepHours[Math.Max(0, keep.Selected)]));
-            header.Summary = board.Summary(now, today).Text();
+            header.Sum = board.Summary(now, today);
+            header.Summary = header.Sum.Text();
+            header.Shown = l.Count;
+            header.Total = board.Tiles.Count;
             string q = search.Text.Trim();
             header.Filter = Filter == WallFilter.All && q.Length == 0 ? "" : "Showing " + (Filter == WallFilter.All ? "all" : Filter == WallFilter.Running ? "running" : Filter == WallFilter.Failed ? "failed" : "finished today") + (q.Length > 0 ? " matching “" + q + "”" : "");
             header.Status = error ?? (readAt.Year > 2000 ? "Updated " + readAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture) + ", every " + (refresh.Interval / 1000) + " s" : "");
             if (board.Tiles.Count == 0) tiles.EmptyText = error ?? (readAt.Year > 2000 ? "No device has uploaded yet.\n\nDevices with the TrackVice agent show here as they upload." : "Reading the uploads…");
             else tiles.EmptyText = "No devices match. Move the mouse to change the filters.";
-            tiles.SetTiles(l);
+            tiles.SetTiles(l, board.Tiles);
             header.Invalidate();
         }
 
@@ -306,7 +316,10 @@ namespace TrackVice
     sealed class WallHeader : FlatControl
     {
         public readonly FlatButton Close = new FlatButton("", "");
-        public string Summary = "", Source = "", Status = "", Filter = "";
+        public string Summary = "", Source = "", Status = "", Filter = "", Customer = "";
+        public WallSummary Sum;
+        // How many devices the wall shows, and how many it knows.
+        public int Shown, Total;
         public bool Full;
         Font big, mid;
 
@@ -346,6 +359,7 @@ namespace TrackVice
             int pad = Dpi.S(24), m = Dpi.S(48);
             Draw.Mark(g, new RectangleF(pad, Dpi.S(20), m, m));
             int x = pad + m + Dpi.S(16);
+            // The clock, with when the list was last read under it.
             string time = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
             int timeW = Draw.Measure("00:00", big).Width + Dpi.S(8);
             int right = Close.Left - Dpi.S(18);
@@ -353,28 +367,76 @@ namespace TrackVice
             string under = Status.Length > 0 ? Status : Source;
             int underW = Math.Min(Dpi.S(520), Draw.Measure(under, Fonts.Ui).Width + Dpi.S(8));
             Draw.Text(g, under, Fonts.Ui, new Rectangle(right - underW, Dpi.S(16) + big.Height, underW, Fonts.Ui.Height + 4), Status.StartsWith("Reading failed") ? T.ErrFg : T.Text3, Draw.Line | TextFormatFlags.Right);
-            int textW = right - timeW - Dpi.S(24) - x;
-            string title = "Enrollments" + (Filter.Length > 0 ? "  ·  " + Filter : "");
-            Draw.Text(g, title, big, new Rectangle(x, Dpi.S(14), textW, big.Height + 2), T.Text, Draw.Line);
-            Draw.Text(g, Summary, mid, new Rectangle(x, Dpi.S(18) + big.Height, Math.Max(0, right - Math.Max(underW, timeW) - Dpi.S(16) - x), mid.Height + 4), T.Text2, Draw.Line);
+
+            // The title, how many devices are on the wall, and whose they are.
+            int titleR = right - timeW - Dpi.S(24);
+            int tw = Math.Min(Draw.Measure("Enrollments", big).Width + Dpi.S(4), Math.Max(0, titleR - x));
+            Draw.Text(g, "Enrollments", big, new Rectangle(x, Dpi.S(14), tw, big.Height + 2), T.Text, Draw.Line);
+            int cx = x + tw + Dpi.S(12);
+            if (Total > 0)
+            {
+                string count = (Shown < Total ? Shown + " of " + Total : Total.ToString(CultureInfo.InvariantCulture)) + (Total == 1 ? " device" : " devices");
+                int cw = Draw.Measure(count, Fonts.UiSemibold).Width + Dpi.S(24), ch = Dpi.S(28);
+                if (cx + cw <= titleR)
+                {
+                    RectangleF chip = new RectangleF(cx, Dpi.S(14) + (big.Height - ch) / 2f + 1, cw, ch);
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    Shapes.Fill(g, chip, ch / 2f, T.AccentSoft);
+                    Draw.Text(g, count, Fonts.UiSemibold, Rectangle.Round(chip), T.Text, Draw.Line | TextFormatFlags.HorizontalCenter);
+                    cx += cw + Dpi.S(14);
+                }
+            }
+            string who = Customer + (Customer.Length > 0 && Filter.Length > 0 ? "  ·  " : "") + Filter;
+            if (who.Length > 0 && titleR - cx > Dpi.S(60))
+                Draw.Text(g, who, mid, new Rectangle(cx, Dpi.S(14), titleR - cx, big.Height + 2), T.Text3, Draw.Line);
+
+            // The counts of today, each with a dot in the colour its tiles have.
+            int sy = Dpi.S(18) + big.Height, sx = x, sr = right - Math.Max(underW, timeW) - Dpi.S(16);
+            if (Sum == null) Draw.Text(g, Summary, mid, new Rectangle(x, sy, Math.Max(0, sr - x), mid.Height + 4), T.Text2, Draw.Line);
+            else
+            {
+                Part(g, Sum.Running + " running", T.Accent, ref sx, sy, sr);
+                if (Sum.Silent > 0) Part(g, Sum.Silent + " with no upload", T.WarnFg, ref sx, sy, sr);
+                Part(g, Sum.FinishedToday + " finished today", T.OkFg, ref sx, sy, sr);
+                Part(g, Sum.FailedToday + " failed today", Sum.FailedToday > 0 ? T.ErrFg : T.Text3, ref sx, sy, sr);
+                if (Sum.Average.HasValue) Part(g, "average " + Txt.DurationShort(Sum.Average) + " today", Color.Empty, ref sx, sy, sr);
+            }
             using (Pen p = new Pen(T.Divider)) g.DrawLine(p, pad, Height - 1, Width - pad, Height - 1);
+        }
+
+        // One count of the summary. Left out when it no longer fits.
+        void Part(Graphics g, string text, Color dot, ref int x, int y, int right)
+        {
+            int d = Dpi.S(10), gap = Dpi.S(8);
+            int w = Draw.Measure(text, mid).Width + Dpi.S(4);
+            int need = (dot.IsEmpty ? 0 : d + gap) + w;
+            if (x + need > right) { x = right; return; }
+            if (!dot.IsEmpty)
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using (SolidBrush b = new SolidBrush(dot)) g.FillEllipse(b, x, y + (mid.Height + 4 - d) / 2f, d, d);
+                x += d + gap;
+            }
+            Draw.Text(g, text, mid, new Rectangle(x, y, w, mid.Height + 4), T.Text2, Draw.Line);
+            x += w + Dpi.S(22);
         }
     }
 
     // The tiles, one per device, in a grid that fits the window.
     sealed class WallTiles : FlatControl
     {
-        public string EmptyText = "";
+        public string EmptyText = "", Customer = "";
         public WallTile Clicked;
         public event EventHandler Picked;
-        List<WallTile> shown = new List<WallTile>();
+        List<WallTile> shown = new List<WallTile>(), all = new List<WallTile>();
         readonly List<Rectangle> rects = new List<Rectangle>();
         readonly System.Windows.Forms.Timer anim = new System.Windows.Forms.Timer();
         WallGrid grid;
         int hot = -1, fontH = -1;
         Point lastMove;
         float spin;
-        Font name, mid, small, pct, empty;
+        Font name, mid, small, pct, big, empty;
+        readonly Dictionary<string, float> progress = new Dictionary<string, float>();
 
         public WallTiles()
         {
@@ -397,17 +459,36 @@ namespace TrackVice
 
         void DropFonts()
         {
-            foreach (Font f in new Font[] { name, mid, small, pct }) if (f != null) f.Dispose();
-            name = mid = small = pct = null;
+            foreach (Font f in new Font[] { name, mid, small, pct, big }) if (f != null) f.Dispose();
+            name = mid = small = pct = big = null;
         }
 
-        public void SetTiles(List<WallTile> l)
+        // l is what the filters show; everything is every device of the wall, which the time left learns from.
+        public void SetTiles(List<WallTile> l, List<WallTile> everything)
         {
             WallTile keep = hot >= 0 && hot < shown.Count ? shown[hot] : null;
             shown = l;
+            all = everything ?? l;
+            foreach (WallTile wt in l) EaseTo(wt);
             hot = keep == null ? -1 : l.IndexOf(keep);
             Lay();
             Invalidate();
+        }
+
+        // The bar of a tile eases to its new value instead of jumping.
+        void EaseTo(WallTile t)
+        {
+            string key = string.Intern("wall|" + t.Key);
+            float to = (float)t.Progress, from;
+            if (!progress.TryGetValue(key, out from)) { progress[key] = to; return; }
+            if (from == to) return;
+            Motion.Animate(from, to, 200, Motion.EaseOut, delegate (float v) { progress[key] = v; Invalidate(); }, key);
+        }
+
+        double ShownProgress(WallTile t)
+        {
+            float v;
+            return progress.TryGetValue(string.Intern("wall|" + t.Key), out v) ? v : t.Progress;
         }
 
         // The pointer has rested for a while: no tile stays lit on the screen in the room.
@@ -454,10 +535,11 @@ namespace TrackVice
             FontFamily semi = Fonts.UiSemibold.FontFamily;
             FontFamily ui = Fonts.Ui.FontFamily;
             FontStyle semiStyle = Fonts.UiSemibold.Style;
-            name = new Font(Fonts.Title.FontFamily, Dpi.S(30) * k, Fonts.Title.Style | FontStyle.Bold, GraphicsUnit.Pixel);
+            name = new Font(Fonts.Title.FontFamily, Dpi.S(28) * k, Fonts.Title.Style | FontStyle.Bold, GraphicsUnit.Pixel);
             mid = new Font(ui, Dpi.S(19) * k, FontStyle.Regular, GraphicsUnit.Pixel);
-            pct = new Font(semi, Dpi.S(19) * k, semiStyle | FontStyle.Bold, GraphicsUnit.Pixel);
-            small = new Font(ui, Dpi.S(16) * k, FontStyle.Regular, GraphicsUnit.Pixel);
+            pct = new Font(semi, Dpi.S(18) * k, semiStyle, GraphicsUnit.Pixel);
+            small = new Font(ui, Dpi.S(15) * k, FontStyle.Regular, GraphicsUnit.Pixel);
+            big = new Font(semi, Dpi.S(44) * k, semiStyle | FontStyle.Bold, GraphicsUnit.Pixel);
         }
 
         protected override void OnResize(EventArgs e)
@@ -490,13 +572,15 @@ namespace TrackVice
             }
         }
 
-        Color Tone(WallState s)
+        // Teal when done, red only for failures, amber when silent or slower than usual, the accent while it runs.
+        Color Tone(WallTile t, bool slow)
         {
-            switch (s)
+            switch (t.State)
             {
-                case WallState.Running: return T.Accent;
+                case WallState.Running: return slow ? T.WarnFg : T.Accent;
                 case WallState.Finished: return T.OkFg;
                 case WallState.Failed: return T.ErrFg;
+                case WallState.Silent: return T.WarnFg;
                 default: return T.Text3;
             }
         }
@@ -523,40 +607,65 @@ namespace TrackVice
 
         void PaintTile(Graphics g, WallTile t, Rectangle r, bool isHot, DateTime now)
         {
-            Color c = Tone(t.State);
+            WallTimeLeft eta = WallTimeLeft.For(t, all, now);
+            bool slow = eta != null && eta.Over;
+            Color c = Tone(t, slow);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             RectangleF box = new RectangleF(r.X + 0.5f, r.Y + 0.5f, r.Width - 1.5f, r.Height - 1.5f);
-            Color bg = t.State == WallState.Failed ? Theme.Mix(T.Card, T.ErrFg, T.IsDark ? 0.12f : 0.07f) : T.Card;
+            Color bg = t.State == WallState.Failed ? Theme.Mix(T.Card, T.ErrFg, T.IsDark ? 0.10f : 0.06f) : T.Card;
             if (isHot) bg = Theme.Mix(bg, T.Accent, 0.08f);
-            float rad = Dpi.S(10);
+            float rad = Dpi.S(12);
             Shapes.Fill(g, box, rad, bg);
-            Shapes.Stroke(g, box, rad, isHot ? T.Accent : t.State == WallState.Failed ? Theme.Mix(T.Divider, T.ErrFg, 0.5f) : T.Divider, isHot ? 2f : 1f);
             // The coloured edge says the state at a glance from across the room.
             GraphicsState st = g.Save();
             using (GraphicsPath clip = Shapes.Round(box, rad)) g.SetClip(clip);
-            using (SolidBrush b = new SolidBrush(c)) g.FillRectangle(b, r.X, r.Y, Dpi.S(7), r.Height);
+            using (SolidBrush b = new SolidBrush(c)) g.FillRectangle(b, r.X, r.Y, Dpi.S(6), r.Height);
             g.Restore(st);
+            Shapes.Stroke(g, box, rad, isHot ? T.Accent : t.State == WallState.Failed ? Theme.Mix(T.Divider, T.ErrFg, 0.45f) : T.Divider, isHot ? 2f : 1f);
 
             int p = Inner(r);
-            int x = r.X + p + Dpi.S(8), w = r.Right - p - x;
+            int x = r.X + p + Dpi.S(6), w = r.Right - p - x;
             int y = r.Y + p;
             Rectangle ic = IconRect(r);
             StateLook.Icon(g, IconState(t.State), new RectangleF(ic.X + 2, ic.Y + 2, ic.Width - 4, ic.Height - 4), T, spin);
             Draw.Text(g, t.Device, name, new Rectangle(x, y, ic.X - Dpi.S(10) - x, name.Height + 2), T.Text, Draw.Line);
             y += name.Height + Dpi.S(2);
-            Draw.Text(g, (t.User != null ? t.User + " · " : "") + t.Deployment, mid, new Rectangle(x, y, w, mid.Height + 2), T.Text2, Draw.Line);
-            y += mid.Height;
+            // Whose device it is and what it deploys. The customer is left out where the device name starts with it.
+            string who = t.User ?? "";
+            if (Customer.Length > 0 && (t.Device == null || !t.Device.StartsWith(Customer, StringComparison.OrdinalIgnoreCase))) who = Customer + (who.Length > 0 ? " · " : "") + who;
+            if (t.Deployment.Length > 0) who += (who.Length > 0 ? " · " : "") + t.Deployment;
+            Draw.Text(g, who, small, new Rectangle(x, y, w, small.Height + 2), T.Text2, Draw.Line);
+            y += small.Height;
 
-            // The bar, its percent and how many of the items are done, spread over what is left above the bottom line.
+            // The big percent, with the time left above a thick bar beside it.
             int bottomY = r.Bottom - p - small.Height;
             int free = bottomY - y;
-            int barH = Math.Max(Dpi.S(6), r.Height / 22);
-            int lineY = y + Math.Max(Dpi.S(4), (free - barH - mid.Height - Dpi.S(8)) / 3);
-            string percent = t.Percent.ToString(CultureInfo.InvariantCulture) + " %";
-            int pw = Draw.Measure("100 %", pct).Width + Dpi.S(6);
-            int barY = lineY + (pct.Height - barH) / 2;
-            StateLook.Bar(g, new RectangleF(x, barY, w - pw - Dpi.S(10), barH), t.Progress, t.State == WallState.Silent ? T.Text3 : c, Theme.Mix(bg, T.Text3, 0.25f));
-            Draw.Text(g, percent, pct, new Rectangle(r.Right - p - pw, lineY, pw, pct.Height + 2), T.Text, Draw.Line | TextFormatFlags.Right);
-            int curY = lineY + pct.Height + Math.Max(Dpi.S(4), (free - barH - mid.Height - Dpi.S(8)) / 3);
+            int rowH = big.Height;
+            int barH = Math.Max(Dpi.S(10), r.Height / 15);
+            int lineH = mid.Height + 2;
+            int gapY = Math.Max(Dpi.S(2), (free - rowH - lineH) / 3);
+            int rowY = y + gapY;
+            string percent = t.Percent.ToString(CultureInfo.InvariantCulture);
+            int pw = Draw.Measure("100", big).Width + Dpi.S(2);
+            Draw.Text(g, percent, big, new Rectangle(x, rowY, pw, rowH), T.Text, Draw.Line | TextFormatFlags.Right);
+            int sw = Draw.Measure("%", pct).Width + Dpi.S(2);
+            Draw.Text(g, "%", pct, new Rectangle(x + pw + Dpi.S(2), rowY + (int)(rowH * 0.80f) - pct.Height, sw, pct.Height + 2), T.Text3, Draw.Line);
+            int bx = x + pw + sw + Dpi.S(16), bw = Math.Max(10, r.Right - p - bx);
+            int etaH = eta != null ? small.Height + Dpi.S(5) : 0;
+            float barY = rowY + (rowH - etaH - barH) / 2f + etaH;
+            if (eta != null)
+            {
+                int ey = (int)barY - etaH;
+                string detail = eta.Detail;
+                int dw = Draw.Measure(detail, small).Width + Dpi.S(4);
+                bool room = dw + Draw.Measure(eta.Words, small).Width + Dpi.S(14) <= bw;
+                Draw.Text(g, eta.Words, small, new Rectangle(bx, ey, room ? bw - dw - Dpi.S(10) : bw, small.Height + 2), slow ? T.WarnFg : T.Text, Draw.Line);
+                if (room) Draw.Text(g, detail, small, new Rectangle(bx + bw - dw, ey, dw, small.Height + 2), T.Text3, Draw.Line | TextFormatFlags.Right);
+            }
+            StateLook.Bar(g, new RectangleF(bx, barY, bw, barH), ShownProgress(t), c, Theme.Mix(bg, T.Text3, T.IsDark ? 0.22f : 0.18f));
+
+            // What runs now and how many items are done.
+            int curY = rowY + rowH + gapY;
             string line = t.Line(now);
             string count = t.Items > 0 && t.State != WallState.Finished ? t.Done + " of " + t.Items : "";
             int cw = count.Length > 0 ? Draw.Measure(count, mid).Width + Dpi.S(4) : 0;
@@ -656,6 +765,7 @@ namespace TrackVice
             }
             using (WallView w = new WallView(theme, c, demo))
             {
+                if (!demo && string.IsNullOrWhiteSpace(upload)) w.Customer = CustomerUi.CurrentName;
                 w.ShowDialog(this);
                 if (w.Picked == null) return;
                 watchedCustomer = demo ? null : CustomerUi.CurrentName;
