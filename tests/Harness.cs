@@ -92,6 +92,7 @@ namespace TrackVice.Tests
             AppRegistrationTests.Run();
             MailTests.Run();
             NarrowTests.Run();
+            HeroTextTests.Run();
             RowFitTests.Run();
             SccmPlanTests.Run();
             DownloadTests.Run();

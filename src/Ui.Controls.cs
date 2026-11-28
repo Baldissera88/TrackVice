@@ -335,52 +335,6 @@ namespace TrackVice
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
     }
 
-    // A clickable count that also works as a filter.
-    public sealed class StatChip : FlatControl
-    {
-        public int Count;
-        public string Label;
-        public int Tone;
-        public bool Selected;
-
-        public StatChip(string label, int tone)
-        {
-            Label = label;
-            Tone = tone;
-            Cursor = Cursors.Hand;
-            Size = new Size(Math.Max(Dpi.S(124), TextRenderer.MeasureText(label, Fonts.Small).Width + Dpi.S(30)), Dpi.S(58));
-            NaturalWidth = Width;
-        }
-
-        public int NaturalWidth;
-
-        // The smallest width: the count or the label, whichever is wider, and the room around it.
-        public int MinWidth
-        {
-            get
-            {
-                int num = TextRenderer.MeasureText(Count.ToString(), Fonts.Title, Size.Empty, TextFormatFlags.NoPadding).Width;
-                int lab = TextRenderer.MeasureText(Label, Fonts.Small, Size.Empty, TextFormatFlags.NoPadding).Width;
-                return Math.Min(NaturalWidth, Math.Max(Dpi.S(72), Math.Max(num, lab) + Dpi.S(26)));
-            }
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            Graphics g = e.Graphics;
-            g.Clear(Parent != null ? Parent.BackColor : T.Bg);
-            RectangleF r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
-            Shapes.Fill(g, r, Dpi.S(7), Selected ? T.AccentSoft : hover ? T.Hover : T.Card);
-            Shapes.Stroke(g, r, Dpi.S(7), Selected ? T.Accent : T.Divider, 1f);
-            Color num = T.Text;
-            if (Count > 0 && Tone == 2) num = T.ErrFg;
-            if (Count > 0 && Tone == 1) num = T.WarnFg;
-            int pad = Dpi.S(12);
-            TextRenderer.DrawText(g, Count.ToString(), T.Num(Fonts.Title), new Rectangle(pad, Dpi.S(6), Math.Max(0, Width - pad * 2), Dpi.S(28)), num, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
-            TextRenderer.DrawText(g, Label, Fonts.Small, new Rectangle(pad, Dpi.S(34), Math.Max(0, Width - pad * 2), Dpi.S(18)), T.Text3, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
-        }
-    }
-
     public sealed class TabStrip : FlatControl
     {
         readonly List<string> tabs = new List<string>();
