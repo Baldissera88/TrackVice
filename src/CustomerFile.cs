@@ -16,6 +16,8 @@ namespace TrackVice
         const byte Version = 1;
         const int SaltLen = 16, IvLen = 16, MacLen = 32, HeaderLen = 9;
         const int MaxIterations = 5000000;
+        // A file of thousands of customers is a few megabytes. A larger one is not read into memory twice.
+        public const int MaxBytes = 16 * 1024 * 1024;
 
         public static string PasswordProblem(string password)
         {
@@ -66,6 +68,7 @@ namespace TrackVice
         public static string Open(byte[] data, string password)
         {
             if (!IsSealed(data)) throw new InvalidDataException("This is not a protected customers file.");
+            if (data.Length > MaxBytes) throw new InvalidDataException("This customers file is too large.");
             if (data.Length < HeaderLen + SaltLen + IvLen + 16 + MacLen || (data.Length - HeaderLen - SaltLen - IvLen - MacLen) % 16 != 0)
                 throw new InvalidDataException(WrongMessage);
             if (data[4] != Version) throw new InvalidDataException("This file was made by a newer version of TrackVice.");

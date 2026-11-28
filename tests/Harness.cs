@@ -120,6 +120,7 @@ namespace TrackVice.Tests
             ViewerInputTests.Run();
             DiagnosticsHardeningTests.Run();
             OnboardingSecurityTests.Run();
+            CustomerSecurityTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }
