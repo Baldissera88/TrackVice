@@ -11,9 +11,9 @@ namespace TrackVice
     public sealed class DownloadLog
     {
         const RegexOptions Ci = RegexOptions.Compiled | RegexOptions.IgnoreCase;
-        static readonly Regex RxProgress = new Regex(@"Downloading app \(id = [0-9A-Fa-f-]{36}, name (?<n>.*?)\) via (?<via>\w+), bytes (?<a>\d+)/(?<b>\d+)", Ci);
-        static readonly Regex RxSize = new Regex(@"^\[Win32App\]\s*Downloaded file size\s+(?<v>[\d.,\s ]+)$", Ci);
-        static readonly Regex RxTime = new Regex(@"^\[Win32App\]\s*Downloaded file time\s+(?<v>[\d.,\s ]+)$", Ci);
+        static readonly Regex RxProgress = new Regex(@"Downloading app \(id = [0-9A-Fa-f-]{36}, name (?<n>.{0,1000}?)\) via (?<via>\w+), bytes (?<a>\d+)/(?<b>\d+)", Ci);
+        static readonly Regex RxSize = new Regex(@"^\[Win32App\]\s*Downloaded file size\s+(?<v>[\d.,][\d.,\s ]*)$", Ci);
+        static readonly Regex RxTime = new Regex(@"^\[Win32App\]\s*Downloaded file time\s+(?<v>[\d.,][\d.,\s ]*)$", Ci);
         static readonly Regex RxStart = new Regex(@"start creating a new download job|Content cache miss for app|Downloading app on session|Starting content download", Ci);
         static readonly Regex RxDone = new Regex(@"DO download and decryption is successfully done|Content is downloaded", Ci);
         // Delivery Optimization's own names for the bytes from each source, as Get-DeliveryOptimizationStatus shows them.
@@ -42,6 +42,7 @@ namespace TrackVice
         public bool Read(LogLine l, string id, Func<Obs> make, List<Obs> output)
         {
             string t = l.Text ?? "";
+            if (t.Length > ImeLogParser.MaxText) t = t.Substring(0, ImeLogParser.MaxText);
             DateTime at = l.Utc ?? DateTime.MinValue;
             Dl d = Get(id);
             Match m = RxProgress.Match(t);

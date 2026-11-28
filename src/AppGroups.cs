@@ -184,18 +184,25 @@ namespace TrackVice
                 p.Assignment = AssignmentOf(m.Groups["i"].Value);
                 p.Target = TargetOfType(m.Groups["t"].Value);
                 Match n = RxName.Match(m.Groups["mid"].Value);
-                if (n.Success) p.Name = Regex.Unescape(n.Groups["n"].Value);
+                if (n.Success)
+                {
+                    // An escape JSON does not have would throw and stop the whole log from being read: the name is kept as written.
+                    try { p.Name = Regex.Unescape(n.Groups["n"].Value); }
+                    catch (ArgumentException) { p.Name = n.Groups["n"].Value; }
+                }
                 l.Add(p);
             }
             return l;
         }
 
         // Lines that only mark where the agent's work starts or stops: "----- Lock DoWorkInternal -----".
-        static readonly Regex RxSeparator = new Regex(@"^(?:\[[^\]]{1,40}\]\s*)*(?:[-=*]{3,}.{0,80}?[-=*]{3,}|[-=*]{3,}|(?:Un)?[Ll]ock DoWorkInternal)\s*$", RegexOptions.Compiled);
+        static readonly Regex RxSeparator = new Regex(@"^(?:\[[^\]]{1,40}\]\s*)*(?:(?>[-=*]{3,}).{0,80}?[-=*]{3,}|[-=*]{3,}|(?:Un)?[Ll]ock DoWorkInternal)\s*$", RegexOptions.Compiled);
 
         public static bool IsSeparator(string text)
         {
-            return !string.IsNullOrEmpty(text) && RxSeparator.IsMatch(text.Trim());
+            if (string.IsNullOrEmpty(text)) return false;
+            string t = text.Trim();
+            return t.Length <= 512 && RxSeparator.IsMatch(t);
         }
     }
 }

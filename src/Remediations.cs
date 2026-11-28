@@ -85,7 +85,7 @@ namespace TrackVice
     // with the same fields as the Result value in the registry. The format is not documented by Microsoft.
     public sealed class HealthScriptsParser : LogParser
     {
-        static readonly Regex RxResult = new Regex(@"\[HS\] new result = (?<j>\{.*\})", Ci);
+        const string ResultMark = "[HS] new result = {";
         static readonly Regex RxSchedule = new Regex(@"\[HS\] inspect \w+ schedule for policy \{?(?<id>[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})", Ci);
 
         public override string Source
@@ -96,10 +96,10 @@ namespace TrackVice
         public override void Read(LogLine l, List<Obs> output)
         {
             string text = l.Text ?? "";
-            Match m = RxResult.Match(text);
-            if (m.Success)
+            string json = ResultJson(text);
+            if (json != null)
             {
-                Dictionary<string, object> r = ImeJson.Parse(m.Groups["j"].Value) as Dictionary<string, object>;
+                Dictionary<string, object> r = ImeJson.Parse(json) as Dictionary<string, object>;
                 string id = IntuneKeys.Guid(Http.Str(r, "PolicyId"));
                 if (id == null) return;
                 Dictionary<string, object> info = ImeJson.Get(r, "Info") as Dictionary<string, object>;
@@ -121,12 +121,34 @@ namespace TrackVice
                 output.Add(o);
                 return;
             }
-            m = RxSchedule.Match(text);
+            Match m = RxSchedule.Match(text);
             if (m.Success)
             {
                 Obs o = Copy(New(l), m.Groups["id"].Value);
                 output.Add(o);
             }
+        }
+
+        // The JSON after the first "[HS] new result = " that has an end, up to the last } on its line. Found with one pass over the line,
+        // so a line from an upload that repeats the start many times without an end costs no more than its length.
+        public static string ResultJson(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return null;
+            int from = 0;
+            while (from < text.Length)
+            {
+                int i = text.IndexOf(ResultMark, from, StringComparison.OrdinalIgnoreCase);
+                if (i < 0) return null;
+                int start = i + ResultMark.Length - 1;
+                int nl = text.IndexOf('\n', start);
+                int end = nl < 0 ? text.Length : nl;
+                int close = text.LastIndexOf('}', end - 1, end - start);
+                if (close > start) return text.Substring(start, close - start + 1);
+                // A later start on the same line has no end either: go on with the next line.
+                if (nl < 0) return null;
+                from = nl + 1;
+            }
+            return null;
         }
 
         static Obs Copy(Obs line, string id)

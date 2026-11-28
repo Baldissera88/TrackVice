@@ -27,9 +27,9 @@ namespace TrackVice
     // does not know only ends up on the timeline of the app it names.
     public sealed class ImeLogParser : LogParser
     {
-        static readonly Regex RxId = new Regex(@"(?:app with id|policy with id|app ids|app id|appid|application id|for app|of app|\(id =|id:|app:)\s*:?\s*\{?(?<id>[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})", Ci);
-        static readonly Regex RxDelta = new Regex("\"(?<f>EnforcementState|DetectionState|ApplicabilityState|ErrorCode)\"\\s*:\\s*\"(?<from>[^\"]*?)\\s*->\\s*(?<to>[^\"]*)\"", Ci);
-        static readonly Regex RxDetect = new Regex(@"detection state:?\s*(?<d>NotDetected|Detected)|resulted in[^.]*?\b(?<d2>NotDetected|Detected)\b|detection (?:result|returned)[^.]*?\b(?<d3>NotDetected|Detected)\b", Ci);
+        static readonly Regex RxId = new Regex(@"(?:app with id|policy with id|app ids|app id|appid|application id|for app|of app|\(id =|id:|app:)\s*(?::\s*)?\{?(?<id>[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})", Ci);
+        static readonly Regex RxDelta = new Regex("\"(?<f>EnforcementState|DetectionState|ApplicabilityState|ErrorCode)\"\\s*:\\s*\"(?<from>[^\"]*?)->(?<to>[^\"]*)\"", Ci);
+        static readonly Regex RxDetect = new Regex(@"detection state:?\s*(?<d>NotDetected|Detected)|resulted in[^.]{0,300}?\b(?<d2>NotDetected|Detected)\b|detection (?:result|returned)[^.]{0,300}?\b(?<d3>NotDetected|Detected)\b", Ci);
         static readonly Regex RxExit = new Regex(@"(?:lpExitCode|exit code|exitcode)[:= ]+(?<c>-?\d+)", Ci);
         static readonly Regex RxNoMapping = new Regex(@"did NOT set mapping for lpExitCode", Ci);
         static readonly Regex RxBytes = new Regex(@"(?:BytesTransferred|BytesDownloaded|bytes downloaded)\D{0,20}(?<a>\d+)\D{1,40}(?:BytesTotal|total bytes|of)\D{0,20}(?<b>\d+)", Ci);
@@ -41,8 +41,8 @@ namespace TrackVice
         static readonly Regex RxStillRunning = new Regex(@"(?:process (?:is )?still running|Timeout(?:ed)? waiting for (?:the )?(?:install|process)|install(?:ation)? timed out|exceeded (?:the )?(?:max(?:imum)?|install) (?:run )?time)", Ci);
         static readonly Regex RxCommand = new Regex(@"Command line:\s*(?<c>.+?)\s*$", Ci);
         static readonly Regex RxMinutes = new Regex(@"after (?<m>\d+) minutes", Ci);
-        static readonly Regex RxIdPhrase = new Regex(@"\s*(?:for |of )?(?:app|policy|application)(?: with)? id:?\s*\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}?[,.:]?", Ci);
-        static readonly Regex RxNotApplicable = new Regex(@"(?:RequirementsNotMet|will be reported as not applicable|requirement rule[^.]*?(?:not met|NotApplicable)|Applicability\s*[:=]\s*NotApplicable)", Ci);
+        static readonly Regex RxIdPhrase = new Regex(@"(?<!\s)\s*(?:for |of )?(?:app|policy|application)(?: with)? id:?\s*\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}?[,.:]?", Ci);
+        static readonly Regex RxNotApplicable = new Regex(@"(?:RequirementsNotMet|will be reported as not applicable|requirement rule[^.]{0,300}?(?:not met|NotApplicable)|Applicability\s*[:=]\s*NotApplicable)", Ci);
 
         readonly string source;
         readonly Dictionary<string, string> currentByThread = new Dictionary<string, string>();
@@ -61,6 +61,8 @@ namespace TrackVice
         }
 
         const string ZeroGuid = "00000000-0000-0000-0000-000000000000";
+        // The longest part of a line the patterns read. A real line about one app is far shorter.
+        public const int MaxText = 32768;
         readonly ScriptLog scripts = new ScriptLog();
         readonly DownloadLog downloads = new DownloadLog();
 
@@ -118,6 +120,8 @@ namespace TrackVice
             if (source != "AppWorkload" && scripts.Read(l, source, output)) return;
             if (t.IndexOf("Win32App", StringComparison.OrdinalIgnoreCase) < 0 && source != "AgentExecutor" && source != "AppWorkload") return;
             if (ReadPolicies(l, t, output)) return;
+            // A line can come from an upload anyone with the link can write: the patterns below only see its start.
+            if (t.Length > MaxText) t = t.Substring(0, MaxText);
             string thread = l.Thread ?? "";
             string id = null;
             // "for user with id: <user> and app: <app>": the first ID is the user, and all zeros means the device.

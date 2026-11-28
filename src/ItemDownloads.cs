@@ -4,8 +4,10 @@ namespace TrackVice
     using System.Collections.Generic;
     using System.Globalization;
     using System.IO;
+    using System.Runtime.InteropServices;
     using System.Text;
     using System.Xml;
+    using Microsoft.Win32.SafeHandles;
 
     // Download of a script or the details of an app from an item in a deployment. It is off for every customer until
     // it is turned on in Settings. App files are never downloaded, only a text with the details.
@@ -100,26 +102,51 @@ namespace TrackVice
         }
     }
 
-    // Names of saved files: no path characters, no names Windows keeps for itself, not too long.
+    // Names of saved files: no path characters, no names Windows keeps for itself, not too long. The name comes from
+    // Intune or from a log, so it also loses the invisible characters that can make "x.ps1" look like "x.txt".
     public static class DlNames
     {
-        static readonly string[] Reserved = { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
+        static readonly string[] Reserved = { "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$",
+            "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM\u00b9", "COM\u00b2", "COM\u00b3",
+            "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT\u00b9", "LPT\u00b2", "LPT\u00b3" };
+
+        static bool Bad(char c)
+        {
+            if (char.IsControl(c) || "\\/:*?\"<>|".IndexOf(c) >= 0) return true;
+            UnicodeCategory u = CharUnicodeInfo.GetUnicodeCategory(c);
+            return u == UnicodeCategory.Format || u == UnicodeCategory.LineSeparator || u == UnicodeCategory.ParagraphSeparator;
+        }
+
+        // Windows takes "NUL.txt" and "com1.tar.gz" for the device too: what counts is the part before the first dot.
+        public static bool IsReserved(string name)
+        {
+            string s = name ?? "";
+            int dot = s.IndexOf('.');
+            if (dot >= 0) s = s.Substring(0, dot);
+            s = s.TrimEnd(' ');
+            foreach (string r in Reserved)
+                if (string.Equals(s, r, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
 
         public static string Safe(string name, string extension)
         {
             StringBuilder b = new StringBuilder();
             foreach (char c in name ?? "")
             {
-                if (c < ' ' || "\\/:*?\"<>|".IndexOf(c) >= 0) b.Append('_');
+                if (Bad(c)) b.Append('_');
                 else b.Append(c);
             }
             string s = b.ToString().Trim().TrimEnd('.', ' ');
             while (s.Contains("  ")) s = s.Replace("  ", " ");
             while (s.Contains("__")) s = s.Replace("__", "_");
-            if (s.Length > 80) s = s.Substring(0, 80).TrimEnd('.', ' ');
+            if (s.Length > 80)
+            {
+                int cut = char.IsHighSurrogate(s[79]) ? 79 : 80;
+                s = s.Substring(0, cut).TrimEnd('.', ' ');
+            }
             if (s.Length == 0 || s.Trim('_', '.', ' ').Length == 0) s = "download";
-            foreach (string r in Reserved)
-                if (string.Equals(s, r, StringComparison.OrdinalIgnoreCase)) { s = "_" + s; break; }
+            if (IsReserved(s)) s = "_" + s;
             string e = extension ?? "";
             if (e.Length > 0 && e[0] != '.') e = "." + e;
             foreach (char c in e) if (!(char.IsLetterOrDigit(c) || c == '.')) { e = ".txt"; break; }
@@ -181,7 +208,7 @@ namespace TrackVice
         {
             if (string.IsNullOrEmpty(s)) return "-";
             StringBuilder b = new StringBuilder();
-            foreach (char c in s) b.Append(c < ' ' ? ' ' : c);
+            foreach (char c in s) b.Append(char.IsControl(c) || c == '\u2028' || c == '\u2029' ? ' ' : c);
             return b.ToString().Trim();
         }
 
@@ -191,6 +218,41 @@ namespace TrackVice
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             File.AppendAllText(path, Line(now(), user, customer, item, file) + "\r\n", new UTF8Encoding(false));
         }
+    }
+
+    // Writes a download and marks it as coming from the internet, the way a browser does, so Windows warns before it runs
+    // and PowerShell with RemoteSigned does not run the script unsigned. The mark is left out where the disk cannot hold it.
+    public static class DlSave
+    {
+        public const string ZoneStream = ":Zone.Identifier";
+        public const string ZoneText = "[ZoneTransfer]\r\nZoneId=3\r\n";
+
+        // True when the file was also marked.
+        public static bool Write(string file, string text)
+        {
+            File.WriteAllText(file, text ?? "", new UTF8Encoding(true));
+            try { return Mark(file); }
+            catch (Exception) { return false; }
+        }
+
+        static bool Mark(string file)
+        {
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT) return false;
+            // .NET Framework 4.5 refuses a path with a stream name, so the stream is opened with CreateFile.
+            using (SafeFileHandle h = CreateFileW(Path.GetFullPath(file) + ZoneStream, 0x40000000, 0, IntPtr.Zero, 2, 0x80, IntPtr.Zero))
+            {
+                if (h.IsInvalid) return false;
+                using (FileStream f = new FileStream(h, FileAccess.Write))
+                {
+                    byte[] b = Encoding.ASCII.GetBytes(ZoneText);
+                    f.Write(b, 0, b.Length);
+                }
+            }
+            return true;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
     }
 
     // The permission of the customer in use.
@@ -356,7 +418,7 @@ namespace TrackVice
                 {
                     try
                     {
-                        foreach (Dictionary<string, object> a in q.Query("SELECT CollectionName, OfferTypeID FROM SMS_ApplicationAssignment WHERE ApplicationName = '" + name.Replace("'", "''") + "'"))
+                        foreach (Dictionary<string, object> a in q.Query("SELECT CollectionName, OfferTypeID FROM SMS_ApplicationAssignment WHERE ApplicationName = " + AppText.Wql(name)))
                             assigned.Add(SccmCatalog.Str(a, "CollectionName") + " (" + AppText.Offer(SccmCatalog.Int(a, "OfferTypeID")) + ")");
                     }
                     catch (Exception) { }
@@ -412,6 +474,12 @@ namespace TrackVice
     // The details of an app as text. Only what the source gives is written.
     public static class AppText
     {
+        // A string in a WQL query. WQL escapes with a backslash; a doubled quote ends the string instead.
+        public static string Wql(string s)
+        {
+            return "'" + (s ?? "").Replace("\\", "\\\\").Replace("'", "\\'") + "'";
+        }
+
         public static bool SafeModel(string m)
         {
             if (string.IsNullOrEmpty(m) || m.Length > 200) return false;

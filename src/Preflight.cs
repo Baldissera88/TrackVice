@@ -735,30 +735,40 @@ namespace TrackVice
             }
         }
 
+        // Names of apps, groups and profiles come from Intune: one line each, so a name cannot add lines of its own,
+        // such as a "✓" line that looks like a passed check.
+        public static string Flat(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            StringBuilder b = new StringBuilder(s.Length);
+            foreach (char c in s) b.Append(char.IsControl(c) || c == '\u2028' || c == '\u2029' ? ' ' : c);
+            return b.ToString();
+        }
+
         public static string ToText(List<PfResult> results, string customer, DateTime nowUtc)
         {
             StringBuilder b = new StringBuilder();
-            b.Append("Pre-flight check").Append(string.IsNullOrEmpty(customer) ? "" : ", " + customer).Append(", ").Append(nowUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)).Append("\r\n");
+            b.Append("Pre-flight check").Append(string.IsNullOrEmpty(customer) ? "" : ", " + Flat(customer)).Append(", ").Append(nowUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)).Append("\r\n");
             int ready, check, fail;
             Count(results, out ready, out check, out fail);
             b.Append(Plural(results.Count, "device", "devices")).Append(": ").Append(N(ready)).Append(" ready, ").Append(N(check)).Append(" to check, ").Append(N(fail)).Append(" will fail\r\n");
             foreach (PfResult r in results)
             {
-                b.Append("\r\n").Append(r.Serial);
-                if (r.Title != r.Serial) b.Append(" (").Append(r.Title).Append(")");
+                b.Append("\r\n").Append(Flat(r.Serial));
+                if (r.Title != r.Serial) b.Append(" (").Append(Flat(r.Title)).Append(")");
                 b.Append(": ").Append(r.VerdictText.ToUpperInvariant()).Append("\r\n");
                 if (r.Facts.Count > 0)
                 {
                     List<string> facts = new List<string>();
-                    foreach (string[] f in r.Facts) facts.Add(f[0] + ": " + f[1]);
+                    foreach (string[] f in r.Facts) facts.Add(f[0] + ": " + Flat(f[1]));
                     b.Append("  ").Append(string.Join(", ", facts.ToArray())).Append("\r\n");
                 }
                 string group = null;
                 foreach (PfFinding f in r.Findings)
                 {
                     if (f.Group != group) { group = f.Group; b.Append("  ").Append(group).Append("\r\n"); }
-                    b.Append("    ").Append(Mark(f.Level)).Append(' ').Append(f.Text).Append("\r\n");
-                    if (f.Fix != null && f.Level != PfLevel.Ok) b.Append("        Fix: ").Append(f.Fix).Append("\r\n");
+                    b.Append("    ").Append(Mark(f.Level)).Append(' ').Append(Flat(f.Text)).Append("\r\n");
+                    if (f.Fix != null && f.Level != PfLevel.Ok) b.Append("        Fix: ").Append(Flat(f.Fix)).Append("\r\n");
                 }
             }
             return b.ToString();

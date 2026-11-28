@@ -23,9 +23,10 @@ namespace TrackVice
             ExpectedQuery q = new ExpectedQuery();
             if (s == null) return q;
             q.IntuneDeviceId = s.GetInfo(DeviceFacts.IntuneId);
-            q.Serial = s.GetInfo(DeviceFacts.Serial) ?? s.GetInfo("Serial");
-            q.DeviceName = s.Computer;
-            string upn = s.GetInfo(DeviceFacts.User);
+            // The device says these about itself, so they are only asked about when they look like what they should be.
+            q.Serial = GraphLinks.Reported(s.GetInfo(DeviceFacts.Serial) ?? s.GetInfo("Serial"), 128);
+            q.DeviceName = GraphLinks.Reported(s.Computer, 128);
+            string upn = GraphLinks.Reported(s.GetInfo(DeviceFacts.User), 256);
             if (upn != null && upn.IndexOf('@') > 0) q.UserUpn = upn;
             return q;
         }
@@ -144,7 +145,7 @@ namespace TrackVice
                     DateTime s = ImeTime.Parse(Http.Str(d, "lastSyncDateTime")) ?? DateTime.MinValue;
                     if (best == null || s > bestSync) { best = d; bestSync = s; }
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = GraphLinks.Next(r);
             }
             return best;
         }

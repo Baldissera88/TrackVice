@@ -64,6 +64,39 @@ namespace TrackVice
         }
     }
 
+    // Where a list from Microsoft Graph may go on. The sign-in token is sent with every page, so the link to the next
+    // page is followed only when it stays on Microsoft Graph over HTTPS.
+    public static class GraphLinks
+    {
+        public const string Host = "graph.microsoft.com";
+
+        public static bool Trusted(string url)
+        {
+            Uri u;
+            if (string.IsNullOrEmpty(url) || !Uri.TryCreate(url, UriKind.Absolute, out u)) return false;
+            return u.Scheme == Uri.UriSchemeHttps && u.IsDefaultPort && u.UserInfo.Length == 0 && string.Equals(u.Host, Host, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // The link to the next page, or null when there is none. A link that leaves Microsoft Graph stops the read.
+        public static string Next(Dictionary<string, object> r)
+        {
+            string url = Http.Str(r, "@odata.nextLink");
+            if (string.IsNullOrEmpty(url)) return null;
+            if (!Trusted(url)) throw new GraphException("Microsoft Graph gave a link to the next page that does not point to " + Host + ", so it was not followed.");
+            return url;
+        }
+
+        // A serial number, device name or user name a device reported about itself, before Intune is asked about it:
+        // trimmed, and null when it is empty, too long or has control characters.
+        public static string Reported(string value, int max)
+        {
+            string v = (value ?? "").Trim();
+            if (v.Length == 0 || v.Length > max) return null;
+            foreach (char c in v) if (char.IsControl(c) || c == '\u2028' || c == '\u2029') return null;
+            return v;
+        }
+    }
+
     // Reads names and configuration profile states from Intune through Microsoft Graph. Read-only.
     public static class IntuneLookup
     {
@@ -79,7 +112,8 @@ namespace TrackVice
             LookupResult r = new LookupResult();
             if (c.Scripts)
             {
-                try { r.Scripts = Merge(r.Names, IntuneNames.Scripts(g)); }
+                // Read with Names, which follows a next page only on Microsoft Graph.
+                try { r.Scripts = Merge(r.Names, Names(g, IntuneNames.ScriptsUrl)); }
                 catch (Exception ex) { r.Problems.Add(Problem("Script names", GraphClient.ScriptScope, ex)); }
             }
             if (c.Apps)
@@ -94,6 +128,7 @@ namespace TrackVice
             }
             if (c.Profiles)
             {
+                deviceName = GraphLinks.Reported(deviceName, 128);
                 if (string.IsNullOrEmpty(deviceName)) r.DeviceNote = "The device has no name yet, so its configuration profiles were not read.";
                 else
                 {
@@ -143,7 +178,7 @@ namespace TrackVice
                     string id = Http.Str(d, "id"), name = Http.Str(d, "displayName");
                     if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name)) names[id.Trim('{', '}')] = name;
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = GraphLinks.Next(r);
             }
             return names;
         }
@@ -178,7 +213,7 @@ namespace TrackVice
             {
                 Dictionary<string, object> r = g.Get(url);
                 found.AddRange(Values(r));
-                url = Http.Str(r, "@odata.nextLink");
+                url = GraphLinks.Next(r);
             }
             if (found.Count == 0)
             {
@@ -247,7 +282,7 @@ namespace TrackVice
                     o.Evidence = new Evidence(EvidenceKinds.Graph, ProfilesUrl(deviceId), 0, "displayName = " + name + ", state = " + raw);
                     list.Add(o);
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = GraphLinks.Next(r);
             }
             return list;
         }

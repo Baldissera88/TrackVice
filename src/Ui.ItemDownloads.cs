@@ -192,7 +192,8 @@ namespace TrackVice
                 d.Title = hidden ? "Save as. Secrets in the text were hidden." : "Save as";
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 string file = d.FileName;
-                File.WriteAllText(file, text, new UTF8Encoding(true));
+                // Marked as from the internet, so Windows asks before it runs.
+                DlSave.Write(file, text);
                 string note = "";
                 if (!demo)
                 {

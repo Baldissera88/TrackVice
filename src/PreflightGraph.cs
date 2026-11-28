@@ -120,6 +120,12 @@ namespace TrackVice
             PfDevice d = new PfDevice();
             d.Serial = serial;
             List<Dictionary<string, object>> exact = new List<Dictionary<string, object>>();
+            // contains() with an empty or odd value would page through every Autopilot device of the tenant.
+            if (GraphLinks.Reported(serial, 64) == null)
+            {
+                d.Problem = "This is not a serial number that can be looked up in Autopilot.";
+                return d;
+            }
             try
             {
                 string url = ReadinessCheck.FindUrl(serial);
@@ -128,7 +134,7 @@ namespace TrackVice
                     Dictionary<string, object> r = graph.Get(url);
                     foreach (Dictionary<string, object> x in Values(r))
                         if (string.Equals((Http.Str(x, "serialNumber") ?? "").Trim(), serial, StringComparison.OrdinalIgnoreCase)) exact.Add(x);
-                    url = Http.Str(r, "@odata.nextLink");
+                    url = GraphLinks.Next(r);
                 }
             }
             catch (Exception ex)
@@ -231,7 +237,7 @@ namespace TrackVice
                         string gid = Http.Str(x, "id");
                         if (!string.IsNullOrEmpty(gid)) kept[gid] = Http.Str(x, "displayName") ?? gid;
                     }
-                    url = Http.Str(r, "@odata.nextLink");
+                    url = GraphLinks.Next(r);
                 }
                 userGroups[d.User] = kept;
                 d.UserGroups = kept;
@@ -295,7 +301,7 @@ namespace TrackVice
                     PfApp a = ToApp(x);
                     if (a != null) apps[a.Id] = a;
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = GraphLinks.Next(r);
             }
             return apps;
         }
@@ -385,7 +391,7 @@ namespace TrackVice
                     if (rel.TargetId.Length == 0) continue;
                     list.Add(rel);
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = GraphLinks.Next(r);
             }
             return list;
         }
