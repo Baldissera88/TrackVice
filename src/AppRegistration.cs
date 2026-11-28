@@ -75,6 +75,8 @@ namespace TrackVice
         public string ObjectId, ClientId, Tenant, ConsentLink;
         // The app was there already, so nothing was made for it.
         public bool Existed;
+        // For an app that was there: what does not fit a public client of TrackVice, such as a secret or another redirect URI.
+        public readonly List<string> Problems = new List<string>();
         // The enterprise application (service principal) was made now.
         public bool MadePrincipal;
     }
@@ -176,10 +178,12 @@ namespace TrackVice
             return null;
         }
 
+        public const string FindSelect = "id,appId,displayName,signInAudience,passwordCredentials,keyCredentials,web,spa,publicClient";
+
         // The app with this name, when the tenant has one. Reads only.
         public AppRegistrationResult Find(string name)
         {
-            Dictionary<string, object> d = First(FilterUrl(ApplicationsUrl, "displayName eq '" + Quote(name) + "'", "id,appId,displayName"), "read the app registrations", SetupErrors.GraphUse.AppRegistration);
+            Dictionary<string, object> d = First(FilterUrl(ApplicationsUrl, "displayName eq '" + Quote(name) + "'", FindSelect), "read the app registrations", SetupErrors.GraphUse.AppRegistration);
             if (d == null) return null;
             AppRegistrationResult x = new AppRegistrationResult();
             x.ObjectId = Http.Str(d, "id");
@@ -187,13 +191,59 @@ namespace TrackVice
             x.Existed = true;
             x.Tenant = AddCustomerRun.TenantOf(token());
             x.ConsentLink = ConsentLink(x.Tenant, x.ClientId);
+            x.Problems.AddRange(Problems(d));
             return string.IsNullOrEmpty(x.ClientId) ? null : x;
         }
 
-        // Makes the app and its enterprise application. An app of that name that exists is kept as it is.
+        static int Count(Dictionary<string, object> d, string member)
+        {
+            List<object> l = ImeJson.Get(d, member) as List<object>;
+            return l == null ? 0 : l.Count;
+        }
+
+        // What an app of the same name has that the app TrackVice makes has not. Anyone who may register apps can make
+        // one named TrackVice; with a secret or a redirect URI of its owner, the admin consent for it would serve them.
+        public static List<string> Problems(Dictionary<string, object> app)
+        {
+            List<string> l = new List<string>();
+            int secrets = Count(app, "passwordCredentials"), certs = Count(app, "keyCredentials");
+            if (secrets > 0) l.Add("it has " + secrets + (secrets == 1 ? " client secret" : " client secrets"));
+            if (certs > 0) l.Add("it has " + certs + (certs == 1 ? " certificate" : " certificates"));
+            string audience = Http.Str(app, "signInAudience");
+            if (!string.IsNullOrEmpty(audience) && !string.Equals(audience, "AzureADMyOrg", StringComparison.OrdinalIgnoreCase)) l.Add("it lets accounts of other tenants sign in (" + audience + ")");
+            List<string> uris = new List<string>();
+            foreach (string kind in new string[] { "web", "spa", "publicClient" })
+            {
+                List<object> r = ImeJson.Get(ImeJson.Get(app, kind) as Dictionary<string, object>, "redirectUris") as List<object>;
+                if (r == null) continue;
+                foreach (object o in r)
+                {
+                    string u = o as string;
+                    if (!string.IsNullOrEmpty(u) && (kind != "publicClient" || !KnownPublicRedirect(u))) uris.Add(u);
+                }
+            }
+            if (uris.Count > 0) l.Add("it has other redirect URIs: " + Txt.Short(string.Join(", ", uris.ToArray()), 300));
+            return l;
+        }
+
+        // A redirect URI of a desktop app that returns to Microsoft or to this computer only: the ones the portal suggests.
+        public static bool KnownPublicRedirect(string uri)
+        {
+            Uri u;
+            if (!Uri.TryCreate(uri ?? "", UriKind.Absolute, out u)) return false;
+            if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return true;
+            string h = u.Host.ToLowerInvariant();
+            if (u.Scheme == Uri.UriSchemeHttp) return h == "localhost" || h == "127.0.0.1" || h == "[::1]";
+            return h == "login.microsoftonline.com" || h == "login.live.com";
+        }
+
+        // Makes the app and its enterprise application. An app of that name that exists is kept as it is, and used only
+        // when it has nothing that TrackVice's own app would not have.
         public AppRegistrationResult Make(string name)
         {
             AppRegistrationResult x = Find(name);
+            if (x != null && x.Problems.Count > 0)
+                throw new SetupException("The app registration " + name + " in this tenant (Client ID " + x.ClientId + ") is not one TrackVice made: " + string.Join("; ", x.Problems.ToArray()) + ". TrackVice does not use it. Check who made it, or remove it and press Make again.");
             if (x == null)
             {
                 WebReply r = Send("POST", ApplicationsUrl, ApplicationBody(name));

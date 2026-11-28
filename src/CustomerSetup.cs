@@ -88,12 +88,25 @@ namespace TrackVice
 
     public sealed class HttpWeb : IWeb
     {
+        // The most of an answer that is read. The answers of the setup are small JSON documents.
+        public const int MaxReply = 32 * 1024 * 1024;
+
+        // A call with a token or a signed link is not sent on to where a redirect points: the answer is returned as it is.
+        public static bool Follows(WebCall call)
+        {
+            if (call.Headers.ContainsKey("Authorization")) return false;
+            string u = call.Url ?? "";
+            int q = u.IndexOf('?');
+            return q < 0 || !System.Text.RegularExpressions.Regex.IsMatch(u.Substring(q), "[?&]sig=", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
         public WebReply Send(WebCall call)
         {
             HttpWebRequest req = Http.Request(call.Url);
             req.Method = call.Method;
             req.Timeout = 300000;
             req.ReadWriteTimeout = 300000;
+            req.AllowAutoRedirect = Follows(call);
             foreach (KeyValuePair<string, string> h in call.Headers)
             {
                 if (string.Equals(h.Key, "Accept", StringComparison.OrdinalIgnoreCase)) req.Accept = h.Value;
@@ -119,9 +132,22 @@ namespace TrackVice
                 r.Status = (int)resp.StatusCode;
                 foreach (string k in resp.Headers.AllKeys) r.Headers[k] = resp.Headers[k];
                 if (call.Method != "HEAD")
-                    using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8)) r.Text = sr.ReadToEnd();
+                    using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8)) r.Text = ReadCapped(sr, MaxReply);
                 return r;
             }
+        }
+
+        public static string ReadCapped(TextReader r, int max)
+        {
+            StringBuilder b = new StringBuilder();
+            char[] buf = new char[8192];
+            int n;
+            while ((n = r.Read(buf, 0, buf.Length)) > 0)
+            {
+                if (b.Length + n > max) throw new SetupException("The answer is larger than " + (max / 1048576) + " MB. It was not read.");
+                b.Append(buf, 0, n);
+            }
+            return b.ToString();
         }
     }
 
@@ -301,13 +327,26 @@ namespace TrackVice
             DeviceCode d = new DeviceCode();
             d.Code = Http.Str(r, "device_code");
             d.UserCode = Http.Str(r, "user_code");
-            d.VerificationUri = Http.Str(r, "verification_uri") ?? "https://microsoft.com/devicelogin";
+            d.VerificationUri = VerificationPage(Http.Str(r, "verification_uri"));
             long? i = ImeJson.Long(ImeJson.Get(r, "interval"));
             long? e = ImeJson.Long(ImeJson.Get(r, "expires_in"));
             if (i.HasValue && i.Value >= 0) d.Interval = (int)i.Value;
             if (e.HasValue && e.Value > 0) d.ExpiresIn = (int)e.Value;
             if (string.IsNullOrEmpty(d.Code) || string.IsNullOrEmpty(d.UserCode)) throw new SetupException("The sign-in service did not return a code.");
             return d;
+        }
+
+        public const string DefaultVerificationPage = "https://microsoft.com/devicelogin";
+
+        // The page the person enters the code on. The window opens it, so only an https page of Microsoft is taken.
+        public static string VerificationPage(string uri)
+        {
+            Uri u;
+            if (string.IsNullOrEmpty(uri) || !Uri.TryCreate(uri, UriKind.Absolute, out u) || u.Scheme != Uri.UriSchemeHttps || !u.IsDefaultPort || u.UserInfo.Length > 0) return DefaultVerificationPage;
+            string h = u.Host.ToLowerInvariant();
+            foreach (string ok in new string[] { "microsoft.com", "microsoftonline.com" })
+                if (h == ok || h.EndsWith("." + ok, StringComparison.Ordinal)) return u.AbsoluteUri;
+            return DefaultVerificationPage;
         }
 
         public void Wait(DeviceCode d, WaitHandle cancel)
@@ -462,8 +501,20 @@ namespace TrackVice
 
         WebReply Call(string method, string path, object body)
         {
-            string url = path.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? path : Base + path;
+            string url = Absolute(path);
             return web.Send(WebCall.Json(method, url, token(), body == null ? null : SetupJson.Write(body)));
+        }
+
+        // The address a path or link of Azure Resource Manager is sent to. Links in answers (nextLink, Location,
+        // Azure-AsyncOperation) get the token too, so only ones on management.azure.com are taken.
+        public static string Absolute(string path)
+        {
+            string p = path ?? "";
+            if (p.StartsWith("/", StringComparison.Ordinal) && !p.StartsWith("//", StringComparison.Ordinal)) return Base + p;
+            Uri u;
+            if (Uri.TryCreate(p, UriKind.Absolute, out u) && u.Scheme == Uri.UriSchemeHttps && u.IsDefaultPort && u.UserInfo.Length == 0
+                && string.Equals(u.Host, new Uri(Base).Host, StringComparison.OrdinalIgnoreCase)) return p;
+            throw new SetupException("Azure returned a link that is not on " + new Uri(Base).Host + ". It was not followed.");
         }
 
         // Any other request to Azure Resource Manager, with the sign-in of this instance.

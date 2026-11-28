@@ -271,6 +271,8 @@ namespace TrackVice
             this.web = web;
             int q = (link ?? "").IndexOf('?');
             if (q < 0) throw new StoreException("The link has no access token.");
+            // The access token is never sent in the clear.
+            if (!link.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) throw new StoreException("The link is not an https address.");
             container = link.Substring(0, q).TrimEnd('/');
             sas = link.Substring(q + 1);
         }
@@ -283,7 +285,12 @@ namespace TrackVice
         string Url(string name)
         {
             List<string> parts = new List<string>();
-            foreach (string p in name.Split('/')) parts.Add(Uri.EscapeDataString(p));
+            foreach (string p in (name ?? "").Split('/'))
+            {
+                // . and .. would be resolved out of the container by the request.
+                if (p.Length == 0 || p == "." || p == "..") throw new StoreException("The name " + name + " cannot be used in a container.");
+                parts.Add(Uri.EscapeDataString(p));
+            }
             return container + "/" + string.Join("/", parts.ToArray()) + "?" + sas;
         }
 
@@ -486,6 +493,21 @@ namespace TrackVice
             s.Save(Name(customer), code);
         }
 
+        // The code, trimmed, when it is one TrackVice makes: tv1: and base64url only, and it reads with every link https.
+        // Codes can come from a key vault that others write to, and the code goes into a script that runs as System.
+        public static string Checked(string code)
+        {
+            string s = (code ?? "").Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(s, "^" + System.Text.RegularExpressions.Regex.Escape(CustomerCode.Prefix) + "[A-Za-z0-9_-]+$"))
+                throw new SetupException("This is not a customer code TrackVice makes. Make it again in Add customer.");
+            CustomerCode c;
+            try { c = CustomerCode.Parse(s); }
+            catch (ArgumentException ex) { throw new SetupException(ex.Message); }
+            string p = c.Problem();
+            if (p != null) throw new SetupException(p);
+            return s;
+        }
+
         // tv1:abcdef... with the rest hidden, for the window.
         public static string Masked(string code)
         {
@@ -540,14 +562,38 @@ namespace TrackVice
             return l;
         }
 
-        public static string GroupUrl(string name)
+        // The next page of a Graph list, or null. The token goes with it, so only a link on Microsoft Graph is followed.
+        public static string NextLink(Dictionary<string, object> page)
         {
-            return GroupsUrl + "?$filter=" + Uri.EscapeDataString("displayName eq '" + (name ?? "").Replace("'", "''") + "'") + "&$select=id,displayName";
+            string next = Http.Str(page, "@odata.nextLink");
+            if (string.IsNullOrEmpty(next)) return null;
+            Uri u;
+            if (!Uri.TryCreate(next, UriKind.Absolute, out u) || u.Scheme != Uri.UriSchemeHttps || !string.Equals(u.Host, "graph.microsoft.com", StringComparison.OrdinalIgnoreCase) || !u.IsDefaultPort || u.UserInfo.Length > 0)
+                throw new SetupException("Microsoft Graph returned a next page that is not on graph.microsoft.com. It was not followed.");
+            return next;
         }
 
-        // The group with exactly this name, or null.
+        // The tenant ID of the sign-in, or null when the token does not say.
+        public string Tenant()
+        {
+            return AddCustomerRun.TenantOf(token());
+        }
+
+        public static string GroupUrl(string name)
+        {
+            return GroupsUrl + "?$filter=" + Uri.EscapeDataString("displayName eq '" + (name ?? "").Replace("'", "''") + "'") + "&$select=id,displayName,groupTypes,membershipRule";
+        }
+
+        // The group with exactly this name, or null. Rule is its membership rule, empty for a group with assigned members.
         public DirectoryGroup FindGroup(string name)
         {
+            string rule;
+            return FindGroup(name, out rule);
+        }
+
+        public DirectoryGroup FindGroup(string name, out string rule)
+        {
+            rule = "";
             WebReply r = Send("GET", GroupUrl(name), null);
             if (r.Status != 200) throw Fail(r, "read the groups");
             foreach (Dictionary<string, object> d in Values(r))
@@ -556,6 +602,7 @@ namespace TrackVice
                 DirectoryGroup g = new DirectoryGroup();
                 g.Id = Http.Str(d, "id");
                 g.Name = Http.Str(d, "displayName");
+                rule = Http.Str(d, "membershipRule") ?? "";
                 if (!string.IsNullOrEmpty(g.Id)) return g;
             }
             return null;
@@ -595,7 +642,7 @@ namespace TrackVice
                 if (r.Status != 200) throw Fail(r, "read the platform scripts");
                 foreach (Dictionary<string, object> d in Values(r))
                     if (string.Equals(Http.Str(d, "displayName"), name, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(Http.Str(d, "id"))) return Http.Str(d, "id");
-                url = Http.Str(r.Json, "@odata.nextLink");
+                url = NextLink(r.Json);
             }
             return null;
         }
@@ -611,15 +658,25 @@ namespace TrackVice
             if (r.Status != 200 && r.Status != 204) throw Fail(r, "change the platform script " + name);
         }
 
+        // The groups the script is assigned to. Excluded groups are not in it.
         public List<string> AssignedGroups(string id)
+        {
+            List<string> l = new List<string>();
+            foreach (ScriptAssignment a in Assignments(id))
+                if (a.Kind == TargetKind.Group && a.GroupId.Length > 0) l.Add(a.GroupId);
+            return l;
+        }
+
+        // Every assignment of the script with its kind, so a change can send exclusions and All devices back as they are.
+        public List<ScriptAssignment> Assignments(string id)
         {
             WebReply r = Send("GET", IntuneScripts.ScriptsUrl + "/" + Uri.EscapeDataString(id) + "/assignments", null);
             if (r.Status != 200) throw Fail(r, "read the assignments of the platform script");
-            List<string> l = new List<string>();
+            List<ScriptAssignment> l = new List<ScriptAssignment>();
             foreach (Dictionary<string, object> d in Values(r))
             {
-                string g = Http.Str(ImeJson.Get(d, "target") as Dictionary<string, object>, "groupId");
-                if (!string.IsNullOrEmpty(g)) l.Add(g);
+                Dictionary<string, object> t = ImeJson.Get(d, "target") as Dictionary<string, object>;
+                if (t != null) l.Add(ScriptChecker.Parse(t));
             }
             return l;
         }
@@ -627,9 +684,19 @@ namespace TrackVice
         // The assign action replaces every assignment, so the ones the script has are sent with the new group.
         public void Assign(string id, List<string> groups)
         {
-            List<object> l = new List<object>();
-            foreach (string g in groups) l.Add(SetupJson.Obj("target", SetupJson.Obj("@odata.type", "#microsoft.graph.groupAssignmentTarget", "groupId", g)));
-            WebReply r = Send("POST", IntuneScripts.ScriptsUrl + "/" + Uri.EscapeDataString(id) + "/assign", SetupJson.Obj("deviceManagementScriptAssignments", l));
+            List<ScriptAssignment> l = new List<ScriptAssignment>();
+            foreach (string g in groups)
+            {
+                ScriptAssignment a = new ScriptAssignment();
+                a.GroupId = g;
+                l.Add(a);
+            }
+            Assign(id, l);
+        }
+
+        public void Assign(string id, List<ScriptAssignment> assignments)
+        {
+            WebReply r = Send("POST", IntuneScripts.ScriptsUrl + "/" + Uri.EscapeDataString(id) + "/assign", ScriptChecker.AssignBody(assignments));
             if (r.Status != 204 && r.Status != 200) throw Fail(r, "assign the platform script");
         }
     }
@@ -680,6 +747,32 @@ namespace TrackVice
                 return Http.Str(ImeJson.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(p))) as Dictionary<string, object>, "tid");
             }
             catch (Exception) { return null; }
+        }
+
+        // Null, or why the Intune sign-in, to the tenant with the ID tid, must not change Intune for this customer: the
+        // customer is kept with another tenant ID, or the tenant is the one of another customer. A sign-in that was kept
+        // from an earlier customer would otherwise put this customer's script, and its upload link, in that tenant.
+        public static string TenantProblem(CustomerBook book, string customer, string tid)
+        {
+            string t = (tid ?? "").Trim();
+            if (!GraphClient.IsGuid(t)) return null;
+            Customer have = book == null ? null : book.Find((customer ?? "").Trim());
+            if (have != null && GraphClient.IsGuid((have.Tenant ?? "").Trim()) && !string.Equals(have.Tenant.Trim(), t, StringComparison.OrdinalIgnoreCase))
+                return "The Intune sign-in is to the tenant " + t + ", but " + have.Name + " is in the tenant " + have.Tenant.Trim() + ". Sign in again to the customer's tenant.";
+            return null;
+        }
+
+        // The other customer kept with the tenant ID tid, or null. Intune is changed for this customer only after a question.
+        public static Customer OtherInTenant(CustomerBook book, string customer, string tid)
+        {
+            string t = (tid ?? "").Trim();
+            if (book == null || !GraphClient.IsGuid(t)) return null;
+            string n = (customer ?? "").Trim();
+            Customer have = book.Find(n);
+            foreach (Customer c in book.All)
+                if (!string.Equals(c.Name, have != null ? have.Name : n, StringComparison.OrdinalIgnoreCase) && string.Equals((c.Tenant ?? "").Trim(), t, StringComparison.OrdinalIgnoreCase))
+                    return c;
+            return null;
         }
 
         // Make the group TrackVice - Autopilot devices and assign the script to it. Off leaves the script not assigned.
@@ -818,10 +911,14 @@ namespace TrackVice
         {
             if (AddScript && Target == ScriptTarget.NewGroup)
             {
-                Group = api.FindGroup(GroupName);
+                string rule;
+                Group = api.FindGroup(GroupName, out rule);
                 GroupReused = Group != null;
                 if (Group == null) Group = api.CreateGroup(GroupName, GroupRule);
-                Done.Add("Group " + GroupName + (GroupReused ? ", there already" : ", dynamic"));
+                // A group of that name made by someone else can hold any members, and the script runs as System on them.
+                if (GroupReused && !string.Equals((rule ?? "").Trim(), GroupRule, StringComparison.OrdinalIgnoreCase))
+                    Done.Add("Group " + GroupName + ", there already. It is not the dynamic group TrackVice makes (" + (string.IsNullOrEmpty(rule) ? "members are assigned" : "rule " + Txt.Short(rule.Trim(), 200)) + "): check who can change its members in Intune");
+                else Done.Add("Group " + GroupName + (GroupReused ? ", there already" : ", dynamic"));
             }
             else if (AddScript && Target == ScriptTarget.ChosenGroup)
             {
@@ -847,10 +944,20 @@ namespace TrackVice
                 else Done.Add("Platform script " + ScriptName + ", there already, content kept");
                 if (Group != null)
                 {
-                    List<string> have = ScriptExisted ? api.AssignedGroups(ScriptId) : new List<string>();
-                    if (!have.Contains(Group.Id))
+                    // Exclusions and All devices are sent back as they are: the assign action replaces every assignment.
+                    List<ScriptAssignment> have = ScriptExisted ? api.Assignments(ScriptId) : new List<ScriptAssignment>();
+                    bool there = false;
+                    foreach (ScriptAssignment a in have)
                     {
-                        have.Add(Group.Id);
+                        if (a.Kind == TargetKind.Group && a.GroupId.Length == 0)
+                            throw new SetupException("The platform script " + ScriptName + " has an assignment TrackVice cannot keep (" + (a.OdataType.Length > 0 ? a.OdataType : "no type") + "). Assign it to " + Group.Name + " in Intune.");
+                        if (a.Kind == TargetKind.Group && string.Equals(a.GroupId, Group.Id, StringComparison.OrdinalIgnoreCase)) there = true;
+                    }
+                    if (!there)
+                    {
+                        ScriptAssignment add = new ScriptAssignment();
+                        add.GroupId = Group.Id;
+                        have.Add(add);
                         api.Assign(ScriptId, have);
                         Done.Add("Assigned to " + Group.Name);
                     }
@@ -947,9 +1054,10 @@ namespace TrackVice
         // Puts the script for the code in the platform script TrackVice agent.
         public static string UpdateIntune(IntuneSetup api, string customer, string code)
         {
+            string checkedCode = CustomerCodes.Checked(code);
             string id = api.FindScript(AddCustomerRun.ScriptName);
             if (id == null) throw new SetupException("This tenant has no platform script called " + AddCustomerRun.ScriptName + ". Add customer adds it.");
-            api.UpdateScript(id, AddCustomerRun.ScriptName, AgentScript.FileName(customer), CustomerScript.For(code));
+            api.UpdateScript(id, AddCustomerRun.ScriptName, AgentScript.FileName(customer), CustomerScript.For(checkedCode));
             return id;
         }
     }

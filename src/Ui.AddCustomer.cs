@@ -329,6 +329,9 @@ namespace TrackVice
                 return false;
             }
             if (tAccount.Text.Length == 0) tAccount.Text = Arm.Suggest(run.Customer, 0);
+            // A customer that exists signs in to its own tenant, not to the one of the account.
+            Customer kept = ExistingName.Find(book, run.Customer);
+            if (kept != null && tTenant.Text.Trim().Length == 0 && !string.IsNullOrEmpty(kept.Tenant)) tTenant.Text = kept.Tenant.Trim();
             return true;
         }
 
@@ -535,7 +538,15 @@ namespace TrackVice
                 run.MakeCode(own, key);
                 if (api != null)
                 {
-                    try { run.ToIntune(api, AskReplace); }
+                    try
+                    {
+                        string tid = api.Tenant();
+                        string tp = AddCustomerRun.TenantProblem(book, run.Customer, tid);
+                        if (tp != null) throw new SetupException(tp);
+                        Customer other = AddCustomerRun.OtherInTenant(book, run.Customer, tid);
+                        if (other != null && !AskOtherTenant(other)) throw new SetupException("Nothing was changed in Intune: the sign-in is to the tenant of " + other.Name + ".");
+                        run.ToIntune(api, AskReplace);
+                    }
                     catch (Exception ex) { run.IntuneError = ex.Message; }
                 }
             }, delegate
@@ -552,6 +563,15 @@ namespace TrackVice
             bool yes = false;
             string q = "Intune in " + (run.Tenant.Length > 0 ? run.Tenant : "this tenant") + " has a platform script called " + AddCustomerRun.ScriptName + " already.\n\nReplace its content with the script for " + run.Customer + "? No keeps its content. Either way it is assigned to the group.";
             Invoke((MethodInvoker)delegate { yes = MessageBox.Show(this, q, "Add customer", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes; });
+            return yes;
+        }
+
+        bool AskOtherTenant(Customer other)
+        {
+            if (demo) return true;
+            bool yes = false;
+            string q = "The Intune sign-in is to the tenant of the customer " + other.Name + ".\n\nAdd the platform script for " + run.Customer + " to that tenant? Its devices would then upload to the container of " + run.Customer + ".";
+            Invoke((MethodInvoker)delegate { yes = MessageBox.Show(this, q, "Add customer", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes; });
             return yes;
         }
 
@@ -833,10 +853,26 @@ namespace TrackVice
         void UpdateIntune()
         {
             if (busy || graphIn == null || !graphIn.SignedIn) return;
-            if (!demo && MessageBox.Show(this, "Replace the content of the platform script " + AddCustomerRun.ScriptName + " in Intune with the script for this customer code?", "Customer code", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (!demo && MessageBox.Show(this, "Replace the content of the platform script " + AddCustomerRun.ScriptName + " in Intune" + (customer.Tenant.Length > 0 ? " in " + customer.Tenant : "") + (graphIn.Account != null ? ", signed in as " + graphIn.Account : "") + ", with the script for this customer code?", "Customer code", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             IntuneSetup api = new IntuneSetup(web, graphIn.Token);
             string c = code;
-            Work("Updating the script in Intune...", delegate { CustomerCodeChange.UpdateIntune(api, customer.Name, c); }, delegate
+            CustomerBook b = book ?? CustomerUi.Book;
+            string name = customer.Name;
+            Work("Updating the script in Intune...", delegate
+            {
+                string tid = api.Tenant();
+                string tp = AddCustomerRun.TenantProblem(b, name, tid);
+                if (tp != null) throw new SetupException(tp);
+                Customer other = AddCustomerRun.OtherInTenant(b, name, tid);
+                if (other != null && !demo)
+                {
+                    bool yes = false;
+                    string q = "The Intune sign-in is to the tenant of the customer " + other.Name + ".\n\nPut the script for " + name + " in that tenant? Its devices would then upload to the container of " + name + ".";
+                    Invoke((MethodInvoker)delegate { yes = MessageBox.Show(this, q, "Customer code", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes; });
+                    if (!yes) throw new SetupException("Nothing was changed in Intune: the sign-in is to the tenant of " + other.Name + ".");
+                }
+                CustomerCodeChange.UpdateIntune(api, name, c);
+            }, delegate
             {
                 updateText = "The platform script " + AddCustomerRun.ScriptName + " has the new content. Devices that run it from now on get the new customer code.";
             }, null);
