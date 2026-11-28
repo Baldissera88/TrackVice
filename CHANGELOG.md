@@ -1,5 +1,22 @@
 # Changelog
 
+## TrackVice 2.1.0
+
+28 November 2026.
+
+- **Collect diagnostics**: on a device with the TrackVice agent, Collect diagnostics asks the agent for its logs, the MDM diagnostics of Windows (Autopilot, enrollment, provisioning and TPM), `dsregcmd /status` and the Intune Management Extension registry keys. The request is signed with your update key, belongs to that one device, is valid for 2 hours and is used once. The agent only runs its own fixed list of tools; nothing in the request is run. The window shows Requested, Received, Collecting and Uploaded, then Open in LogVice or Save zip. The agent needs 2.1.0 or later: publish it with Publish agent update.
+- **Pre-flight check** (Devices > Intune / cloud): paste one or more serial numbers and TrackVice asks Intune whether each device will deploy: the Autopilot registration and profile, the device's groups, the Enrollment Status Page with its time limit compared with your earlier deployments, and the required apps with their dependencies and supersedence. Every device gets Ready, Check or Will fail, with what to fix. Read only. Copy as text.
+- **Customer report**: Export > Customer report (PDF) for one device, and Report... on Overview for all devices in a period. A clean, printable page with the result, the phases, every app, policy and step, what TrackVice found, network outages and restarts. It is saved as HTML and, with Microsoft Edge on the PC, as PDF. Secrets are masked as in Copy for ticket.
+- **Search, jump or act (Ctrl+K)**: one box for devices, the actions on the device in the window, pages and settings.
+- **A new look**, with the same information:
+  - The top of the device view has a progress ring with the time left, calmer number cards, and phases as connected steps. In a narrow window every card stays.
+  - The Progress list has a tile per kind, state pills, a bar under what is running, and phase headers that stay at the top while you scroll.
+  - The details of an item say what happened, the likely why and what to do, show the attempts on a small timeline, and put the evidence in a box with Open in LogVice at this line.
+  - Overview opens with the answer ("6 deploying · 3 need attention"), key figures, device cards with rings, a chart of the last 7 days and cards for what needs attention.
+  - The header shows where you are and the device's facts as chips. Compact, Wall, Gantt, Timeline, Findings, buttons, switches, tabs and the settings pages are redrawn.
+  - In the Vice theme, failures are red instead of pink, so they never look like the accent.
+  - Short animations, which are off when Windows animations are off or over Remote Desktop.
+
 ## TrackVice 2.0.11
 
 25 November 2026.

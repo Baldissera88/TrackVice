@@ -109,7 +109,7 @@ Findings say why something failed where the sources tell:
 - Microsoft 365 Apps and MSI apps from the MDM client show the status they reported, with its meaning.
 - **Not detected after install** shows the last detection result that was seen.
 
-![Findings for a failed task sequence](images/trackvice-findings-dark.png)
+![Findings for a failed Win32 app](images/trackvice-findings-dark.png)
 
 ## Gantt
 

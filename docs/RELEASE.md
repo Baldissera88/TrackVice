@@ -109,7 +109,7 @@ How a release is made, on the author's Windows PC. `release.ps1` does the build,
 
 ## Screenshots for the documentation
 
-The pictures in `docs/images/` come from the demos, so they hold no real data. Retake them when the look of a window changes, and for every major version, so the version in the status bar is right (the current ones show TrackVice 2.0.0).
+The pictures in `docs/images/` come from the demos, so they hold no real data. Retake them when the look of a window changes, and for every major version, so the version in the status bar is right (the current ones show TrackVice 2.1.0).
 
 Each picture is one command. `--page` chooses the window (the names are in the `--page` comments in `src/`, for example `overview`, `getstarted`, `yourstorage`, `addcustomer`, `keyvault`, `vaultsetup`, `names`, `downloads-confirm`, `publish`, `stats`, `compare`, `wall`, `tsagent`), `--tab` the step or tab, `--size` the size of the window and `--theme` the theme:
 

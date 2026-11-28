@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.0.11" src="https://img.shields.io/badge/version-2.0.11-005fb8">
+  <img alt="Version 2.1.0" src="https://img.shields.io/badge/version-2.1.0-005fb8">
   <a href="../../actions/workflows/build.yml"><img alt="Build" src="../../actions/workflows/build.yml/badge.svg"></a>
   <img alt="Windows 10, 11 and Server 2016 or later" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078d4">
   <img alt=".NET Framework 4.5 or later, included in Windows" src="https://img.shields.io/badge/.NET%20Framework-4.5%2B%20(in%20Windows)-512bd4">
@@ -25,7 +25,17 @@ It can also follow **other devices** from your own PC: Autopilot deployments as 
 
 **[Download the latest release](https://github.com/Baldissera88/TrackVice/releases/latest)**: `TrackVice.msi` or the portable `TrackVice.exe`. It needs .NET Framework 4.5 or later, which Windows 10 and 11 have. The files are not code signed, so SmartScreen warns on the first start. Each release has `SHA256SUMS.txt` with the hash of every file. TrackVice updates itself after that, see [Updates](docs/REFERENCE.md#updates). **Settings > Updates** has Check now, the release page and What's new.
 
-**On this page:** [What's new in 2.0](#whats-new-in-20) · [Quick start](#quick-start) · [Features](#features) · [Same setup on every PC](#same-setup-on-every-pc) · [Permissions](#permissions) · [Troubleshooting](#troubleshooting) · [Privacy](#privacy-and-data) · [More documentation](#more-documentation) · [Build from source](#build-from-source) · [License](#license)
+**On this page:** [What's new in 2.1](#whats-new-in-21) · [Quick start](#quick-start) · [Features](#features) · [Same setup on every PC](#same-setup-on-every-pc) · [Permissions](#permissions) · [Troubleshooting](#troubleshooting) · [Privacy](#privacy-and-data) · [More documentation](#more-documentation) · [Build from source](#build-from-source) · [License](#license)
+
+## What's new in 2.1
+
+- **Collect diagnostics** from a device with the agent: its logs, the MDM diagnostics of Windows, `dsregcmd /status` and the Intune Management Extension registry keys, with one click and without remote access to the device.
+- **Pre-flight check**: paste serial numbers and see, before the devices deploy, whether Intune is ready for them.
+- **Customer report**: a printable report per device or for all devices in a period, as HTML and PDF.
+- **Search, jump or act** with Ctrl+K: devices, actions, pages and settings in one box.
+- **A new look** with the same information: a progress ring with the time left, calmer cards, state pills, details that say what happened, why and what to do, and an Overview that starts with the answer.
+
+The full list is in [CHANGELOG.md](CHANGELOG.md).
 
 ## What's new in 2.0
 
@@ -117,7 +127,9 @@ The guide has every step, the customer code, the storage layout and what to do w
 
 <img src="docs/images/trackvice-overview-narrow.png" width="450" alt="The overview in a narrow window, 700 pixels wide">
 
-When you follow a deployment, the header shows how far it has come, its state and how long it has run. The tiles count items, in progress, waiting, failed and findings, and click to filter. Each phase is a card with its state and progress. **Progress** lists every item under its phase, with a live spinner, tries, duration and its last event. The details pane shows the result with the error decoded, every attempt, the command line, IDs and the raw log line.
+When you follow a deployment, the header shows how far it has come as a ring, the time left with the clock it should be done, its state and how long it has run. The cards count items, in progress, waiting, failed and findings, and click to filter. The phases are connected steps with their state and progress. **Progress** lists every item under its phase, with its state, tries, duration and its last event. The details pane says what happened, the likely why and what to do, shows every attempt on a small timeline, the command line, IDs and the raw log line, with Open in LogVice at that line.
+
+**Ctrl+K** opens one box to search, jump or act: a device, an action on the device in the window, a page or a setting.
 
 ### Timeline, Gantt and Findings
 
@@ -145,6 +157,24 @@ The finding types, and what each deployment type reads from, are in [docs/REFERE
 ![Autopilot deployments from Intune](docs/images/trackvice-intune-list.png)
 
 ![One device with the agent](docs/images/trackvice-agent-device.png)
+
+### Pre-flight check
+
+**Devices > Intune / cloud > Pre-flight check** asks Intune, before a device deploys, whether it will: is the serial number registered in Autopilot with a profile, which groups the device is in, which Enrollment Status Page applies and whether its time limit is enough compared with your earlier deployments, and whether the required apps and their dependencies are assigned. Each device gets **Ready**, **Check** or **Will fail**, with what to fix. It only reads. The permissions are in [docs/REFERENCE.md](docs/REFERENCE.md#pre-flight-check).
+
+<img src="docs/images/trackvice-preflight.png" width="900" alt="Pre-flight check for six serial numbers">
+
+### Collect diagnostics
+
+On a device with the TrackVice agent, **Collect diagnostics** asks the agent for its logs, the MDM diagnostics of Windows (Autopilot, enrollment, provisioning and TPM), `dsregcmd /status` and the Intune Management Extension registry keys. The request is signed with your update key, is for that one device, is valid for 2 hours and is used once, and the agent only runs its own fixed list of tools. The result opens in LogVice or is saved as a zip. See [docs/AGENT.md](docs/AGENT.md#collect-diagnostics).
+
+<img src="docs/images/trackvice-diagnostics.png" width="620" alt="Collect diagnostics, uploaded">
+
+### Customer report
+
+**Export > Customer report (PDF)** makes a clean report of one deployment to hand to the customer: the result, the phases, every app, policy and step, what TrackVice found, network outages and restarts, with secrets masked. **Report...** on Overview makes one for all devices in a period, with the key figures, a chart per day and a page per device. It is saved as HTML and, with Microsoft Edge on the PC, as PDF.
+
+<img src="docs/images/trackvice-customer-report.png" width="620" alt="A customer report for one device">
 
 ### Compare, Statistics and Reference
 
