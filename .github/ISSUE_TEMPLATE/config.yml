@@ -3,3 +3,6 @@ contact_links:
   - name: Questions, and telling the author you use TrackVice
     url: https://github.com/Baldissera88/TrackVice/discussions
     about: Ask a question or say how you use TrackVice. Help > Tell the author you use TrackVice can also open an e-mail.
+  - name: Report a security problem
+    url: https://github.com/Baldissera88/TrackVice/security/advisories/new
+    about: Do not open a public issue for a vulnerability. Report it privately here, see SECURITY.md.

@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Help > Report a problem in TrackVice fills in this form for you. Do not put customer names, tenants, device names or links here unless they are needed. Attach a log bundle yourself if you made one, after you have looked through it.
+        Help > Report a problem in TrackVice fills in this form for you. Do not put customer names, tenants, device names or links here unless they are needed. Never paste an upload link, a link with sig= in it, a customer code, a token or a password: anyone who reads the issue could use it. Attach a log bundle yourself if you made one, after you have looked through it. A security problem does not belong here: report it privately, see SECURITY.md.
   - type: textarea
     id: what-happened
     attributes:

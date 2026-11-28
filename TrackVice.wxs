@@ -20,10 +20,14 @@
          Close it first, as SYSTEM, which also ends a copy running as administrator, before the files are installed.
          The old version is removed after the installation, because Windows Installer allows no action
          between InstallInitialize and RemoveExistingProducts (error 2613). -->
+    <!-- taskkill.exe is named by its full path in the 64-bit system folder, in quotes, so that no search order
+         decides which program runs as SYSTEM. The action does not run in a repair (REINSTALL): a repair is the one
+         run of this package a standard user can start, and nothing as SYSTEM should open a console window then.
+         patch_msi.sh writes the same command and condition for wixl. -->
     <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
-    <CustomAction Id="CloseTrackVice" Directory="SystemFolder" ExeCommand="taskkill.exe /F /IM TrackVice.exe" Execute="deferred" Impersonate="no" Return="ignore" />
+    <CustomAction Id="CloseTrackVice" Directory="SystemFolder" ExeCommand="&quot;[System64Folder]taskkill.exe&quot; /F /IM TrackVice.exe" Execute="deferred" Impersonate="no" Return="ignore" />
     <InstallExecuteSequence>
-      <Custom Action="CloseTrackVice" After="InstallInitialize" />
+      <Custom Action="CloseTrackVice" After="InstallInitialize">NOT REINSTALL</Custom>
     </InstallExecuteSequence>
 
     <Media Id="1" Cabinet="trackvice.cab" EmbedCab="yes" />
