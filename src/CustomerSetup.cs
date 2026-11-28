@@ -330,8 +330,9 @@ namespace TrackVice
             d.VerificationUri = VerificationPage(Http.Str(r, "verification_uri"));
             long? i = ImeJson.Long(ImeJson.Get(r, "interval"));
             long? e = ImeJson.Long(ImeJson.Get(r, "expires_in"));
-            if (i.HasValue && i.Value >= 0) d.Interval = (int)i.Value;
-            if (e.HasValue && e.Value > 0) d.ExpiresIn = (int)e.Value;
+            // A wait the answer made huge would never end, or overflow the date it is added to.
+            if (i.HasValue && i.Value >= 0) d.Interval = (int)Math.Min(i.Value, WebLinks.MaxInterval);
+            if (e.HasValue && e.Value > 0) d.ExpiresIn = (int)Math.Min(e.Value, WebLinks.MaxExpires);
             if (string.IsNullOrEmpty(d.Code) || string.IsNullOrEmpty(d.UserCode)) throw new SetupException("The sign-in service did not return a code.");
             return d;
         }
@@ -345,14 +346,14 @@ namespace TrackVice
             if (string.IsNullOrEmpty(uri) || !Uri.TryCreate(uri, UriKind.Absolute, out u) || u.Scheme != Uri.UriSchemeHttps || !u.IsDefaultPort || u.UserInfo.Length > 0) return DefaultVerificationPage;
             string h = u.Host.ToLowerInvariant();
             foreach (string ok in new string[] { "microsoft.com", "microsoftonline.com" })
-                if (h == ok || h.EndsWith("." + ok, StringComparison.Ordinal)) return u.AbsoluteUri;
+                if (h == ok || h.EndsWith("." + ok, StringComparison.Ordinal)) return LaunchGuard.IsWebLink(u.AbsoluteUri) ? u.AbsoluteUri : DefaultVerificationPage;
             return DefaultVerificationPage;
         }
 
         public void Wait(DeviceCode d, WaitHandle cancel)
         {
-            DateTime until = DateTime.UtcNow.AddSeconds(d.ExpiresIn);
-            int interval = d.Interval;
+            DateTime until = DateTime.UtcNow.AddSeconds(Math.Max(1, Math.Min(d.ExpiresIn, WebLinks.MaxExpires)));
+            int interval = Math.Max(0, Math.Min(d.Interval, WebLinks.MaxInterval));
             while (DateTime.UtcNow < until)
             {
                 if (cancel.WaitOne(TimeSpan.FromSeconds(interval))) throw new OperationCanceledException();
@@ -361,7 +362,7 @@ namespace TrackVice
                 if (Take(r)) return;
                 string err = Http.Str(r, "error");
                 if (err == "authorization_pending") continue;
-                if (err == "slow_down") { interval += 5; continue; }
+                if (err == "slow_down") { interval = Math.Min(interval + 5, WebLinks.MaxInterval); continue; }
                 if (err == "expired_token") throw new SetupException("The code expired. Start again.");
                 string known = Explain(r);
                 if (known != null) throw new SetupException(known);

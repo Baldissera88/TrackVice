@@ -261,7 +261,7 @@ namespace TrackVice
     }
 
     // A container reached with a SAS link through IWeb, for agent/latest.json and the versions.
-    public sealed class WebContainer : ISessionStore, IFindStore
+    public sealed class WebContainer : ISessionStore, IFindStore, ICappedStore
     {
         readonly IWeb web;
         readonly string container, sas;
@@ -316,18 +316,33 @@ namespace TrackVice
         // Null when the file is not there.
         public byte[] Find(string name)
         {
+            return Find(name, HttpWeb.MaxReply);
+        }
+
+        // Null when the file is not there. A file of more than maxBytes is refused: the container is not trusted.
+        public byte[] Find(string name, long maxBytes)
+        {
             WebCall c = new WebCall();
             c.Url = Url(name);
             c.Headers["x-ms-version"] = SasLinks.Version;
             WebReply r = web.Send(c);
             if (r.Status == 404) return null;
             if (r.Status != 200) throw new StoreException(name + " could not be read (HTTP " + r.Status + ").");
-            return Encoding.UTF8.GetBytes(r.Text);
+            string text = r.Text ?? "";
+            if (text.Length > maxBytes) throw new StoreTooLargeException(name + " has more than the " + maxBytes + " bytes it can have.");
+            byte[] b = Encoding.UTF8.GetBytes(text);
+            if (b.LongLength > maxBytes) throw new StoreTooLargeException(name + " has more than the " + maxBytes + " bytes it can have.");
+            return b;
         }
 
         public byte[] Get(string name)
         {
-            byte[] b = Find(name);
+            return Get(name, HttpWeb.MaxReply);
+        }
+
+        public byte[] Get(string name, long maxBytes)
+        {
+            byte[] b = Find(name, maxBytes);
             if (b == null) throw new StoreMissingException(name + " is not there.");
             return b;
         }
@@ -338,9 +353,11 @@ namespace TrackVice
         // The version in agent/latest.json of your storage, or null when nothing is published.
         public static string Published(IWeb web, string readLink)
         {
-            byte[] b = new WebContainer(web, readLink).Find(UpdateManifest.Name);
+            byte[] b = new WebContainer(web, readLink).Find(UpdateManifest.Name, UpdateManifest.MaxJson);
             if (b == null) return null;
-            return UpdateManifest.Parse(b).Version;
+            // The version is shown and compared: only a version as TrackVice writes one is taken.
+            string v = UpdateManifest.Parse(b).Version;
+            return SemVer.IsValid(v) ? v : null;
         }
 
         public static UpdateManifest Publish(IWeb web, OwnStorage own, byte[] exe, string version, RSACryptoServiceProvider key, DateTime nowUtc)
@@ -364,7 +381,7 @@ namespace TrackVice
         public static string KeyProblem(IWeb web, OwnStorage own, string publicKey)
         {
             if (string.IsNullOrEmpty(publicKey)) return "This PC has no update key. Set up Your storage again to make one.";
-            byte[] b = new WebContainer(web, own.AgentRead).Find(UpdateManifest.Name);
+            byte[] b = new WebContainer(web, own.AgentRead).Find(UpdateManifest.Name, UpdateManifest.MaxJson);
             if (b == null) return null;
             bool signed;
             try { signed = UpdateManifest.Parse(b).Verify(publicKey); }

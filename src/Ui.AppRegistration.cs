@@ -18,7 +18,7 @@ namespace TrackVice
             l.Add(Bind("appreg.permissions", new SettingRow(Glyphs2.Code, "Permissions of the app", null, null)));
             FlatButton steps = SmallButton("Step by step", delegate
             {
-                try { Process.Start(AddCustomerUi.AgentDoc + "#app-registration"); }
+                try { if (!LaunchGuard.OpenWeb(AddCustomerUi.AgentDoc + "#app-registration")) Menus.Copy(AddCustomerUi.AgentDoc + "#app-registration"); }
                 catch (Exception) { Menus.Copy(AddCustomerUi.AgentDoc + "#app-registration"); }
             });
             FlatButton make = SmallButton("Make it…", delegate

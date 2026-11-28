@@ -242,7 +242,7 @@ namespace TrackVice
                 Post(delegate
                 {
                     bool copied = Menus.Copy(d.UserCode);
-                    if (!demo && WebLinks.IsHttps(d.VerificationUri)) { try { Process.Start(d.VerificationUri); } catch (Exception) { Menus.Copy(d.VerificationUri); } }
+                    if (!demo) { try { if (!LaunchGuard.OpenWeb(d.VerificationUri)) Menus.Copy(d.VerificationUri); } catch (Exception) { Menus.Copy(d.VerificationUri); } }
                     Say("Open " + d.VerificationUri + " and enter the code " + d.UserCode + (copied ? ". The code is copied." : ".") + " TrackVice waits for the sign-in.", false);
                 });
                 s.Wait(d, cancel);

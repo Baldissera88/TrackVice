@@ -474,7 +474,7 @@ namespace TrackVice
         protected void OpenLink(string url, string where, string fullText)
         {
             bool cut = url.IndexOf(Feedback.Escape(Feedback.CutNote), StringComparison.Ordinal) >= 0;
-            try { Process.Start(url); }
+            try { if (!LaunchGuard.OpenWeb(url)) throw new InvalidOperationException("Not a link TrackVice opens."); }
             catch (Exception)
             {
                 bool copied = Menus.Copy(fullText);
@@ -490,7 +490,12 @@ namespace TrackVice
         {
             MailResult r;
             using (LiveRegistry reg = new LiveRegistry())
-                r = MailHandler.Open(reg, url, fullText, delegate (string u) { Process.Start(u); }, Menus.Copy);
+                r = MailHandler.Open(reg, url, fullText, delegate (string u)
+                {
+                    // Only an e-mail to TrackVice's own address is handed to the mail program.
+                    if (u == null || !u.StartsWith("mailto:" + Feedback.Email + "?", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Not an e-mail TrackVice writes.");
+                    Process.Start(u);
+                }, Menus.Copy);
             if (r.Outcome == MailOutcome.Opened)
             {
                 bool cut = url.IndexOf(Feedback.Escape(Feedback.CutNote), StringComparison.Ordinal) >= 0;
@@ -505,7 +510,7 @@ namespace TrackVice
         protected void OpenDiscussion(string text)
         {
             bool copied = Menus.Copy(text);
-            try { Process.Start(Feedback.Discussions + "/new/choose"); }
+            try { if (!LaunchGuard.OpenWeb(Feedback.Discussions + "/new/choose")) throw new InvalidOperationException("Not a link TrackVice opens."); }
             catch (Exception) { Said("Could not open GitHub Discussions", Feedback.Discussions); return; }
             Said("Opened GitHub Discussions", copied ? "The text is on the clipboard. Pick a category and paste it." : "Pick a category and write there.");
         }
@@ -750,7 +755,7 @@ namespace TrackVice
             FlatButton bPage = new FlatButton("Releases on GitHub", null);
             bPage.Dock = DockStyle.Left;
             bPage.ApplyTheme(t);
-            bPage.Click += Safe.Wrap(delegate { try { Process.Start(AppUpdate.ReleasesUrl); } catch (Exception) { } });
+            bPage.Click += Safe.Wrap(delegate { try { LaunchGuard.OpenWeb(AppUpdate.ReleasesUrl); } catch (Exception) { } });
             footer.Controls.Add(bPage);
             if (demo != null) Shown += delegate { Show(demo); };
             else Shown += delegate { Read(); };

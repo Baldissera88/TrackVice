@@ -117,7 +117,7 @@ namespace TrackVice
             string p = DlLog.DefaultPath;
             if (!File.Exists(p)) { Safe.Say("Nothing has been downloaded yet, so there is no log."); return; }
             try { Process.Start(p); }
-            catch (Exception) { try { Process.Start("notepad.exe", "\"" + p + "\""); } catch (Exception) { Safe.Say("The log could not be opened: " + p); } }
+            catch (Exception) { try { Process.Start(LaunchGuard.NotepadPath, "\"" + p + "\""); } catch (Exception) { Safe.Say("The log could not be opened: " + p); } }
         }
     }
 

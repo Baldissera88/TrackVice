@@ -107,8 +107,7 @@ namespace TrackVice
         // Only a web page is opened: the address of a sign-in comes from the answer of the sign-in service.
         protected static void Open(string url)
         {
-            if (!WebLinks.IsHttps(url)) { Menus.Copy(url); return; }
-            try { Process.Start(url); }
+            try { if (!LaunchGuard.OpenWeb(url)) Menus.Copy(url); }
             catch (Exception) { Menus.Copy(url); }
         }
 

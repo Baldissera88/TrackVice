@@ -122,7 +122,14 @@ namespace TrackVice
             string file = Path.Combine(Normalize(share), AgentFolder, "latest.json");
             if (!File.Exists(file)) return null;
             bool signed;
-            try { signed = UpdateManifest.Parse(File.ReadAllBytes(file)).Verify(publicKey); }
+            // Whoever can write to the share may have put a huge file there: no more than a manifest can be is read.
+            try
+            {
+                byte[] json;
+                using (FileStream f = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    json = Stores.ReadCapped(f, UpdateManifest.MaxJson, Stores.TooLarge(UpdateManifest.Name, UpdateManifest.MaxJson));
+                signed = UpdateManifest.Parse(json).Verify(publicKey);
+            }
             catch (Exception) { signed = false; }
             if (signed) return null;
             return UpdateManifest.Name + " in " + Normalize(share) + " is signed with another update key than the one on this PC, so devices would refuse what this PC publishes. Publish from the PC that has that key.";

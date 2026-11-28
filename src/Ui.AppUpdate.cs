@@ -62,7 +62,7 @@ namespace TrackVice
 
         public static void OpenReleasePage()
         {
-            try { Process.Start(AppUpdate.ReleasesUrl); } catch (Exception) { }
+            try { LaunchGuard.OpenWeb(AppUpdate.ReleasesUrl); } catch (Exception) { }
         }
 
         // Release page and What's new, the two rows after the update rows.
@@ -160,7 +160,7 @@ namespace TrackVice
                         }
                         else Install(go);
                     }
-                    else try { Process.Start(r.Url); } catch (Exception) { }
+                    else try { LaunchGuard.OpenWeb(LaunchGuard.WebLinkOr(r.Url, AppUpdate.ReleasesUrl)); } catch (Exception) { }
                     return;
                 }
                 blocked = AppUpdate.Blocked;
@@ -513,7 +513,7 @@ namespace TrackVice
                 {
                     if (pendingUpdate == null) return;
                     if (pendingUpdate.CanInstall) InstallUpdate(pendingUpdate);
-                    else try { Process.Start(pendingUpdate.Url); } catch (Exception) { }
+                    else try { LaunchGuard.OpenWeb(LaunchGuard.WebLinkOr(pendingUpdate.Url, AppUpdate.ReleasesUrl)); } catch (Exception) { }
                 });
                 themed.Add(updateNote);
                 statusBar.Controls.Add(updateNote);
@@ -530,7 +530,7 @@ namespace TrackVice
             bool msi = AppUpdate.IsInstalled;
             if (!r.CanInstallWith(msi))
             {
-                try { Process.Start(r.Url); } catch (Exception) { }
+                try { LaunchGuard.OpenWeb(LaunchGuard.WebLinkOr(r.Url, AppUpdate.ReleasesUrl)); } catch (Exception) { }
                 return;
             }
             string why = InstallBlocked();
@@ -538,13 +538,13 @@ namespace TrackVice
             {
                 string text = "TrackVice " + r.Latest + " is out. " + why + "\r\n\r\nOpen the release page?";
                 if (MessageBox.Show(this, text, "Update TrackVice", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
-                    try { Process.Start(r.Url); } catch (Exception) { }
+                    try { LaunchGuard.OpenWeb(LaunchGuard.WebLinkOr(r.Url, AppUpdate.ReleasesUrl)); } catch (Exception) { }
                 return;
             }
             DialogResult a;
             bool resume = engine != null && engine.Mode == Modes.Live && watching;
             using (UpdateDialog d = new UpdateDialog(theme, r, msi, resume)) a = d.ShowDialog(this);
-            if (a == DialogResult.No) { try { Process.Start(r.Url); } catch (Exception) { } return; }
+            if (a == DialogResult.No) { try { LaunchGuard.OpenWeb(LaunchGuard.WebLinkOr(r.Url, AppUpdate.ReleasesUrl)); } catch (Exception) { } return; }
             if (a != DialogResult.Yes) return;
             why = InstallBlocked();
             if (why != null)
@@ -578,7 +578,7 @@ namespace TrackVice
                     }
                     if (updateNote != null) updateNote.Say("TrackVice " + r.Latest + " is out.", true);
                     if (MessageBox.Show(this, "TrackVice " + r.Latest + " could not be installed automatically.\r\n\r\n" + err + "\r\n\r\nOpen the release page to download it?", "Update TrackVice", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
-                        try { Process.Start(r.Url); } catch (Exception) { }
+                        try { LaunchGuard.OpenWeb(LaunchGuard.WebLinkOr(r.Url, AppUpdate.ReleasesUrl)); } catch (Exception) { }
                 });
             });
             th.IsBackground = true;

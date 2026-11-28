@@ -86,6 +86,7 @@ namespace TrackVice
 
         public static string TooLarge(string what, long max)
         {
+            if (max < 1024 * 1024) return what + " is larger than " + max.ToString(CultureInfo.InvariantCulture) + " bytes. It was not read.";
             return what + " is larger than " + (max / (1024 * 1024)) + " MB. It was not read.";
         }
 
@@ -105,7 +106,7 @@ namespace TrackVice
     }
 
     // A folder or a share. Each session is a file with a small .meta file beside it.
-    public sealed class FolderStore : ISessionStore, IFindStore
+    public sealed class FolderStore : ISessionStore, IFindStore, ICappedStore
     {
         readonly string root;
 
@@ -131,9 +132,15 @@ namespace TrackVice
 
         static byte[] ReadFile(string path)
         {
-            if (new FileInfo(path).Length > Stores.MaxDownload) throw new StoreException(Stores.TooLarge(Path.GetFileName(path), Stores.MaxDownload));
+            return ReadFile(path, Stores.MaxDownload);
+        }
+
+        static byte[] ReadFile(string path, long maxBytes)
+        {
+            long max = Math.Min(Math.Max(0, maxBytes), Stores.MaxDownload);
+            if (new FileInfo(path).Length > max) throw new StoreException(Stores.TooLarge(Path.GetFileName(path), max));
             using (FileStream f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-                return Stores.ReadCapped(f, Stores.MaxDownload, Stores.TooLarge(Path.GetFileName(path), Stores.MaxDownload));
+                return Stores.ReadCapped(f, max, Stores.TooLarge(Path.GetFileName(path), max));
         }
 
         // A share: links on it are followed by the file server, not by this computer.
@@ -223,15 +230,21 @@ namespace TrackVice
 
         public byte[] Get(string name)
         {
+            return Get(name, Stores.MaxDownload);
+        }
+
+        // At most maxBytes: a larger file is not read at all.
+        public byte[] Get(string name, long maxBytes)
+        {
             string path = PathOf(name);
             if (!File.Exists(path)) throw new StoreMissingException("That session is no longer in " + root + ".");
-            return ReadFile(path);
+            return ReadFile(path, maxBytes);
         }
     }
 
     // An Azure Storage container, reached with a shared access signature (SAS) link to the container.
     // A device needs Create and Write. The viewer needs Read and List.
-    public sealed class AzureStore : ISessionStore
+    public sealed class AzureStore : ISessionStore, ICappedStore
     {
         readonly string container;
         readonly string sas;
@@ -284,8 +297,10 @@ namespace TrackVice
             {
                 DateTime sent = DateTime.UtcNow;
                 using (Stream s = req.GetRequestStream()) s.Write(data, 0, data.Length);
-                using (WebResponse r = req.GetResponse())
+                using (HttpWebResponse r = (HttpWebResponse)req.GetResponse())
                 {
+                    int status = (int)r.StatusCode;
+                    if (status < 200 || status > 299) throw new StoreException("The storage account answered HTTP " + status + ". The upload was not stored.");
                     LastReceivedUtc = DateTime.UtcNow;
                     LastSentUtc = sent;
                     LastDate = r.Headers["Date"];
@@ -315,18 +330,32 @@ namespace TrackVice
             return Fetch(UrlOf(name), "read");
         }
 
+        // At most maxBytes, so a file someone put in the container cannot fill the memory.
+        public byte[] Get(string name, long maxBytes)
+        {
+            return Fetch(UrlOf(name), "read", maxBytes);
+        }
+
         byte[] Fetch(string url, string what)
         {
+            return Fetch(url, what, Stores.MaxDownload);
+        }
+
+        byte[] Fetch(string url, string what, long maxBytes)
+        {
+            long max = Math.Min(Math.Max(0, maxBytes), Stores.MaxDownload);
             HttpWebRequest req = Http.Request(url);
             req.Method = "GET";
             try
             {
-                using (WebResponse resp = req.GetResponse())
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
                 using (Stream s = resp.GetResponseStream())
                 {
-                    string tooLarge = Stores.TooLarge("The answer of the storage account", Stores.MaxDownload);
-                    if (resp.ContentLength > Stores.MaxDownload) throw new StoreException(tooLarge);
-                    return Stores.ReadCapped(s, Stores.MaxDownload, tooLarge);
+                    // Azure Storage answers a read itself. An answer that sends the link elsewhere is not followed.
+                    if ((int)resp.StatusCode != 200) throw new StoreException("The storage account answered HTTP " + (int)resp.StatusCode + ".");
+                    string tooLarge = Stores.TooLarge("The answer of the storage account", max);
+                    if (resp.ContentLength > max) throw new StoreException(tooLarge);
+                    return Stores.ReadCapped(s, max, tooLarge);
                 }
             }
             catch (WebException ex) { throw Explain(ex, what); }
@@ -989,6 +1018,9 @@ namespace TrackVice
 
         // ---- installing ----
 
+        // The values of the agent's registry key that hold a link, a key or the customer's name.
+        public static readonly string[] SecretValues = { "Upload", "Alert", "UpdateKey", "UpdateLink", "CustomerName" };
+
         // Copies TrackVice to Program Files, saves where to upload, and registers a task that runs the agent
         // as SYSTEM at every start. Returns at once, so it does not hold up the Enrollment Status Page.
         public static int Install(AgentOptions o, string exePath)
@@ -1006,9 +1038,12 @@ namespace TrackVice
             if (newer) Log("The installed agent " + SemVer.OfFile(target) + " is newer than " + SemVer.OfFile(exePath) + " and is kept.");
             if (!newer && !string.Equals(Path.GetFullPath(exePath), target, StringComparison.OrdinalIgnoreCase) && !SameFile(exePath, target))
                 Replace(exePath, target);
+            bool keyWasThere;
+            using (RegistryKey before = Registry.LocalMachine.OpenSubKey(Key)) keyWasThere = before != null;
             using (RegistryKey k = Registry.LocalMachine.CreateSubKey(Key))
             {
-                // The upload link is only for administrators and SYSTEM to read.
+                // The upload link is only for administrators and SYSTEM to read. When the key cannot be made so, no link
+                // or key is left in it for users to read, and the install stops.
                 try
                 {
                     System.Security.AccessControl.RegistrySecurity sec = new System.Security.AccessControl.RegistrySecurity();
@@ -1020,7 +1055,23 @@ namespace TrackVice
                             System.Security.AccessControl.AccessControlType.Allow));
                     k.SetAccessControl(sec);
                 }
-                catch (Exception ex) { Log("Could not restrict the registry key: " + ex.Message); }
+                catch (Exception ex)
+                {
+                    Log("Could not restrict the registry key: " + ex.Message);
+                    foreach (string secret in SecretValues)
+                    {
+                        try { k.DeleteValue(secret, false); }
+                        catch (Exception) { }
+                    }
+                    k.Close();
+                    if (!keyWasThere)
+                    {
+                        try { Registry.LocalMachine.DeleteSubKeyTree(Key, false); }
+                        catch (Exception) { }
+                    }
+                    throw new InvalidOperationException("The agent was not installed: its registry key HKLM\\" + Key + " could not be made readable for administrators and SYSTEM only ("
+                        + ex.Message + "), and it would hold the upload link. Nothing secret was left in it. Check the permissions of the key and install again.");
+                }
                 k.SetValue("Upload", o.Upload.Trim());
                 k.SetValue("KeepHours", o.KeepHours.ToString(CultureInfo.InvariantCulture));
                 k.SetValue("MaxDays", o.MaxDays.ToString(CultureInfo.InvariantCulture));

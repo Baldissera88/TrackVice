@@ -59,7 +59,7 @@ namespace TrackVice
             StoreEntry e = catalog.FindLogs(sessionBlob);
             if (e == null) return null;
             CheckSize(e.Size);
-            byte[] zip = catalog.Store.Get(e.Name);
+            byte[] zip = UpdateSource.Read(catalog.Store, e.Name, LogBundle.MaxBytes);
             CheckSize(zip == null ? 0 : zip.LongLength);
             return zip;
         }
@@ -77,7 +77,7 @@ namespace TrackVice
             StoreEntry e = catalog.FindLogs(sessionBlob);
             if (e == null) return null;
             CheckSize(e.Size);
-            byte[] zip = catalog.Store.Get(e.Name);
+            byte[] zip = UpdateSource.Read(catalog.Store, e.Name, LogBundle.MaxBytes);
             CheckSize(zip == null ? 0 : zip.LongLength);
             Directory.CreateDirectory(root);
             Remove(root, nowUtc);

@@ -817,6 +817,8 @@ namespace TrackVice
             if (server == null || site == null) return;
             string srv = server.Text.Trim(), sc = site.Text.Trim();
             if (srv == Prefs.Get("SccmServer", "") && sc == Prefs.Get("SccmSite", "")) return;
+            // The server was typed here, as on the SMS Provider page: it is confirmed once before anything connects to it on its own.
+            if (srv.Length > 0 && srv != Prefs.Get("SccmServer", "")) SccmTrustUi.Confirm(this, srv);
             Prefs.Set("SccmServer", srv.Length == 0 ? null : srv);
             Prefs.Set("SccmSite", sc.Length == 0 ? null : sc);
             CustomerUi.Remember(delegate (Customer cu) { cu.SccmServer = srv; cu.SccmSite = sc; });

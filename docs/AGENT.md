@@ -93,6 +93,7 @@ Setups made before customer codes, with a storage account and links per customer
 - [Troubleshooting](#troubleshooting)
 - [Where the logs are](#where-the-logs-are)
 - [What is uploaded, and security](#what-is-uploaded-and-security)
+- [Security in this release](#security-in-this-release)
 
 ## How it works
 
@@ -835,14 +836,20 @@ Permissions, run on the file server as administrator (the same lines as **Copy i
 
 ```text
 if not exist "\\server\TrackVice\Contoso\agent" mkdir "\\server\TrackVice\Contoso\agent"
+if not exist "\\server\TrackVice\Contoso\sessions" mkdir "\\server\TrackVice\Contoso\sessions"
+if not exist "\\server\TrackVice\Contoso\logs" mkdir "\\server\TrackVice\Contoso\logs"
 icacls "\\server\TrackVice\Contoso" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)F" /grant "BUILTIN\Administrators:(OI)(CI)F"
-icacls "\\server\TrackVice\Contoso" /grant "Domain Computers:(OI)(CI)(X,RA,WD,AD)" /grant "CREATOR OWNER:(OI)(CI)(IO)M"
-icacls "\\server\TrackVice\Contoso\agent" /inheritance:d
-icacls "\\server\TrackVice\Contoso\agent" /remove:g "Domain Computers" "CREATOR OWNER"
-icacls "\\server\TrackVice\Contoso\agent" /grant "Domain Computers:(OI)(CI)RX"
+icacls "\\server\TrackVice\Contoso" /grant:r "Domain Computers:(CI)(X,RA,WD,AD)" /grant:r "CREATOR OWNER:(OI)(CI)(IO)M"
+icacls "\\server\TrackVice\Contoso\sessions" /setowner "BUILTIN\Administrators"
+icacls "\\server\TrackVice\Contoso\sessions" /reset
+icacls "\\server\TrackVice\Contoso\logs" /setowner "BUILTIN\Administrators"
+icacls "\\server\TrackVice\Contoso\logs" /reset
+icacls "\\server\TrackVice\Contoso\agent" /setowner "BUILTIN\Administrators" /T /C
+icacls "\\server\TrackVice\Contoso\agent" /reset /T /C
+icacls "\\server\TrackVice\Contoso\agent" /inheritance:r /grant:r "NT AUTHORITY\SYSTEM:(OI)(CI)F" /grant:r "BUILTIN\Administrators:(OI)(CI)F" /grant:r "Domain Computers:(OI)(CI)RX"
 ```
 
-The share itself also needs the share permission Change for Domain Computers. Domain Computers can create files and folders but not list or read what other devices sent, and `CREATOR OWNER` lets a device replace its own session file. In the `agent` folder they can only read. The group name is localized on non-English servers.
+The share itself also needs the share permission Change for Domain Computers. The `agent`, `sessions` and `logs` folders are made by you, so no device owns them. Domain Computers can create files and folders but not list or read what other devices sent; the right is on the folders only, so a device cannot write over another device's file, and `CREATOR OWNER` lets a device replace its own session file. The `agent` folder gets its owner and rights anew, and devices can only read there. The group name is localized on non-English servers. A share set up with an earlier version needs these lines run again, see [Security in this release](#security-in-this-release).
 
 Limits: it fits SCCM task sequences in full Windows, and Hybrid Autopilot devices that can reach the share. It does not fit cloud-only Autopilot devices on the internet, and Windows PE only when the share accepts the account it has there.
 
@@ -1140,3 +1147,13 @@ One file per device session, `sessions/<id>.json.gz`, in the same format as a sa
 | In Intune | The script, with the customer code or the links, is readable by Intune administrators. |
 | In SCCM | The task sequence, with the code or the upload and alert links, is readable by anyone who can read task sequences |
 | On the device, otherwise | The agent only reads. It adds its folder, its task and its registry key, and nothing else. An update only replaces `TrackVice.exe` in its own folder. In a task sequence it only adds `%WINDIR%\Temp\TrackVice` |
+
+## Security in this release
+
+TrackVice 2.1.1 hardens the viewer and the agent against hostile uploads, links and names. [SECURITY.md](../SECURITY.md) describes the trust model and how to report a problem. What changes for administrators:
+
+- **Share permissions.** A share set up with an earlier version had rights that let a device read or change files of other devices and of the `agent` folder. Run the lines of **Copy icacls commands** again on the file server, as administrator. They are shown in [Alternative: a folder instead of a storage account](#alternative-a-folder-instead-of-a-storage-account).
+- **SCCM server.** The first time TrackVice connects to an SMS Provider from your Windows account, it asks you to confirm the server, also when you type it in Settings. A server that came with a customer file from someone else is not connected to on its own until you confirm it once.
+- **Customer codes from the vault.** A customer code in Key Vault is only used when it holds the update key of this PC. A PC with another update key does not pick the code up: set up the same update key on that PC, see [Same setup on every PC: Key Vault](#same-setup-on-every-pc-key-vault).
+- **App registration.** **Make** no longer picks up an existing app registration of the same name that has client secrets, certificates, other redirect URIs or lets other tenants sign in. TrackVice says what it found and does not use it: check who made it, or remove it and press **Make** again.
+- **Links and redirects.** Requests that carry a sign-in token, a storage link or an alert link no longer follow redirects, and the browser only opens links to GitHub and to the Microsoft sign-in and portal pages. An alert address that redirects must be replaced with the address it redirects to.

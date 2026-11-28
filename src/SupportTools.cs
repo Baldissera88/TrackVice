@@ -105,13 +105,18 @@ namespace TrackVice
     public static class ShareMask
     {
         static readonly System.Text.RegularExpressions.Regex RxCode = new System.Text.RegularExpressions.Regex(
-            @"(?<![A-Za-z0-9])(?<n>tv1:)[A-Za-z0-9_\-]{16,}", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            Secrets.CodePattern, System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2));
 
         public static string Text(string s)
         {
             if (string.IsNullOrEmpty(s) || s.Length < 6) return s;
             string r = Secrets.Mask(s);
-            if (r.IndexOf("tv1:", StringComparison.OrdinalIgnoreCase) >= 0) r = RxCode.Replace(r, "${n}" + Secrets.Hidden);
+            // Secrets.Mask hides codes too, with the same pattern; this second pass stays for safety.
+            try
+            {
+                if (r.IndexOf("tv1:", StringComparison.OrdinalIgnoreCase) >= 0) r = RxCode.Replace(r, "${n}" + Secrets.Hidden);
+            }
+            catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { return Secrets.Unchecked; }
             return r;
         }
     }

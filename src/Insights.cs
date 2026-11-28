@@ -42,6 +42,10 @@ namespace TrackVice
         // powershell -EncodedCommand <Base64>, and every short form PowerShell takes for it.
         static readonly Regex RxEncoded = new Regex(@"(?<n>(?<=\s)[-/](?:e|ec|en|enc|enco|encod|encode|encoded|encodedc|encodedco|encodedcom|encodedcomm|encodedcomma|encodedcomman|encodedcommand))(?<s>\s+)(?<v>[A-Za-z0-9+/]{16,}={0,2})(?![\w+/=])", Ci, Limit);
         // <Password>text</Password>, and <AdministratorPassword><Value>text</Value> or <ProductKey><Key>text</Key> as an unattend file has it.
+        // A customer code, tv1: and base64url: it holds the upload link of a customer, as in TrackVice.exe /agent-install
+        // /customer "tv1:...". The prefix stays, so it is still clear what was there. ShareMask uses the same pattern.
+        public const string CodePattern = @"(?<![A-Za-z0-9])(?<n>tv1:)(?<s>)(?<v>[A-Za-z0-9_\-]{16,})";
+        static readonly Regex RxCode = new Regex(CodePattern, Ci, Limit);
         static readonly Regex RxXml = new Regex(@"(?<n><(?<t>[\w.:-]{0,40}(?:passw(?:or)?d|pwd|secret|token|api_?key|access_?key|account_?key|license_?key|product_?key|pidkey)[\w.-]{0,40})>(?:\s*<(?:Value|Key)>)?)(?<s>)(?<v>[^<]{1,4096})(?=<)", Ci, Limit);
         // Settings about passwords and keys, such as PasswordExpirationDays, are not secrets themselves.
         static readonly Regex RxSetting = new Regex(@"(?:Enabled|Disabled|Length|Complexity|History|Age|Expiration|Expiry|Expires|ExpirationDays|Required|Policy|Count|Type|Mode|Changed|Prompt|Hint|Lifetime|Url|Uri|Path|File|Name|Id)$", Ci, Limit);
@@ -91,6 +95,7 @@ namespace TrackVice
                 r = RxCmdkeyPass.Replace(r, h);
                 r = RxEncoded.Replace(r, h);
                 r = RxXml.Replace(r, h);
+                if (r.IndexOf("tv1:", StringComparison.OrdinalIgnoreCase) >= 0) r = RxCode.Replace(r, h);
             }
             catch (RegexMatchTimeoutException) { return Unchecked; }
             return r == s ? s : r;
@@ -577,7 +582,12 @@ namespace TrackVice
             try
             {
                 using (Stream s = req.GetRequestStream()) s.Write(body, 0, body.Length);
-                using (req.GetResponse()) { }
+                // The alert link is a secret: a redirect is not followed with it, and is not taken as accepted.
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                {
+                    int status = (int)resp.StatusCode;
+                    if (status < 200 || status > 299) throw new StoreException("The alert was not accepted (HTTP " + status + "). TrackVice does not follow a redirect with the alert address.");
+                }
             }
             catch (WebException ex)
             {

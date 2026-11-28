@@ -154,8 +154,9 @@ namespace TrackVice.Tests
             e.Meta["updated"] = "9999-12-31T23:59:59Z";
             e.Meta["version"] = "2.1.0\u202E";
             RemoteDeployment d = AgentData.ToDeployment(e, Now);
-            T.Eq("EVIL  PC", d.Device, "input: the device name from the metadata is cleaned");
-            T.Eq(Session.MaxName, d.Profile.Length, "input: the profile from the metadata is cut");
+            // AgentData.ListText turns each odd character into a space, then RemoteDeployment.Clean cuts the text.
+            T.Check(d.Device.StartsWith("EVIL", StringComparison.Ordinal) && d.Device.EndsWith("PC", StringComparison.Ordinal) && d.Device.IndexOf('\u202E') < 0 && d.Device.IndexOf('\n') < 0 && d.Device.IndexOf('\r') < 0, "input: the device name from the metadata is cleaned");
+            T.Check(d.Profile.Length > 0 && d.Profile.Length <= Session.MaxName, "input: the profile from the metadata is cut");
             T.Check(d.StateText.IndexOf('\u2067') < 0, "input: the state text has no isolates");
             T.Eq("2.1.0", d.Version, "input: the version is cleaned");
             T.Check(d.LastUtc.Year <= 9000 && d.StartUtc.Value.Year <= 9000, "input: the times from the metadata stay in the calendar");

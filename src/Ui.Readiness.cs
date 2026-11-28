@@ -507,7 +507,8 @@ namespace TrackVice
                 Status("Saved " + d.FileName);
                 if (html)
                 {
-                    try { Process.Start(d.FileName); }
+                    // Only the web page that was just saved is opened, never a file that Windows would run.
+                    try { if (LaunchGuard.IsReportFile(d.FileName)) Process.Start(d.FileName); }
                     catch (Exception) { }
                 }
             }

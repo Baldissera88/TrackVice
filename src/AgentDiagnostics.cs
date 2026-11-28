@@ -363,7 +363,7 @@ namespace TrackVice
                 nextUtc = nowUtc + (deploying ? Deploying : After);
                 string name = DiagnosticsRequest.NameFor(sid);
                 byte[] raw;
-                try { raw = requests.Get(name); }
+                try { raw = UpdateSource.Read(requests, name, DiagnosticsRequest.MaxBytes); }
                 catch (StoreMissingException)
                 {
                     readError = null;

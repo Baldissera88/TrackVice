@@ -81,7 +81,7 @@ namespace TrackVice
         public static HttpWebRequest Request(string url, int timeout)
         {
             if (!AllowedUrl(url)) throw new WebException("TrackVice downloads only over https from GitHub.");
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            NetSafety.UseStrongTls();
             HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
             req.UserAgent = "TrackVice/" + Program.Version;
             req.Timeout = timeout;

@@ -66,7 +66,7 @@ namespace TrackVice
             bClose.ApplyTheme(t);
             // Docked from the right: Cancel, then Find LogVice.exe, then Release page, then Download and open.
             bFind = Footer("Find LogVice.exe", false, delegate { FindChosen = true; DialogResult = DialogResult.OK; Close(); });
-            bPage = Footer("Release page", false, delegate { try { Process.Start(rel != null && rel.Url != null ? rel.Url : LogViceGet.ReleasesUrl); } catch (Exception) { } });
+            bPage = Footer("Release page", false, delegate { try { LaunchGuard.OpenWeb(LaunchGuard.WebLinkOr(rel != null ? rel.Url : null, LogViceGet.ReleasesUrl)); } catch (Exception) { } });
             bGo = Footer(open ? "Download and open" : "Download", true, delegate { Start(); });
             bGo.Enabled = false;
             bPage.Visible = false;

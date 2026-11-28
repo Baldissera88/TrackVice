@@ -761,7 +761,7 @@ namespace TrackVice
         {
             // Only TrackVice's own https links are handed to Windows; anything else would be started as a program or a file.
             if (!LaunchGuard.IsWebLink(url)) { Status("Not opened: it is not a link TrackVice knows."); return; }
-            try { Process.Start(url); }
+            try { LaunchGuard.OpenWeb(url); }
             catch (Exception) { Status("Could not open " + url); }
         }
 

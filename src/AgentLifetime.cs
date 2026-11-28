@@ -35,8 +35,9 @@ namespace TrackVice
         public AgentLifetime(DateTime installedUtc, int keepHours, int maxDays)
         {
             InstalledUtc = installedUtc;
-            KeepHours = keepHours > 0 ? keepHours : DefaultKeepHours;
-            MaxDays = maxDays > 0 ? maxDays : DefaultMaxDays;
+            // The values come from the command line or the registry: a huge one would overflow the date it is added to.
+            KeepHours = keepHours > 0 ? Math.Min(keepHours, CustomerCode.MaxHours) : DefaultKeepHours;
+            MaxDays = maxDays > 0 ? Math.Min(maxDays, CustomerCode.MaxDaysLimit) : DefaultMaxDays;
         }
 
         // Reads the saved values. An agent installed by an older version has no MaxDays and gets the default.

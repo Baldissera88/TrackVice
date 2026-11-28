@@ -1086,7 +1086,7 @@ namespace TrackVice
             try
             {
                 using (System.Management.ManagementObjectSearcher s = new System.Management.ManagementObjectSearcher(
-                    "SELECT ProcessId, ExecutablePath, CommandLine FROM Win32_Process WHERE Name = '" + processName.Replace("'", "") + ".exe'"))
+                    "SELECT ProcessId, ExecutablePath, CommandLine FROM Win32_Process WHERE Name = '" + Wql.Text(processName) + ".exe'"))
                 using (System.Management.ManagementObjectCollection c = s.Get())
                     foreach (System.Management.ManagementBaseObject o in c)
                     {

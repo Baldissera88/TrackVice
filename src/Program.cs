@@ -126,6 +126,9 @@ namespace TrackVice
         [STAThread]
         public static int Main(string[] args)
         {
+            // Every pattern without a time limit of its own gives up after 2 seconds: text from logs, uploads and answers
+            // can be shaped to make a pattern run for minutes. Set before any pattern is made.
+            AppDomain.CurrentDomain.SetData("REGEX_DEFAULT_MATCH_TIMEOUT", TimeSpan.FromSeconds(2));
             SafeDllSearch();
             args = args ?? new string[0];
             if (args.Length > 0 && args[0] == "--apply-update") return UpdatesUi.Apply(args);
@@ -247,7 +250,7 @@ namespace TrackVice
                         case "csv": csv = Next(args, ref i); break;
                         case "session": session = Next(args, ref i); break;
                         case "folder": folder = Next(args, ref i); break;
-                        case "hours": hours = Math.Max(0, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
+                        case "hours": hours = Math.Max(0, Math.Min(CustomerCode.MaxHours, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture))); break;
                         case "agent": agent = "run"; break;
                         case "agent-install": agent = "install"; break;
                         case "agent-remove": agent = "remove"; break;
@@ -256,8 +259,9 @@ namespace TrackVice
                         case "ts": ao.TaskSequence = true; break;
                         case "id": ao.Id = Next(args, ref i); break;
                         case "upload": ao.Upload = Next(args, ref i); break;
-                        case "keep": ao.KeepHours = Math.Max(1, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
-                        case "max-days": ao.MaxDays = Math.Max(1, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture)); break;
+                        // At most ten years, as in a customer code, so the dates they are added to cannot overflow.
+                        case "keep": ao.KeepHours = Math.Max(1, Math.Min(CustomerCode.MaxHours, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture))); break;
+                        case "max-days": ao.MaxDays = Math.Max(1, Math.Min(CustomerCode.MaxDaysLimit, int.Parse(Next(args, ref i), CultureInfo.InvariantCulture))); break;
                         case "once": ao.Once = true; break;
                         case "alert": ao.Alert = Next(args, ref i); break;
                         case "alert-test": ao.AlertTest = true; break;

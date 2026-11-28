@@ -91,7 +91,7 @@ namespace TrackVice
                         string id = Http.Str(d, "id"), name = Http.Str(d, "displayName");
                         if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name)) names[id] = name;
                     }
-                url = Http.Str(r, "@odata.nextLink");
+                url = GraphLinks.Next(r);
             }
             return names;
         }
@@ -212,7 +212,9 @@ namespace TrackVice
                 || !string.IsNullOrEmpty(u.UserInfo)) return DefaultVerificationUri;
             string h = u.Host.ToLowerInvariant();
             foreach (string d in new string[] { "microsoft.com", "microsoftonline.com", "microsoftonline.us", "microsoft.us", "chinacloudapi.cn", "microsoftonline.cn" })
-                if (h == d || h.EndsWith("." + d, StringComparison.Ordinal)) return u.AbsoluteUri;
+                if (h == d || h.EndsWith("." + d, StringComparison.Ordinal))
+                    // The window hands the page to Windows: only a sign-in page LaunchGuard opens is taken.
+                    return LaunchGuard.IsWebLink(u.AbsoluteUri) ? u.AbsoluteUri : DefaultVerificationUri;
             return DefaultVerificationUri;
         }
 
@@ -238,8 +240,9 @@ namespace TrackVice
             d.VerificationUri = SafeVerificationUri(Http.Str(r, "verification_uri"));
             long? i = ImeJson.Long(ImeJson.Get(r, "interval"));
             long? e = ImeJson.Long(ImeJson.Get(r, "expires_in"));
-            if (i.HasValue && i.Value > 0) d.Interval = (int)i.Value;
-            if (e.HasValue && e.Value > 0) d.ExpiresIn = (int)e.Value;
+            // A wait the answer made huge would never end, or overflow the date it is added to.
+            if (i.HasValue && i.Value > 0) d.Interval = (int)Math.Min(i.Value, WebLinks.MaxInterval);
+            if (e.HasValue && e.Value > 0) d.ExpiresIn = (int)Math.Min(e.Value, WebLinks.MaxExpires);
             if (string.IsNullOrEmpty(d.Code) || string.IsNullOrEmpty(d.UserCode)) throw new GraphException("The sign-in service did not return a code.");
             return d;
         }
@@ -247,8 +250,8 @@ namespace TrackVice
         // Waits until the user has signed in on the sign-in page.
         public void Wait(DeviceCode d, WaitHandle cancel)
         {
-            DateTime until = DateTime.UtcNow.AddSeconds(d.ExpiresIn);
-            int interval = d.Interval;
+            DateTime until = DateTime.UtcNow.AddSeconds(Math.Max(1, Math.Min(d.ExpiresIn, WebLinks.MaxExpires)));
+            int interval = Math.Max(0, Math.Min(d.Interval, WebLinks.MaxInterval));
             while (DateTime.UtcNow < until)
             {
                 if (cancel.WaitOne(TimeSpan.FromSeconds(interval))) throw new OperationCanceledException();
@@ -257,7 +260,7 @@ namespace TrackVice
                 if (Take(r)) return;
                 string err = Http.Str(r, "error");
                 if (err == "authorization_pending") continue;
-                if (err == "slow_down") { interval += 5; continue; }
+                if (err == "slow_down") { interval = Math.Min(interval + 5, WebLinks.MaxInterval); continue; }
                 if (err == "expired_token") throw new GraphException("The code expired. Start again.");
                 if (err == "authorization_declined" || err == "access_denied") throw new GraphException("The sign-in was declined.");
                 throw new GraphException(Http.Str(r, "error_description") ?? err ?? "The sign-in failed.");
@@ -362,6 +365,23 @@ namespace TrackVice
 
     public static class Http
     {
+        // The most of an answer of Microsoft Graph or the sign-in service that is read. A page of a list is far smaller.
+        public const int MaxReply = 32 * 1024 * 1024;
+
+        // The text to its end, or null when it holds more than max characters.
+        public static string ReadCapped(TextReader r, int max)
+        {
+            StringBuilder b = new StringBuilder();
+            char[] buf = new char[8192];
+            int n;
+            while ((n = r.Read(buf, 0, buf.Length)) > 0)
+            {
+                if (b.Length + n > max) return null;
+                b.Append(buf, 0, n);
+            }
+            return b.ToString();
+        }
+
         public static string Str(Dictionary<string, object> d, string key)
         {
             if (d == null) return null;
@@ -371,9 +391,12 @@ namespace TrackVice
 
         public static HttpWebRequest Request(string url)
         {
-            // .NET Framework 4.5 does not offer TLS 1.2 by default.
-            try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch (Exception) { }
+            // TLS 1.2 only of what .NET Framework 4.5 offers: SSL 3.0, TLS 1.0 and 1.1 are taken out.
+            NetSafety.UseStrongTls();
             HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+            // A token, a signed link or an alert link goes with most requests: a redirect would hand it to another host.
+            // A caller that may follow one says so itself (HttpWeb.Send), and only for a call without a token.
+            req.AllowAutoRedirect = false;
             req.Timeout = 60000;
             req.ReadWriteTimeout = 60000;
             req.UserAgent = "TrackVice/" + Program.Version;
@@ -421,7 +444,8 @@ namespace TrackVice
             using (StreamReader r = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
             {
                 status = (int)resp.StatusCode;
-                string text = r.ReadToEnd();
+                string text = ReadCapped(r, MaxReply);
+                if (text == null) throw new GraphException("The answer from " + req.RequestUri.Host + " is larger than " + (MaxReply / 1048576) + " MB. It was not read.", status);
                 Dictionary<string, object> d = ImeJson.Parse(text) as Dictionary<string, object>;
                 if (d == null)
                 {
@@ -488,7 +512,7 @@ namespace TrackVice
                         list.Add(d);
                     }
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = GraphLinks.Next(r);
             }
             // The newest deployment per device: a device that was reset shows its latest try.
             Dictionary<string, RemoteDeployment> newest = new Dictionary<string, RemoteDeployment>(StringComparer.OrdinalIgnoreCase);
@@ -639,7 +663,7 @@ namespace TrackVice
                             if (x != null && string.Equals(Http.Str(x, "id"), id, StringComparison.OrdinalIgnoreCase)) return x;
                         }
                     }
-                    url = Http.Str(r, "@odata.nextLink");
+                    url = GraphLinks.Next(r);
                 }
             }
             catch (GraphException ex) { problem = ex.Message; }
@@ -675,7 +699,7 @@ namespace TrackVice
                     Dictionary<string, object> r = graph.Get(url);
                     List<object> value = ImeJson.Get(r, "value") as List<object>;
                     if (value != null) foreach (object o in value) { Dictionary<string, object> x = o as Dictionary<string, object>; if (x != null) details.Add(x); }
-                    url = Http.Str(r, "@odata.nextLink");
+                    url = GraphLinks.Next(r);
                 }
             }
             catch (GraphException ex) { detailProblem = ex.Message; }

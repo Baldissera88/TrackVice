@@ -422,7 +422,7 @@ namespace TrackVice
 
         static void Open(string url)
         {
-            try { Process.Start(url); }
+            try { if (!LaunchGuard.OpenWeb(url)) Menus.Copy(url); }
             catch (Exception) { Menus.Copy(url); }
         }
 

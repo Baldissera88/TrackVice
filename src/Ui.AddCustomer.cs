@@ -33,7 +33,7 @@ namespace TrackVice
         public static void OpenScript(string path)
         {
             // Notepad, so the script is shown and never run.
-            try { Process.Start("notepad.exe", "\"" + path + "\""); }
+            try { Process.Start(LaunchGuard.NotepadPath, "\"" + path + "\""); }
             catch (Exception) { }
         }
     }

@@ -127,6 +127,7 @@ namespace TrackVice.Tests
             GraphReadTests.Run();
             LaunchGuardTests.Run();
             BuildSecurityTests.Run();
+            CrossFileSecurityTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

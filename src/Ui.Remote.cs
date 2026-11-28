@@ -445,7 +445,7 @@ namespace TrackVice
             if (code == null) return;
             bool copied = Menus.Copy(code.UserCode);
             bool opened = true;
-            try { Process.Start(code.VerificationUri); }
+            try { opened = LaunchGuard.OpenWeb(code.VerificationUri); }
             catch (Exception) { opened = false; }
             signIn.Opened(opened, copied);
         }

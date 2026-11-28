@@ -410,7 +410,8 @@ namespace TrackVice
                     string pkg = Str(g.Value[0], "PackageID");
                     d.Profile = pkg != null && tsNames.TryGetValue(pkg, out n) ? n : pkg;
                     d.User = Str(g.Value[0], "AdvertisementID");
-                    shown.Add(d);
+                    // Names and status texts come from the site, where any device can report them: made safe to show.
+                    shown.Add(d.Clean());
                 }
                 if (shown.Count == 0) continue;
                 if (EarlierRuns) list.AddRange(shown);
@@ -764,7 +765,7 @@ namespace TrackVice
             d.StartUtc = NewerRunUtc;
             d.LastUtc = NewerRunUtc.Value;
             d.State = State.Installing;
-            return d;
+            return d.Clean();
         }
 
         public SccmFeed ForRun(DateTime startUtc)

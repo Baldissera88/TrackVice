@@ -307,7 +307,7 @@ namespace TrackVice
             d.Code = Http.Str(r, "device_code");
             d.UserCode = Http.Str(r, "user_code");
             // The page is opened in the browser, so it must be a web page and nothing else that Windows can start.
-            d.VerificationUri = WebLinks.HttpsOr(Http.Str(r, "verification_uri"), WebLinks.DeviceLogin);
+            d.VerificationUri = GraphClient.SafeVerificationUri(Http.Str(r, "verification_uri"));
             long? i = ImeJson.Long(ImeJson.Get(r, "interval"));
             long? e = ImeJson.Long(ImeJson.Get(r, "expires_in"));
             if (i.HasValue && i.Value >= 0) d.Interval = (int)Math.Min(i.Value, WebLinks.MaxInterval);

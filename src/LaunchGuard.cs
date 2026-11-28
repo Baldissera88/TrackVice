@@ -10,10 +10,14 @@ namespace TrackVice
     // full path, and a log goes to LogVice only when it is a file on a drive of this PC or an event channel.
     public static class LaunchGuard
     {
-        // The hosts of the links the main window opens in the browser.
-        public static readonly string[] LinkHosts = { "github.com", "intune.microsoft.com" };
+        // The hosts of the links TrackVice opens in the browser: GitHub, the Intune and Azure portals, and the sign-in
+        // pages of Microsoft that a device code sign-in names.
+        public static readonly string[] LinkHosts = {
+            "github.com", "intune.microsoft.com", "endpoint.microsoft.com", "portal.azure.com", "aka.ms",
+            "microsoft.com", "www.microsoft.com", "login.microsoft.com", "microsoftonline.com", "login.microsoftonline.com" };
 
-        public const int MaxLink = 2000, MaxPath = 1024, MaxDetails = 6000;
+        // A new issue on GitHub carries the text of the report in the link, up to Feedback.MaxIssueUrl.
+        public const int MaxLink = 8192, MaxPath = 1024, MaxDetails = 6000;
 
         public static bool IsWebLink(string url)
         {
@@ -33,6 +37,27 @@ namespace TrackVice
             if (host.Length == 0 || host.IndexOfAny(new char[] { '@', ':', '%' }) >= 0) return false;
             foreach (string h in hosts) if (string.Equals(h, host, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
+        }
+
+        // Opens a link in the browser when it is one of the links above, and returns whether it was handed to Windows.
+        // Anything else, such as a path, a share or another scheme, would be started as a program or a file.
+        public static bool OpenWeb(string url)
+        {
+            if (!IsWebLink(url)) return false;
+            System.Diagnostics.Process.Start(url);
+            return true;
+        }
+
+        // The link, or otherwise when it is not one to open: for links read from an answer, such as a release page.
+        public static string WebLinkOr(string url, string otherwise)
+        {
+            return IsWebLink(url) ? url : otherwise;
+        }
+
+        // Notepad by its full path, so a notepad.exe in the current folder is never started in its place.
+        public static string NotepadPath
+        {
+            get { return Path.Combine(Environment.SystemDirectory, "notepad.exe"); }
         }
 
         static bool CleanPath(string path)
