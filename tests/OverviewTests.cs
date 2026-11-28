@@ -394,6 +394,15 @@ namespace TrackVice.Tests
             T.Check(Math.Abs(d.Week.SuccessRate.Value - 200.0 / 3) < 0.01, "overview: success rate");
             T.Eq(2, d.Today.Finished, "overview: finished today");
             T.Check(d.Week.AvgSeconds > 0, "overview: average time");
+            T.Check(d.Week.MedianSeconds > 0, "overview: median time");
+            List<DayBar> days = OverviewDays.Build(d.Week.FinishedDevices, Now.ToLocalTime().Date, System.Globalization.CultureInfo.InvariantCulture);
+            int inBars = 0, failedBars = 0;
+            foreach (DayBar b in days) { inBars += b.Total; failedBars += b.Failed; }
+            T.Eq(OverviewDays.Count, days.Count, "overview: a bar for each of the last 7 days");
+            T.Check(days[days.Count - 1].Today && days[days.Count - 1].Label == "Today", "overview: today is the last bar");
+            T.Eq(d.Week.Finished, inBars, "overview: the bars add up to the finished deployments");
+            T.Eq(d.Week.Failed, failedBars, "overview: the failed parts add up to the failed deployments");
+            T.Eq(0, OverviewDays.Build(null, Now.Date, null)[0].Total, "overview: empty bars without deployments");
             T.Eq("67 %", OverviewModel.Rate(d.Week.SuccessRate), "overview: rate text");
             T.Eq("-", OverviewModel.Rate(null), "overview: no rate");
             T.Eq("-", OverviewModel.Time(0), "overview: no time");
