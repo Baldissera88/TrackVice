@@ -805,6 +805,8 @@ namespace TrackVice
                 AgentSelfUpdate self = installed && !o.Once ? AgentSelfUpdate.For(Reg("UpdateKey"), Reg("UpdateLink"), Program.Version, InstallDir, new WinUpdateLauncher(System.Reflection.Assembly.GetExecutingAssembly().Location), Log) : null;
                 DateTime? updatedAt = installed ? AgentVersions.Time(Reg("UpdatedUtc")) : null;
                 string offState = installed && self == null && !o.Once ? AgentVersions.OffState(Reg("UpdateKey"), Reg("UpdateLink")) : null;
+                // Collect diagnostics: requests the viewer signed with the update key are read from the place updates come from.
+                AgentDiagnostics diag = installed && !o.Once ? AgentDiagnostics.For(Reg("UpdateKey"), Reg("UpdateLink"), store, sid, delegate (Session x) { return LogBundle.Make(mask ? Secrets.MaskedCopy(x) : x); }, mask, InstallDir, Log) : null;
                 // Everything since Windows was installed: after a restart the session is read again in full.
                 using (Engine e = Engine.ForLive(0, true, true, 2000))
                 {
@@ -814,6 +816,7 @@ namespace TrackVice
                         try { e.Apply(e.Poll()); }
                         catch (Exception ex) { Log("Reading failed: " + ex.Message); }
                         if (installed) AgentVersions.Stamp(e.S, started, updatedAt, self != null ? self.State : offState, self != null ? self.CheckedUtc : null);
+                        if (diag != null) diag.Stamp(e.S);
                         LifetimeDecision decision = life.Check(e.S, a.Idle(e.S, now, o.IdleMinutes), now);
                         a.Paused = life.Waiting;
                         bool last = o.Once || decision.Remove;
@@ -829,8 +832,13 @@ namespace TrackVice
                         bool idle = a.Idle(e.S, now, o.IdleMinutes);
                         if (alerts != null) alerts.Cycle(e.S, idle, now);
                         logs.Cycle(e.S, idle, last, now);
+                        if (diag != null && !last && diag.Cycle(e.S, !life.DoneUtc.HasValue, now))
+                        {
+                            diag.Stamp(e.S);
+                            a.Cycle(e.S, now, o, true);
+                        }
                         if (last) break;
-                        if (self != null && self.Cycle(now, !life.DoneUtc.HasValue))
+                        if (self != null && (diag == null || !diag.Busy) && self.Cycle(now, !life.DoneUtc.HasValue))
                         {
                             a.Cycle(e.S, now, o, true);
                             updating = true;

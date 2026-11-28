@@ -1316,6 +1316,7 @@ namespace TrackVice
             if (engine != null && engine.Mode == Modes.Agent)
             {
                 Menus.Add(m, "Logs from the device\u2026", delegate { FetchDeviceLogs(null, 0); });
+                Menus.Add(m, "Collect diagnostics\u2026", delegate { CollectDiagnostics(); });
                 Menus.Separator(m);
             }
             Item sel = list.SelectedItem;
@@ -1753,6 +1754,7 @@ namespace TrackVice
             else if (Array.IndexOf(OverviewPages, start.Page) >= 0) ShotOverview();
             else if (Array.IndexOf(DevicePages, start.Page) >= 0) page = ShotDevices();
             else if (start.Page == "devicelogs") { FetchDeviceLogs(null, 0); LogViceMenu().Show(bLogVice, new Point(0, bLogVice.Height)); }
+            else if (start.Page != null && start.Page.StartsWith("diagnostics", StringComparison.Ordinal)) page = DiagnosticsDialog.ForShot(theme, start.Page);
             else if (start.Page == "downloads") page = ShotDownloads(false);
             else if (start.Page == "downloads-confirm") page = ShotDownloads(true);
             else if (start.Page == "customers") page = new CustomersPage(theme, CustomerBook.Demo());

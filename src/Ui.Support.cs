@@ -112,6 +112,7 @@ namespace TrackVice
             bTicket = SupportButton("Copy for ticket", Glyphs.Copy, delegate { CopyTicket(); });
             bNote = SupportButton("Add a note", null, delegate { EditNote(); });
             bIntune = SupportButton("Open in Intune", Glyphs.Export, delegate { OpenInIntune(); });
+            BuildDiagnosticsButton();
             Tip(bTicket, "Copy a short summary of this device for a support ticket: device, user, state, what failed and why, what it waits for, start and time taken. Secrets are masked.");
             Tip(bIntune, "Open the device's page in the Intune admin center");
             chips.Controls.Add(supportBox);
@@ -146,15 +147,20 @@ namespace TrackVice
             supportBox.FlowDirection = row ? FlowDirection.LeftToRight : FlowDirection.TopDown;
             supportBox.WrapContents = !row;
             supportBox.Height = row ? bTicket.Height + Dpi.S(4) : Dpi.S(62);
+            bDiagnostics.AutoWidth();
             if (row)
             {
-                supportBox.Width = bTicket.Width + bNote.Width + Dpi.S(12) + (bIntune.Visible ? bIntune.Width + Dpi.S(6) : 0);
+                supportBox.Width = bTicket.Width + bNote.Width + Dpi.S(12) + (bIntune.Visible ? bIntune.Width + Dpi.S(6) : 0) + (bDiagnostics.Visible ? bDiagnostics.Width + Dpi.S(6) : 0);
                 return;
             }
             int col1 = Math.Max(bTicket.Width, bNote.Width);
             bTicket.Width = col1;
             bNote.Width = col1;
-            supportBox.Width = col1 + Dpi.S(6) + (bIntune.Visible ? bIntune.Width + Dpi.S(6) : 0);
+            // Open in Intune and Collect diagnostics share the second column.
+            int col2 = Math.Max(bIntune.Visible ? bIntune.Width : 0, bDiagnostics.Visible ? bDiagnostics.Width : 0);
+            if (bIntune.Visible) bIntune.Width = col2;
+            if (bDiagnostics.Visible) bDiagnostics.Width = col2;
+            supportBox.Width = col1 + Dpi.S(6) + (col2 > 0 ? col2 + Dpi.S(6) : 0);
         }
 
         // Runs at the end of every bind.
@@ -169,6 +175,8 @@ namespace TrackVice
             tips.SetToolTip(bNote, note.Length > 0 ? note + "\n\nClick to change the note. It is kept on this PC." : "A short note about this device, kept on this PC and shown in the device lists.");
             bool intune = PortalLinks.Intune(s.GetInfo(DeviceFacts.IntuneId)) != null;
             if (bIntune.Visible != intune) bIntune.Visible = intune;
+            bool diag = DiagnosticsButtonShown();
+            if (bDiagnostics.Visible != diag) bDiagnostics.Visible = diag;
             LayoutSupport();
             chips.PerformLayout();
             RefreshEstimate();
