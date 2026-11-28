@@ -1,5 +1,30 @@
 # Changelog
 
+## TrackVice 2.1.1
+
+28 November 2026.
+
+- **A security review of all the code**, with every flaw found fixed and tested. Nothing is known to have been misused. The ones that matter most:
+  - **Install script**: a value with a curly quote (’) in the customer code, alert link or share path could run commands as SYSTEM on the customer's devices. All quote characters are now handled, and customer codes are strictly checked before they reach a script or a task sequence step.
+  - **Agent as SYSTEM**: the task sequence agent kept its log and state in a folder under `C:\Windows\Temp` that any user could prepare, which let a user make SYSTEM write or delete files, stop the agent, or feed it a fake `smsts.log`. The folder is locked to SYSTEM and administrators, and logs are only read when SYSTEM or administrators own them.
+  - **Your Windows sign-in**: a customers file, a shared customer, or a session from storage could make TrackVice connect to another server (an SCCM server, a share in a log path), which sends your Windows sign-in there. Imported values are checked, a new SCCM server must be confirmed once, and only local log paths are opened.
+  - **Sign-in tokens** for Graph, Azure and Key Vault are only sent to Microsoft's hosts, never to a host named in a reply, and no call with a token follows a redirect.
+  - **Key Vault**: a customer secret can only hold its own customer, and a customer code from the vault is only kept when it holds this PC's update key.
+  - **Intune script assignment**: adding the TrackVice group to an existing script no longer turns excluded groups into included ones.
+  - **What devices upload** is treated as hostile: size and depth limits, cleaned text, zip limits, and bundle files that are not logs get `.txt` added. One crafted log line can no longer stall the agent or the viewer.
+  - **Secrets** are masked in more places: customer codes (`tv1:`), encoded commands, `net use`, `schtasks` and `psexec` passwords, unattend passwords, error messages, Copy details and public bug reports.
+  - **Downloads**: TrackVice's own update is checked again and held locked until the installer has run, LogVice is downloaded to a folder only administrators can write, and only GitHub's hosts are followed.
+  - **MSI**: a repair started by a standard user no longer runs a command as SYSTEM. TrackVice loads DLLs from the Windows system folder only.
+  - HTML reports forbid scripts and remote content. CSV cells cannot start a formula.
+- **What changes for you**:
+  - **Shares (UNC)**: run the new permission commands from Your storage again; with the old ones, devices could overwrite each other's uploads.
+  - **Agent install** fails, with a message, if its registry key cannot be locked to SYSTEM and administrators.
+  - **Alert address** must be the final address; one that redirects now fails.
+  - **App registration** named TrackVice with a secret, other redirect addresses or multi-tenant is no longer picked up by itself; type its Client ID in Settings.
+  - **Collect the session and its logs** from an uploaded, Intune or SCCM session holds the session only, no longer this PC's own logs.
+  - **Customers from the vault** on a PC without the update key keep no customer codes; get the setup first.
+- **SECURITY.md**: how to report a flaw privately, what the agent does on a device, the trust model, and how to check downloads.
+
 ## TrackVice 2.1.0
 
 28 November 2026.
