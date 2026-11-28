@@ -200,7 +200,7 @@ namespace TrackVice
             {
                 int done, total;
                 if (p[i] == "of" && int.TryParse(p[i - 1], out done) && int.TryParse(p[i + 1].TrimEnd(',', ';', '.'), out total) && total > 0 && done >= 0 && done <= total)
-                    return done * 100 / total;
+                    return (int)((long)done * 100 / total);
             }
             return -1;
         }

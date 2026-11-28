@@ -80,7 +80,7 @@ namespace TrackVice
         public MainForm(StartOptions o)
         {
             start = o ?? new StartOptions();
-            Safe.Reporter = delegate (Exception ex) { Status("That did not work: " + ex.Message); };
+            Safe.Reporter = delegate (Exception ex) { Status("That did not work: " + LaunchGuard.Message(ex)); };
             Safe.Status = delegate (string s) { Status(s); };
             Text = "TrackVice";
             Icon = Program.AppIcon();
@@ -305,7 +305,7 @@ namespace TrackVice
             bItemLog.Dock = DockStyle.Right;
             bItemLog.Click += Safe.Wrap(delegate { OpenItemLog(list.SelectedItem); });
             bItemCopy.Dock = DockStyle.Left;
-            bItemCopy.Click += Safe.Wrap(delegate { Menus.Copy(itemDetail.Text.Trim()); });
+            bItemCopy.Click += Safe.Wrap(delegate { Menus.Copy(LaunchGuard.Hide(itemDetail.Text.Trim())); });
             Tip(bItemLog, "Open the newest log this item has a line in (Ctrl+L)");
             themed.Add(bItemLog);
             themed.Add(bItemCopy);
@@ -353,7 +353,7 @@ namespace TrackVice
             SecondaryViews.AttachTimeline(timeline, delegate { return theme; });
             timeline.MenuExtras = delegate (ContextMenuStrip m, TEvent e)
             {
-                if (e.Evidence != null && e.Evidence.Text != null) Menus.Add(m, "Copy the raw line", delegate { Menus.Copy(e.Evidence.Text); });
+                if (e.Evidence != null && e.Evidence.Text != null) Menus.Add(m, "Copy the raw line", delegate { Menus.Copy(LaunchGuard.Hide(e.Evidence.Text)); });
                 if (e.Evidence != null && e.Evidence.IsLogFile) Menus.Add(m, "Open " + Txt.FileName(e.Evidence.Path) + " in LogVice", delegate { OpenEvidence(e.Evidence); });
                 Item it = engine.S.Find(e.ItemKey);
                 if (it != null) Menus.Add(m, "Go to " + Txt.Short(it.DisplayName, 40), delegate { GoTo(it.Key); });
@@ -664,7 +664,7 @@ namespace TrackVice
             if (intuneNames != null && err == null) e.AddNames(intuneNames);
             if (err == null) IntuneOnLoad(e);
             if (err == null && start.Shot == null) ReadExpectedFromIntune();
-            if (err != null) Status("Reading failed: " + err.Message);
+            if (err != null) Status("Reading failed: " + LaunchGuard.Message(err));
             lastUpdate = DateTime.UtcNow;
             bool first = !loadedOnce;
             loadedOnce = true;
@@ -675,8 +675,8 @@ namespace TrackVice
                 bool auto = e.Mode != Modes.Live || Settings.WatchOnStart || (start.ResumeWatch && e.Mode == Modes.Live);
                 if (thenWatch && auto && e.CanWatch && start.Shot == null && start.At < 0) SetWatching(true);
                 else SetWatching(false);
-                Status(err != null ? "Reading failed: " + err.Message : Summary());
-                if (err != null && e.IsRemote) list.EmptyText = "This deployment could not be read.\n\n" + err.Message;
+                Status(err != null ? "Reading failed: " + LaunchGuard.Message(err) : Summary());
+                if (err != null && e.IsRemote) list.EmptyText = "This deployment could not be read.\n\n" + LaunchGuard.Message(err);
                 if (err != null) list.Rebuild();
                 if (e.StartedBeforeHistory.HasValue)
                     Status("This deployment started " + Txt.Local(e.StartedBeforeHistory.Value) + ", before the history TrackVice reads, so older items show only their saved state. Settings > History to read > Since install reads everything.");
@@ -1387,6 +1387,19 @@ namespace TrackVice
                 OpenFromDevice(targets, line);
                 return;
             }
+            // Only this device's own logs are opened as they are named. A saved session, a folder or another device
+            // names its logs itself, so only files on a drive, files in the opened folder and event channels pass.
+            if (engine == null || engine.Mode != Modes.Live)
+            {
+                List<string> refused = new List<string>();
+                string inside = openingDeviceCopy ? DeviceLogs.Root : engine != null && engine.Mode == Modes.Folder ? engine.S.SourcePath : null;
+                targets = LaunchGuard.LogTargets(targets, inside, refused);
+                if (targets.Length == 0)
+                {
+                    Status("Not opened in LogVice: " + (refused.Count > 0 ? Txt.Short(refused[0], 120) : "the log") + " is not a file on a drive of this PC.");
+                    return;
+                }
+            }
             string exe = LogViceLink.Find();
             if (exe == null) exe = GetLogVice();
             if (exe == null) return;
@@ -1439,12 +1452,13 @@ namespace TrackVice
                         Safe.Run(delegate
                         {
                             fetchingLogs = false;
-                            if (err != null) { Status("The logs of " + computer + " could not be downloaded: " + err.Message); return; }
+                            if (err != null) { Status("The logs of " + computer + " could not be downloaded: " + LaunchGuard.Message(err)); return; }
                             if (c == null) { Status(DeviceLogs.NotYet); return; }
                             deviceLogs[feed.Blob] = c;
                             if (e != engine) return;
                             if (targets != null) { OpenFromDevice(targets, line); return; }
-                            if (!shot) System.Diagnostics.Process.Start("explorer.exe", "\"" + c.Folder + "\"");
+                            string show = LaunchGuard.IsUnder(c.Folder, DeviceLogs.Root) ? LaunchGuard.ExplorerArgument(c.Folder) : null;
+                            if (!shot && show != null) System.Diagnostics.Process.Start(LaunchGuard.ExplorerPath, show);
                             Status(c.Logs + " log file" + (c.Logs == 1 ? "" : "s") + " from " + computer + ", uploaded " + Txt.LocalTime(c.UploadedUtc) + ", are in " + c.Folder + ".");
                         });
                     });
@@ -1514,7 +1528,7 @@ namespace TrackVice
 
         string FileStem
         {
-            get { return "TrackVice-" + engine.S.Computer + "-" + DateTime.Now.ToString("yyyyMMdd-HHmm", Inv); }
+            get { return "TrackVice-" + LaunchGuard.FileNamePart(engine.S.Computer) + "-" + DateTime.Now.ToString("yyyyMMdd-HHmm", Inv); }
         }
 
         void SaveSession()
@@ -1574,9 +1588,11 @@ namespace TrackVice
 
         static void OpenFile(string path)
         {
+            // Only the web page that was just saved is opened, never a file that Windows would run.
+            if (!LaunchGuard.IsReportFile(path)) return;
             try
             {
-                if (Program.IsAdmin) System.Diagnostics.Process.Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), "\"" + path + "\"");
+                if (Program.IsAdmin) System.Diagnostics.Process.Start(LaunchGuard.ExplorerPath, "\"" + path + "\"");
                 else System.Diagnostics.Process.Start(path);
             }
             catch (Exception) { }
@@ -1584,7 +1600,7 @@ namespace TrackVice
 
         void Fail(Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, LaunchGuard.Message(ex), "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         void OpenRemote(string kind)
