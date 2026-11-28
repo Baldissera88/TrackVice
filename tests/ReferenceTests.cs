@@ -382,7 +382,7 @@ namespace TrackVice.Tests
             T.Check(html.Contains("Signature"), "ship report: room for a signature");
             T.Check(html.Contains("Missing here:</b> Contoso Print Client"), "ship report: reference check");
             T.Check(html.Contains("@media print"), "ship report: print styles");
-            T.Check(html.IndexOf("<script", StringComparison.OrdinalIgnoreCase) < 0 && html.IndexOf("http", StringComparison.OrdinalIgnoreCase) < 0, "ship report: self-contained");
+            T.Check(html.IndexOf("<script", StringComparison.OrdinalIgnoreCase) < 0 && html.Replace("http-equiv", "").IndexOf("http", StringComparison.OrdinalIgnoreCase) < 0, "ship report: self-contained");
 
             Session ok = Base("CONTOSO-PC03");
             string good = Report.ShipHtml(ok, ok.ClockUtc, Ref(Base("CONTOSO-PC01")));

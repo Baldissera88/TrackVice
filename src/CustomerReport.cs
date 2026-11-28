@@ -51,7 +51,7 @@ namespace TrackVice
 
         public static string H(string s)
         {
-            return WebUtility.HtmlEncode(Secrets.Mask(s ?? ""));
+            return WebUtility.HtmlEncode(ShareMask.Text(s ?? ""));
         }
 
         // Escaped but not masked, for texts that are not from the device.
@@ -241,8 +241,8 @@ namespace TrackVice
 
         public static void Head(StringBuilder b, string title)
         {
-            b.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>")
-             .Append(E(title)).Append("</title><style>").Append(Css).Append("</style></head><body><main>");
+            b.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">").Append(Report.CspMeta).Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>")
+             .Append(H(title)).Append("</title><style>").Append(Css).Append("</style></head><body><main>");
         }
 
         public static void Tail(StringBuilder b)

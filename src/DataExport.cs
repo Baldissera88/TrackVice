@@ -246,10 +246,12 @@ namespace TrackVice
         }
 
         // A text cell: always quoted, quotes doubled, line breaks made spaces so each record is one line, and a ' before
-        // a leading = + - @ tab or carriage return so spreadsheets do not run it as a formula.
+        // a leading = + - @ tab or carriage return so spreadsheets do not run it as a formula. Passwords, keys, tokens and
+        // customer codes are masked, as in the reports.
         public static string Text(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
+            s = ShareMask.Text(s);
             if ("=+-@\t\r".IndexOf(s[0]) >= 0) s = "'" + s;
             return "\"" + s.Replace("\"", "\"\"").Replace("\r\n", " ").Replace("\r", " ").Replace("\n", " ") + "\"";
         }

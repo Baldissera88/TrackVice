@@ -99,6 +99,23 @@ namespace TrackVice
         }
     }
 
+    // Masking for every text TrackVice writes out for other people: reports, CSV files, tickets and bug reports.
+    // Secrets.Mask, and also customer codes, which hold the upload link of a customer and show up in the command line
+    // TrackVice.exe /agent-install /customer "tv1:..." of a task sequence step or a script.
+    public static class ShareMask
+    {
+        static readonly System.Text.RegularExpressions.Regex RxCode = new System.Text.RegularExpressions.Regex(
+            @"(?<![A-Za-z0-9])(?<n>tv1:)[A-Za-z0-9_\-]{16,}", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        public static string Text(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length < 6) return s;
+            string r = Secrets.Mask(s);
+            if (r.IndexOf("tv1:", StringComparison.OrdinalIgnoreCase) >= 0) r = RxCode.Replace(r, "${n}" + Secrets.Hidden);
+            return r;
+        }
+    }
+
     // A short plain summary of a device to paste into a support ticket. Secrets are masked.
     public static class Ticket
     {
@@ -161,7 +178,8 @@ namespace TrackVice
         static void Line(StringBuilder b, string label, string value)
         {
             if (string.IsNullOrEmpty(value)) return;
-            b.Append(label).Append(": ").Append(Secrets.Mask(Txt.Short(value, 300))).Append("\r\n");
+            // Masked before it is cut, so a cut cannot leave the start of a secret behind without the name that marks it.
+            b.Append(label).Append(": ").Append(Txt.Short(ShareMask.Text(value), 300)).Append("\r\n");
         }
     }
 
@@ -246,7 +264,7 @@ namespace TrackVice
             if (string.IsNullOrEmpty(s)) return "";
             string t = s.Replace("\r\n", " ").Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ').Trim();
             while (t.Contains("  ")) t = t.Replace("  ", " ");
-            t = Secrets.Mask(t);
+            t = ShareMask.Text(t);
             return t.Length <= MaxLength ? t : t.Substring(0, MaxLength).TrimEnd();
         }
 

@@ -84,7 +84,7 @@ namespace TrackVice
             ReferenceResult rr = reference == null ? null : ReferenceCheck.Check(s, nowUtc, reference);
             ShipVerdict v = ShipCheck.Judge(s, rr);
             StringBuilder b = new StringBuilder();
-            b.Append("<!doctype html><html lang=\"en\" class=\"ship\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            b.Append("<!doctype html><html lang=\"en\" class=\"ship\"><head><meta charset=\"utf-8\">").Append(CspMeta).Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             b.Append("<title>").Append(H("Ready to ship - " + s.Computer)).Append("</title><style>").Append(Style).Append(ShipStyle).Append("</style></head><body><main>");
             b.Append("<header><div class=\"kicker\">Ready to ship report</div><h1>").Append(H(s.Computer)).Append("</h1><div class=\"sub\">").Append(H(s.Items.Count > 0 ? s.Kind : "No deployment found"));
             string profile = s.GetInfo("Autopilot profile") ?? s.GetInfo("Task sequence");

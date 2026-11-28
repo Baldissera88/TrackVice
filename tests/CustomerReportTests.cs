@@ -288,7 +288,7 @@ namespace TrackVice.Tests
             T.Check(edge != null && edge.Replace('\\', '/').EndsWith("Microsoft/Edge/Application/msedge.exe"), "Edge found under Program Files (x86)");
             T.Check(PdfPrint.FindEdge(delegate (string p) { return false; }, "/pf86", "/pf") == null, "no Edge");
             string a = PdfPrint.Arguments("/t/in.html", "/t/out.pdf", null);
-            T.Eq("--headless --disable-gpu --no-pdf-header-footer --print-to-pdf=\"/t/out.pdf\" \"/t/in.html\"", a, "Edge arguments");
+            T.Eq("--headless --disable-gpu --no-pdf-header-footer --no-first-run --no-default-browser-check --disable-extensions --disable-sync --disable-background-networking --disable-component-update --print-to-pdf=\"/t/out.pdf\" \"/t/in.html\"", a, "Edge arguments");
 
             string dir = Path.Combine(Path.GetTempPath(), "tv-pdf-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dir);
@@ -300,10 +300,11 @@ namespace TrackVice.Tests
                 PdfResult r = PdfPrint.Make("msedge.exe", html, pdf, delegate (string exe, string args, int ms)
                 {
                     seen = exe + "|" + args + "|" + ms;
-                    File.WriteAllText(pdf, "%PDF-1.4");
+                    File.WriteAllText(PdfOut(args), "%PDF-1.4");
                     return 0;
                 });
                 T.Check(r.Ok, "PDF made");
+                T.Eq("%PDF-1.4", File.Exists(pdf) ? File.ReadAllText(pdf) : null, "the PDF is copied to where the report was saved");
                 T.Check(seen != null && seen.StartsWith("msedge.exe|--headless --disable-gpu --no-pdf-header-footer", StringComparison.Ordinal) && seen.EndsWith("|60000"), "runner got the arguments and 60 s");
                 File.Delete(pdf);
                 r = PdfPrint.Make("msedge.exe", html, pdf, delegate (string exe, string args, int ms) { return (int?)null; });
@@ -322,6 +323,14 @@ namespace TrackVice.Tests
             {
                 try { Directory.Delete(dir, true); } catch (Exception) { }
             }
+        }
+
+        // The value of --print-to-pdf="..." in Edge's arguments.
+        internal static string PdfOut(string args)
+        {
+            const string sw = "--print-to-pdf=\"";
+            int i = args.IndexOf(sw, StringComparison.Ordinal) + sw.Length;
+            return args.Substring(i, args.IndexOf('"', i) - i);
         }
     }
 }

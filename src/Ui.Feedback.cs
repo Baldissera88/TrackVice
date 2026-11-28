@@ -589,7 +589,7 @@ namespace TrackVice
                         {
                             File.WriteAllBytes(path, zip);
                             msg = "Saved " + path + ". Look it through before you attach it: the log files are as they are on the device.";
-                            try { Process.Start("explorer.exe", "/select,\"" + path + "\""); } catch (Exception) { }
+                            try { Process.Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), "/select,\"" + path + "\""); } catch (Exception) { }
                         }
                     }
                     catch (Exception ex) { msg = "Not saved: " + ex.Message; }

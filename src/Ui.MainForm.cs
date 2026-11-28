@@ -1540,7 +1540,7 @@ namespace TrackVice
                 d.FileName = FileStem + ".zip";
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 engine.S.ClockUtc = engine.Now;
-                int n = Report.Bundle(engine.S, d.FileName);
+                int n = Report.Bundle(Secrets.MaskedCopy(engine.S), d.FileName);
                 Status("Saved " + d.FileName + " with the session and " + n + " log file" + (n == 1 ? "" : "s") + ".");
             }
         }
