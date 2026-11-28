@@ -28,6 +28,31 @@ namespace TrackVice
 
         protected const RegexOptions Ci = RegexOptions.Compiled | RegexOptions.IgnoreCase;
 
+        // A pattern for log text, which is not trusted: it gives up after CmLog.MatchTimeout. A name in a pattern is at most
+        // 1024 characters and a command line at most 32767, so a line that repeats the start of a pattern costs one pass
+        // and not a pass for every repeat.
+        protected static Regex Rx(string pattern)
+        {
+            return new Regex(pattern, Ci, CmLog.MatchTimeout);
+        }
+
+        // Reads one line. A line the parser cannot handle, such as one too complex for a pattern, is skipped with what it
+        // had added, and false is returned, so it does not stop the reading of everything after it.
+        public static bool Safe(LogParser p, LogLine l, List<Obs> output)
+        {
+            int before = output.Count;
+            try
+            {
+                p.Read(l, output);
+                return true;
+            }
+            catch (Exception)
+            {
+                if (output.Count > before) output.RemoveRange(before, output.Count - before);
+                return false;
+            }
+        }
+
         // The parser for a log, by its base name (CmLog.BaseName). Null for logs TrackVice does not read.
         public static LogParser For(string baseName)
         {
@@ -56,19 +81,19 @@ namespace TrackVice
     // smsts.log: the steps of a task sequence. It moves during OSD, so one parser reads every copy and skips lines it already saw.
     public sealed class SmstsParser : LogParser
     {
-        static readonly Regex RxStart = new Regex(@"Start executing an instruc?tion\. Instruction name: (?<n>.+?)\. Instruction pointer: (?<p>\d+)", Ci);
-        static readonly Regex RxOk = new Regex(@"Successfully complete?d? the action \((?<n>.+?)\) with the exit win32 code (?<c>-?\d+)", Ci);
-        static readonly Regex RxFail = new Regex(@"Failed to run the action: (?<n>.+?)\.\s*(?<rest>.*)$", Ci | RegexOptions.Singleline);
-        static readonly Regex RxSkip = new Regex(@"The action \((?<n>.+?)\) has been skipped because the condition is evaluated to be false", Ci);
-        static readonly Regex RxContinue = new Regex(@"The action \((?<n>.+?)\) failed but (?:the task sequence|execution) (?:will )?continues?", Ci);
-        static readonly Regex RxVar = new Regex(@"Set (?:a )?(?:global|local)? ?(?:environment )?variable (?<k>_SMSTS\w+|_SMSTSPackageName|_SMSTSInWinPE|_SMSTSPackageID|_SMSTSAdvertID)=(?<v>.*)$", Ci);
-        static readonly Regex RxCmd = new Regex(@"^Executing command line: (?<c>.+)$", Ci);
-        static readonly Regex RxExit = new Regex(@"Process completed with exit code (?<c>-?\d+)", Ci);
-        static readonly Regex RxErr = new Regex(@"(?:Error:?\s*|code\s+|hr=)(?<c>0x[0-9A-Fa-f]{8}|[0-9A-Fa-f]{8}|-?\d{4,10})", Ci);
-        static readonly Regex RxTsFail = new Regex(@"(?:Task sequence execution failed with error code (?<c>\S+)|Execution of task sequence failed|Task Sequence Engine failed! Code: (?<c2>\S+))", Ci);
-        static readonly Regex RxTsDone = new Regex(@"Task sequence completed (?<c>0x[0-9A-Fa-f]+)", Ci);
-        static readonly Regex RxGroupFail = new Regex(@"The execution of the group \((?<g>.+?)\) has failed", Ci);
-        static readonly Regex RxReboot = new Regex(@"^(?:Rebooting|Restarting|Reboot(?:ing)? (?:the )?(?:computer|system)|The computer will restart|Executing reboot)", Ci);
+        static readonly Regex RxStart = Rx(@"Start executing an instruc?tion\. Instruction name: (?<n>.{1,1024}?)\. Instruction pointer: (?<p>\d+)");
+        static readonly Regex RxOk = Rx(@"Successfully complete?d? the action \((?<n>.{1,1024}?)\) with the exit win32 code (?<c>-?\d+)");
+        static readonly Regex RxFail = new Regex(@"Failed to run the action: (?<n>.{1,1024}?)\.\s*(?<rest>.*)$", Ci | RegexOptions.Singleline, CmLog.MatchTimeout);
+        static readonly Regex RxSkip = Rx(@"The action \((?<n>.{1,1024}?)\) has been skipped because the condition is evaluated to be false");
+        static readonly Regex RxContinue = Rx(@"The action \((?<n>.{1,1024}?)\) failed but (?:the task sequence|execution) (?:will )?continues?");
+        static readonly Regex RxVar = Rx(@"Set (?:a )?(?:global|local)? ?(?:environment )?variable (?<k>_SMSTS\w+|_SMSTSPackageName|_SMSTSInWinPE|_SMSTSPackageID|_SMSTSAdvertID)=(?<v>.*)$");
+        static readonly Regex RxCmd = Rx(@"^Executing command line: (?<c>.+)$");
+        static readonly Regex RxExit = Rx(@"Process completed with exit code (?<c>-?\d+)");
+        static readonly Regex RxErr = Rx(@"(?:Error:?\s*|code\s+|hr=)(?<c>0x[0-9A-Fa-f]{8}|[0-9A-Fa-f]{8}|-?\d{4,10})");
+        static readonly Regex RxTsFail = Rx(@"(?:Task sequence execution failed with error code (?<c>\S+)|Execution of task sequence failed|Task Sequence Engine failed! Code: (?<c2>\S+))");
+        static readonly Regex RxTsDone = Rx(@"Task sequence completed (?<c>0x[0-9A-Fa-f]+)");
+        static readonly Regex RxGroupFail = Rx(@"The execution of the group \((?<g>.{1,1024}?)\) has failed");
+        static readonly Regex RxReboot = Rx(@"^(?:Rebooting|Restarting|Reboot(?:ing)? (?:the )?(?:computer|system)|The computer will restart|Executing reboot)");
 
         readonly HashSet<string> seen = new HashSet<string>();
         readonly Dictionary<string, string> keyByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -265,16 +290,16 @@ namespace TrackVice
     // AppEnforce.log: one install or uninstall of an application deployment type, from command line to detection.
     public sealed class AppEnforceParser : LogParser
     {
-        static readonly Regex RxStart = new Regex("\\+\\+\\+ Starting (?<act>Install|Uninstall) enforcement for App DT \"(?<dt>[^\"]+)\" ApplicationDeliveryType - (?<id>[^,]+), Revision - (?<rev>\\d+)(?:, ContentPath - (?<cp>[^,]*))?(?:, Execution Context - (?<ctx>\\w+))?", Ci);
-        static readonly Regex RxCmd = new Regex(@"Executing Command line: (?<c>.+?)\s+with (?:user|system) context", Ci);
-        static readonly Regex RxProcExit = new Regex(@"Process (?<pid>\d+) terminated with exitcode: (?<c>-?\d+)", Ci);
-        static readonly Regex RxMatched = new Regex(@"Matched exit code (?<c>-?\d+) to a (?<k>\w+) entry in exit codes table", Ci);
-        static readonly Regex RxUnmatched = new Regex(@"Unmatched exit code \((?<c>-?\d+)\) is considered an execution failure", Ci);
-        static readonly Regex RxFound = new Regex(@"\+\+\+ Discovered application \[AppDT Id: (?<id>[^,\]]+)", Ci);
-        static readonly Regex RxNotFound = new Regex(@"\+\+\+ Application not discovered\. \[AppDT Id: (?<id>[^,\]]+)", Ci);
-        static readonly Regex RxDone = new Regex("App enforcement completed \\((?<s>\\d+) seconds\\) for App DT \"(?<dt>[^\"]+)\" \\[(?<id>[^\\]]+)\\]", Ci);
-        static readonly Regex RxWait = new Regex(@"Waiting for process (?<pid>\d+) to finish\.\s*Timeout = (?<t>\d+) minutes", Ci);
-        static readonly Regex RxTimeout = new Regex(@"(?:Job|Process) .*time(?:d)? ?out|exceeded (?:the )?(?:maximum|max) run ?time", Ci);
+        static readonly Regex RxStart = Rx("\\+\\+\\+ Starting (?<act>Install|Uninstall) enforcement for App DT \"(?<dt>[^\"]{1,1024})\" ApplicationDeliveryType - (?<id>[^,]{1,1024}), Revision - (?<rev>\\d+)(?:, ContentPath - (?<cp>[^,]{0,32767}))?(?:, Execution Context - (?<ctx>\\w+))?");
+        static readonly Regex RxCmd = Rx(@"Executing Command line: (?<c>.{1,32767}?)\s+with (?:user|system) context");
+        static readonly Regex RxProcExit = Rx(@"Process (?<pid>\d+) terminated with exitcode: (?<c>-?\d+)");
+        static readonly Regex RxMatched = Rx(@"Matched exit code (?<c>-?\d+) to a (?<k>\w+) entry in exit codes table");
+        static readonly Regex RxUnmatched = Rx(@"Unmatched exit code \((?<c>-?\d+)\) is considered an execution failure");
+        static readonly Regex RxFound = Rx(@"\+\+\+ Discovered application \[AppDT Id: (?<id>[^,\]]+)");
+        static readonly Regex RxNotFound = Rx(@"\+\+\+ Application not discovered\. \[AppDT Id: (?<id>[^,\]]+)");
+        static readonly Regex RxDone = Rx("App enforcement completed \\((?<s>\\d+) seconds\\) for App DT \"(?<dt>[^\"]{1,1024})\" \\[(?<id>[^\\]]{1,1024})\\]");
+        static readonly Regex RxWait = Rx(@"Waiting for process (?<pid>\d+) to finish\.\s*Timeout = (?<t>\d+) minutes");
+        static readonly Regex RxTimeout = Rx(@"(?:Job|Process) .{0,1024}time(?:d)? ?out|exceeded (?:the )?(?:maximum|max) run ?time");
 
         sealed class Run
         {
@@ -450,8 +475,8 @@ namespace TrackVice
     // AppDiscovery.log: detection runs. Only adds to applications another source already follows.
     public sealed class AppDiscoveryParser : LogParser
     {
-        static readonly Regex RxFound = new Regex(@"\+\+\+ Discovered application \[AppDT Id: (?<id>[^,\]]+)", Ci);
-        static readonly Regex RxNotFound = new Regex(@"\+\+\+ Application not discovered\. \[AppDT Id: (?<id>[^,\]]+)", Ci);
+        static readonly Regex RxFound = Rx(@"\+\+\+ Discovered application \[AppDT Id: (?<id>[^,\]]+)");
+        static readonly Regex RxNotFound = Rx(@"\+\+\+ Application not discovered\. \[AppDT Id: (?<id>[^,\]]+)");
 
         public override string Source
         {
@@ -474,7 +499,7 @@ namespace TrackVice
     // AppIntentEval.log: which applications this device should have and what it has.
     public sealed class AppIntentEvalParser : LogParser
     {
-        static readonly Regex Rx = new Regex(@"(?<id>ScopeId_[0-9A-Fa-f-]+/DeploymentType_[0-9A-Fa-f-]+)\s*(?:,\s*Revision:?\s*\d+)?\s*:-\s*Current State = (?<cur>\w+), Applicability = (?<ap>\w+), ResolvedState = (?<rs>\w+), ConfigureState = (?<cs>\w+)(?:, Title = (?<t>.+))?$", Ci);
+        static readonly Regex RxIntent = Rx(@"(?<id>ScopeId_[0-9A-Fa-f-]+/DeploymentType_[0-9A-Fa-f-]+)\s*(?:,\s*Revision:?\s*\d+)?\s*:-\s*Current State = (?<cur>\w+), Applicability = (?<ap>\w+), ResolvedState = (?<rs>\w+), ConfigureState = (?<cs>\w+)(?:, Title = (?<t>.+))?$");
 
         public override string Source
         {
@@ -483,7 +508,7 @@ namespace TrackVice
 
         public override void Read(LogLine l, List<Obs> output)
         {
-            Match m = Rx.Match(l.Text ?? "");
+            Match m = RxIntent.Match(l.Text ?? "");
             if (!m.Success) return;
             string cur = m.Groups["cur"].Value, ap = m.Groups["ap"].Value, cs = m.Groups["cs"].Value;
             State? st = null;
@@ -504,9 +529,9 @@ namespace TrackVice
     // execmgr.log: packages and programs.
     public sealed class ExecmgrParser : LogParser
     {
-        static readonly Regex RxState = new Regex(@"Execution Request for advert (?<adv>\w+) package (?<pkg>\w+) program (?<prog>.+?) state change from (?<from>\w+) to (?<to>\w+)", Ci);
-        static readonly Regex RxDone = new Regex(@"Execution is complete for program (?<prog>.+?)\. The exit code is (?<c>-?\d+), the execution status is (?<st>\w+)", Ci);
-        static readonly Regex RxRun = new Regex(@"Executing program (?<cmd>.+?) in (?:User|Admin|System) context", Ci);
+        static readonly Regex RxState = Rx(@"Execution Request for advert (?<adv>\w+) package (?<pkg>\w+) program (?<prog>.{1,1024}?) state change from (?<from>\w+) to (?<to>\w+)");
+        static readonly Regex RxDone = Rx(@"Execution is complete for program (?<prog>.{1,1024}?)\. The exit code is (?<c>-?\d+), the execution status is (?<st>\w+)");
+        static readonly Regex RxRun = Rx(@"Executing program (?<cmd>.{1,32767}?) in (?:User|Admin|System) context");
 
         string lastKey, lastName;
         readonly Dictionary<string, string> keyByProgram = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -571,10 +596,10 @@ namespace TrackVice
     // CAS.log: content downloads into the ccmcache.
     public sealed class CasParser : LogParser
     {
-        static readonly Regex RxStart = new Regex(@"Download started for content (?<c>[^\s,]+)", Ci);
-        static readonly Regex RxDone = new Regex(@"Download completed for content (?<c>[^\s,]+)", Ci);
-        static readonly Regex RxFail = new Regex(@"Download failed for content (?<c>[^\s,]+)(?:.*?error (?<e>0x[0-9A-Fa-f]+))?", Ci);
-        static readonly Regex RxCached = new Regex(@"Saved Content ID Mapping (?<c>[^\s,]+), (?<p>.+)$", Ci);
+        static readonly Regex RxStart = Rx(@"Download started for content (?<c>[^\s,]+)");
+        static readonly Regex RxDone = Rx(@"Download completed for content (?<c>[^\s,]+)");
+        static readonly Regex RxFail = Rx(@"Download failed for content (?<c>[^\s,]+)(?:.{0,1024}?error (?<e>0x[0-9A-Fa-f]+))?");
+        static readonly Regex RxCached = Rx(@"Saved Content ID Mapping (?<c>[^\s,]+), (?<p>.+)$");
 
         public override string Source
         {
@@ -616,8 +641,8 @@ namespace TrackVice
     // UpdatesDeployment.log and UpdatesHandler.log: software update installs.
     public sealed class UpdatesParser : LogParser
     {
-        static readonly Regex RxAdded = new Regex(@"Update \((?<id>[^)]+)\) Name \((?<n>.+?)\) ArticleID \((?<kb>\w+)\) added to the targeted list", Ci);
-        static readonly Regex RxProgress = new Regex(@"Update \((?<id>[^)]+)\) Progress: Status = (?<st>\w+)(?:, PercentComplete = (?<p>\d+))?(?:, DownloadSize = \d+)?(?:, Result = (?<r>0x[0-9A-Fa-f]+))?", Ci);
+        static readonly Regex RxAdded = Rx(@"Update \((?<id>[^)]+)\) Name \((?<n>.{1,1024}?)\) ArticleID \((?<kb>\w+)\) added to the targeted list");
+        static readonly Regex RxProgress = Rx(@"Update \((?<id>[^)]+)\) Progress: Status = (?<st>\w+)(?:, PercentComplete = (?<p>\d+))?(?:, DownloadSize = \d+)?(?:, Result = (?<r>0x[0-9A-Fa-f]+))?");
         readonly string source;
 
         public UpdatesParser(string src)

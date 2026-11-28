@@ -1418,6 +1418,10 @@ namespace TrackVice
             foreach (string marker in Markers)
             {
                 int p = text.IndexOf(marker, StringComparison.Ordinal);
+                // The message the last marker was in, kept for the next marker in the same message. Searched and copied
+                // again for each marker, a message that repeats the marker many times took minutes.
+                string seg = null;
+                int segStart = 0, stop = -1;
                 while (p >= 0 && found.Count < MaxNames)
                 {
                     int j = p + marker.Length;
@@ -1426,13 +1430,17 @@ namespace TrackVice
                     if (j < text.Length && text[j] == '[')
                     {
                         // Parse only the log message, which ends at "]LOG]!>" in a CMTrace line.
-                        int stop = text.IndexOf("]LOG]!>", j, StringComparison.Ordinal);
-                        if (stop < 0) stop = text.Length;
-                        string seg = text.Substring(j, stop - j);
+                        if (seg == null || j > stop)
+                        {
+                            stop = text.IndexOf("]LOG]!>", j, StringComparison.Ordinal);
+                            if (stop < 0) stop = text.Length;
+                            seg = text.Substring(j, stop - j);
+                            segStart = j;
+                        }
                         int end;
                         bool complete;
-                        List<object> arr = ImeJson.Parse(seg, 0, true, out end, out complete) as List<object>;
-                        end += j;
+                        List<object> arr = ImeJson.Parse(seg, j - segStart, true, out end, out complete) as List<object>;
+                        end += segStart;
                         if (arr != null)
                         {
                             foreach (object o in arr)

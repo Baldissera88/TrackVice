@@ -10,8 +10,12 @@ namespace TrackVice
     // Reads a registry export (.reg) into a MemoryRegistry, so a collected folder can be read like the device itself.
     public static class RegFile
     {
+        // Exports of the keys TrackVice reads are a few MB. A file from a collected folder is not trusted to be that.
+        public const long MaxBytes = 256L * 1024 * 1024;
+
         public static void Load(string path, MemoryRegistry reg)
         {
+            if (new FileInfo(path).Length > MaxBytes) throw new IOException(Path.GetFileName(path) + " is larger than " + (MaxBytes / 1024 / 1024) + " MB, so it was not read.");
             byte[] raw = File.ReadAllBytes(path);
             string text = raw.Length >= 2 && raw[0] == 0xFF && raw[1] == 0xFE ? Encoding.Unicode.GetString(raw, 2, raw.Length - 2) : Encoding.UTF8.GetString(raw);
             Parse(text, reg);

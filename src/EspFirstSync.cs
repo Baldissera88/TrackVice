@@ -142,7 +142,8 @@ namespace TrackVice
                     said[key] = "running";
                     prev = "running";
                 }
-                if (!sec.HasValue || sec.Value < 0) continue;
+                // A count of more than a year is not a step's time: added to the start it would throw and lose every step.
+                if (!sec.HasValue || sec.Value < 0 || sec.Value > 366L * 24 * 3600) continue;
                 if (seen.Add("counted|" + key))
                 {
                     // Windows wrote the step's time, so the step ends from it and not from other evidence (EspSteps).
