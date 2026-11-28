@@ -19,7 +19,7 @@ namespace TrackVice
     {
         public static string Quote(string s)
         {
-            return "'" + (s ?? "").Replace("'", "''") + "'";
+            return CustomerScript.Literal(s);
         }
 
         // Replaces the value on the line that sets $name, and keeps the comment after it.

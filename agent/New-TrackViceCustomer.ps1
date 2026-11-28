@@ -117,7 +117,8 @@ function Get-SuggestedName {
 
 function ConvertTo-Literal {
     param([string]$Value)
-    return "'" + ($Value -replace "'", "''") + "'"
+    # PowerShell also ends a single-quoted string at the typographic quotes, so each of them is doubled as well.
+    return "'" + ($Value -replace "['\u2018\u2019\u201A\u201B]", '$0$0') + "'"
 }
 
 # Replaces the value on the line that sets $Name, and keeps the comment after it.

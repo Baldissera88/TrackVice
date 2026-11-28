@@ -50,18 +50,60 @@ namespace TrackVice.Tests
             string all = ShareStorage.IcaclsText(Share);
             T.Check(all.Contains("icacls \"" + Share + "\" /inheritance:r"), "icacls: the folder is cut off from its parent");
             T.Check(all.Contains("/grant \"BUILTIN\\Administrators:(OI)(CI)F\"") && all.Contains("/grant \"NT AUTHORITY\\SYSTEM:(OI)(CI)F\""), "icacls: administrators and SYSTEM have full control");
-            T.Check(all.Contains("\"Domain Computers:(OI)(CI)(X,RA,WD,AD)\""), "icacls: Domain Computers create files and write, and cannot read");
+            T.Check(all.Contains("\"Domain Computers:(CI)(X,RA,WD,AD)\""), "icacls: Domain Computers create files and write, and cannot read");
             T.Check(all.Contains("\"CREATOR OWNER:(OI)(CI)(IO)M\""), "icacls: a device can replace its own files");
-            T.Check(all.IndexOf("Domain Computers:(OI)(CI)(X,RA,WD,AD)", StringComparison.Ordinal) == all.LastIndexOf("Domain Computers:(OI)(CI)(X,RA,WD,AD)", StringComparison.Ordinal), "icacls: the write right is given once");
+            T.Check(all.IndexOf("Domain Computers:(CI)(X,RA,WD,AD)", StringComparison.Ordinal) == all.LastIndexOf("Domain Computers:(CI)(X,RA,WD,AD)", StringComparison.Ordinal), "icacls: the write right is given once");
             string agent = Share + "\\agent";
-            T.Check(all.Contains("icacls \"" + agent + "\" /inheritance:d") && all.Contains("icacls \"" + agent + "\" /remove:g \"Domain Computers\"") && all.Contains("icacls \"" + agent + "\" /grant \"Domain Computers:(OI)(CI)RX\""), "icacls: the agent folder is read only for the devices");
+            T.Check(all.Contains("icacls \"" + agent + "\" /inheritance:r /grant:r \"NT AUTHORITY\\SYSTEM:(OI)(CI)F\" /grant:r \"BUILTIN\\Administrators:(OI)(CI)F\" /grant:r \"Domain Computers:(OI)(CI)RX\""), "icacls: the agent folder is read only for the devices");
             T.Check(all.Contains("mkdir \"" + agent + "\""), "icacls: the agent folder is made first");
-            T.Check(l[0].Contains("mkdir") && l[1].Contains("/inheritance:r"), "icacls: order, folder then rights");
+            T.Check(l[0].Contains("mkdir") && l[3].Contains("/inheritance:r"), "icacls: order, folders then rights");
             foreach (string s in l) T.Check(s.StartsWith("icacls \"") || s.StartsWith("if not exist"), "icacls: each line is a command: " + s);
             string spaced = ShareStorage.IcaclsText("\"\\\\fs01\\Track Vice\\Northwind Traders\\\"");
             T.Check(spaced.Contains("icacls \"\\\\fs01\\Track Vice\\Northwind Traders\" /inheritance:r") && spaced.IndexOf("\"\"", StringComparison.Ordinal) < 0, "icacls: a path with spaces is quoted once");
             T.Check(ShareStorage.PermissionsText.Contains("Domain Computers") && ShareStorage.PermissionsText.Contains("administrators"), "Permissions text");
             T.Check(ShareStorage.LimitsText.Contains("task sequences") && ShareStorage.LimitsText.Contains("Hybrid Autopilot") && ShareStorage.LimitsText.Contains("cloud-only") && ShareStorage.LimitsText.Contains("Windows PE"), "Limits text");
+            PermissionsAreTight();
+        }
+
+        // What a device with write access to the share can do to the others.
+        static void PermissionsAreTight()
+        {
+            List<string> l = ShareStorage.Icacls(Share);
+            string all = ShareStorage.IcaclsText(Share);
+            // The write right of Domain Computers is on folders only: with (OI) on the files, a device could write over the session of another.
+            foreach (string s in l)
+            {
+                int at = s.IndexOf("\"Domain Computers:", StringComparison.Ordinal);
+                if (at < 0) continue;
+                string ace = s.Substring(at, s.IndexOf('"', at + 1) - at);
+                if (ace.Contains("WD")) T.Check(!ace.Contains("(OI)"), "icacls secure: Domain Computers cannot write into the files of other devices: " + ace);
+            }
+            // The upload folders are made by an administrator and owned by administrators, so no device owns them and can open them up.
+            string sessions = Share + "\\" + ShareStorage.SessionsFolder, logs = Share + "\\" + ShareStorage.LogsFolder;
+            T.Eq("sessions/", AgentData.Prefix, "icacls secure: the sessions folder is the one the agent writes to");
+            T.Eq("logs/", LogBundle.Prefix, "icacls secure: the logs folder is the one the agent writes to");
+            foreach (string f in new string[] { sessions, logs })
+            {
+                int made = all.IndexOf("mkdir \"" + f + "\"", StringComparison.Ordinal), rights = all.IndexOf("icacls \"" + Share + "\" /inheritance:r", StringComparison.Ordinal);
+                T.Check(made >= 0 && made < rights, "icacls secure: " + f + " is made by the administrator before the devices get rights");
+                T.Check(all.Contains("icacls \"" + f + "\" /setowner \"BUILTIN\\Administrators\"") && all.Contains("icacls \"" + f + "\" /reset"), "icacls secure: " + f + " is owned by administrators with the rights of the share folder");
+            }
+            // A file or folder a device put in the agent folder before is taken from it.
+            string agent = Share + "\\agent";
+            int owner = all.IndexOf("icacls \"" + agent + "\" /setowner \"BUILTIN\\Administrators\" /T /C", StringComparison.Ordinal);
+            int reset = all.IndexOf("icacls \"" + agent + "\" /reset /T /C", StringComparison.Ordinal);
+            int grant = all.IndexOf("icacls \"" + agent + "\" /inheritance:r", StringComparison.Ordinal);
+            T.Check(owner >= 0 && owner < reset && reset < grant, "icacls secure: the agent folder gets its owner, then its rights from nothing");
+            T.Check(all.IndexOf("CREATOR OWNER", grant, StringComparison.Ordinal) < 0, "icacls secure: no device can change a file in the agent folder");
+            // The lines are pasted into a prompt as administrator: a path that would break out of the quotes is refused.
+            string[] bad = { "\\\\fs01\\Track\"Vice\\x", "\\\\fs01\\a\\%COMSPEC%", "\\\\fs01\\a\\b\r\ndel /q C:\\x", "\\\\fs01\\a\\b\ncalc", "not a path", "" };
+            foreach (string b in bad)
+            {
+                bool refused = false;
+                try { ShareStorage.Icacls(b); }
+                catch (ArgumentException) { refused = true; }
+                T.Check(refused, "icacls secure: refused: " + b.Replace("\r", "\\r").Replace("\n", "\\n"));
+            }
         }
 
         static void Script()
@@ -90,6 +132,11 @@ namespace TrackVice.Tests
             T.Eq(Share, run.PublishLocation, "Share run: publish location");
             T.Eq(@"TrackVice.exe /agent-start /upload ""\\fs01\TrackVice\Contoso""", ShareStorage.TaskSequenceCommand(Share, ""), "Task sequence command");
             T.Eq(@"TrackVice.exe /agent-start /upload ""\\fs01\TrackVice\Contoso"" /alert ""https://x.example/h""", ShareStorage.TaskSequenceCommand(Share + "\\", " https://x.example/h "), "Task sequence command with an alert");
+            // The step runs as SYSTEM: a quote in a value must not end it and add an argument such as /update.
+            string evil = ShareStorage.TaskSequenceCommand(Share, "https://x.example/h\" /update \"\\\\evil\\share");
+            T.Eq(@"TrackVice.exe /agent-start /upload ""\\fs01\TrackVice\Contoso"" /alert ""https://x.example/h%22 /update %22\\evil\share""", evil, "Task sequence command: a quote in the alert stays in the link");
+            T.Eq(4, evil.Split('"').Length - 1,"Task sequence command: only the quotes around the two values");
+            T.Check(!ShareStorage.TaskSequenceCommand("\\\\fs01\\a\" /update \"\\\\evil\\b", "").Contains("\" /update \""), "Task sequence command: a quote in the share does not end it");
             // The command is what the agent already takes: /upload with a folder.
             AgentOptions o = new AgentOptions();
             o.Upload = Share;
