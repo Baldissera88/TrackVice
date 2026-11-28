@@ -330,7 +330,7 @@ namespace TrackVice
         public event Action<AttentionTile> AttentionClicked;
         public event Action<string> SearchFor;
         public event Action<string> SetupClicked;
-        public event EventHandler RefreshClicked, FilterChanged, ThisPc, AllRecent;
+        public event EventHandler RefreshClicked, FilterChanged, ThisPc, AllRecent, ReportClicked;
 
         Theme theme = Theme.Light();
         public readonly OverviewFilter Filter = new OverviewFilter();
@@ -343,6 +343,7 @@ namespace TrackVice
         readonly FlatButton bSearch = new FlatButton("Search", null);
         readonly FlatButton bRefresh = new FlatButton("Refresh", Glyphs2.Sync);
         readonly FlatButton bThisPc = new FlatButton("Follow this PC", Glyphs2.Device);
+        readonly FlatButton bReport = new FlatButton("Report\u2026", Glyphs.Export);
         readonly Label status = new Label();
         readonly OverviewTile now = new OverviewTile("Now");
         readonly OverviewTile attention = new OverviewTile("Needs attention");
@@ -362,7 +363,7 @@ namespace TrackVice
             head.Mark = false;
             bar.WrapContents = true;
             bar.Height = Dpi.S(40);
-            foreach (FlatButton b in new FlatButton[] { bCustomer, bSearch, bRefresh, bThisPc }) { b.Compact = true; b.AutoWidth(); }
+            foreach (FlatButton b in new FlatButton[] { bCustomer, bSearch, bRefresh, bThisPc, bReport }) { b.Compact = true; b.AutoWidth(); }
             bCustomer.Width = Math.Max(bCustomer.Width, Dpi.S(150));
             bCustomer.Margin = new Padding(0, 0, Dpi.S(8), 0);
             side.Margin = new Padding(0, 0, Dpi.S(12), 0);
@@ -372,7 +373,8 @@ namespace TrackVice
             Search.Margin = new Padding(0, Dpi.S(4), Dpi.S(4), 0);
             bSearch.Margin = new Padding(0, 0, Dpi.S(12), 0);
             bRefresh.Margin = new Padding(0, 0, Dpi.S(4), 0);
-            bThisPc.Margin = new Padding(0, 0, Dpi.S(12), 0);
+            bThisPc.Margin = new Padding(0, 0, Dpi.S(4), 0);
+            bReport.Margin = new Padding(0, 0, Dpi.S(12), 0);
             status.AutoSize = true;
             status.Font = Fonts.Small;
             status.Margin = new Padding(0, Dpi.S(9), 0, 0);
@@ -382,6 +384,7 @@ namespace TrackVice
             bar.Controls.Add(bSearch);
             bar.Controls.Add(bRefresh);
             bar.Controls.Add(bThisPc);
+            bar.Controls.Add(bReport);
             bar.Controls.Add(status);
             bCustomer.Click += Safe.Wrap(delegate { CustomerMenu().Show(bCustomer, new Point(0, bCustomer.Height)); });
             side.Changed += Safe.Wrap(delegate { Filter.Side = SideFilterUi.Of(side); Changed(); });
@@ -394,6 +397,7 @@ namespace TrackVice
             bSearch.Click += Safe.Wrap(delegate { if (SearchFor != null) SearchFor(Search.Text.Trim()); });
             bRefresh.Click += Safe.Wrap(delegate { if (RefreshClicked != null) RefreshClicked(this, EventArgs.Empty); });
             bThisPc.Click += Safe.Wrap(delegate { if (ThisPc != null) ThisPc(this, EventArgs.Empty); });
+            bReport.Click += Safe.Wrap(delegate { if (ReportClicked != null) ReportClicked(this, EventArgs.Empty); });
             now.RowClicked += delegate (TileRow r) { Safe.Run(delegate { Device(r.Tag as OverviewDevice); }); };
             now.FooterClicked += Safe.Wrap(delegate { if (data != null) List("now", "Deploying now", Devices(NowDevices())); });
             attention.RowClicked += delegate (TileRow r) { Safe.Run(delegate { if (AttentionClicked != null && r.Tag is AttentionTile) AttentionClicked((AttentionTile)r.Tag); }); };
@@ -834,7 +838,7 @@ namespace TrackVice
             col.BackColor = t.Bg;
             bar.BackColor = t.Bg;
             head.ApplyTheme(t);
-            foreach (FlatButton b in new FlatButton[] { bCustomer, bSearch, bRefresh, bThisPc }) b.ApplyTheme(t);
+            foreach (FlatButton b in new FlatButton[] { bCustomer, bSearch, bRefresh, bThisPc, bReport }) b.ApplyTheme(t);
             side.ApplyTheme(t);
             Search.BackColor = t.Field;
             Search.ForeColor = t.Text;

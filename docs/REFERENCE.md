@@ -345,6 +345,14 @@ There is no check on the command line, as the agent, in Windows PE, during Windo
 
 **Export** writes an HTML report, every event as CSV, or a [ready to ship report](#reference-enrollment). The report has a summary with the result and the slowest items, the findings, the deployment details, a time line like the Gantt tab, details per phase and every event. It follows the light or dark mode of the browser and has a print layout.
 
+### Customer report
+
+**Export > Customer report (PDF)** makes a report of the device you watch that is meant to be handed to the customer. It asks for the customer's name and for who prepared it (your Windows display name at first, remembered once you change it), then where to save it. The report is one HTML file with nothing to load from elsewhere, always light and laid out for A4. When Microsoft Edge is installed, TrackVice also has Edge print it to a PDF with the same name next to the HTML file and opens the PDF. Edge gets 60 seconds; if it is missing, does not finish or makes no PDF, the HTML file stays and the status line says why.
+
+It shows the customer and the device with the result as a badge (**Done**, **Done with failures** when the device is set up but an item failed, or **Failed** when the task sequence or a step the Enrollment Status Page waits for failed), the serial number, model, user, Autopilot profile or task sequence, start, end and total time without the time the device was off. Then a bar per phase over time with the restarts marked, the apps, scripts, policies and steps with state, attempts and duration (failed first, then the slow ones, then the rest; policies are counted and only the failed ones listed), the findings with their explanations, and the restarts and network outages. Passwords, keys and tokens are hidden the same way as in **Copy for ticket**.
+
+**Overview > Report** makes the same kind of report over the devices of the current filter (customer, Intune or SCCM, search) that started in a period: today, the last 7 or 30 days, or days you pick. It has the number of devices, done and failed, the success rate (done with no failed item, of those that ended), the median time and the time 90 % finished within, a bar per day, the table of devices, the items that failed on most devices and the slowest ones. **A page for every device** adds the device report of each device after it, each starting on a new page; in the HTML and the PDF the device names in the table lead to them.
+
 `/fleet-report` writes one report over every enrollment the agents uploaded to a location: the duration over time, every enrollment, the slowest items and what fails most. `/export-data` writes the same enrollments as CSV tables for Power BI.
 
 ![The timeline with the raw line behind an event](images/trackvice-timeline.png)

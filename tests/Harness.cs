@@ -105,6 +105,7 @@ namespace TrackVice.Tests
             EnrollmentAnchorTests.Run();
             DeploymentEstimateTests.Run();
             ExpectedAppsTests.Run();
+            CustomerReportTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

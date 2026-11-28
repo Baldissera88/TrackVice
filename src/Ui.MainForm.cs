@@ -1307,6 +1307,7 @@ namespace TrackVice
             Menus.Add(m, "HTML report…  (Ctrl+E)", delegate { ExportHtml(); });
             Menus.Add(m, "Every event as CSV…", delegate { ExportCsv(); });
             Menus.Add(m, "Ready to ship report\u2026", delegate { ExportShip(); });
+            Menus.Add(m, "Customer report (PDF)\u2026", delegate { ExportCustomerReport(); });
             return m;
         }
 
@@ -1767,6 +1768,7 @@ namespace TrackVice
             else if (start.Page == "refcompare") page = ReferenceUi.DemoCompareDialog(theme);
             else if (start.Page == "wall") { WallView wv = new WallView(theme, new AgentCatalog(new WallDemoStore()), true); wv.FiltersAtStart = start.Select == "filters"; if (start.Tab >= 0) wv.FilterIndex = start.Tab; page = wv; }
             else if (start.Page == "publish" || start.Page == "publish-none" || start.Page == "publish-link") page = PublishDialog.ForDemo(theme, start.Page);
+            else if (start.Page == "customerreport") page = ShotCustomerReport();
             else if (start.Page == "names") page = new NamesDialog(theme, engine != null ? engine.S.Computer : null);
             else if (start.Page == "newcustomer") page = NewCustomerDialog.ForDemo(theme, start.Tab, start.Select == "share");
             else if (Array.IndexOf(AddCustomerUi.Pages, start.Page) >= 0) page = ShotAddCustomer();
