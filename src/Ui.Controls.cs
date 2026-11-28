@@ -96,25 +96,22 @@ namespace TrackVice
         }
     }
 
-    // A slim bar that slides while TrackVice reads the device.
+    // A slim bar that glides while TrackVice reads the device: a segment that stretches out and catches up, over a
+    // faint track. With animations off it is the track with a still segment in the middle.
     public sealed class BusyBar : FlatControl
     {
         readonly Timer timer = new Timer();
-        float pos;
+        readonly System.Diagnostics.Stopwatch clock = new System.Diagnostics.Stopwatch();
         bool running;
+        const int CycleMs = 1500;
 
         public BusyBar()
         {
             Height = Dpi.S(3);
             TabStop = false;
             SetStyle(ControlStyles.Selectable, false);
-            timer.Interval = 30;
-            timer.Tick += delegate
-            {
-                pos += 0.012f;
-                if (pos > 1.2f) pos = -0.3f;
-                Invalidate();
-            };
+            timer.Interval = 16;
+            timer.Tick += delegate { Invalidate(); };
         }
 
         public bool Running
@@ -124,8 +121,8 @@ namespace TrackVice
             {
                 if (running == value) return;
                 running = value;
-                pos = -0.3f;
-                if (value) timer.Start(); else timer.Stop();
+                if (value) { clock.Reset(); clock.Start(); if (Fx.On) timer.Start(); }
+                else { clock.Stop(); timer.Stop(); }
                 Invalidate();
             }
         }
@@ -135,9 +132,20 @@ namespace TrackVice
             Graphics g = e.Graphics;
             g.Clear(T.Bg);
             if (!running) return;
-            int w = Math.Max(Dpi.S(60), Width / 4);
-            int x = (int)(pos * Width);
-            using (SolidBrush b = new SolidBrush(T.Accent)) g.FillRectangle(b, x, 0, w, Height);
+            float h = Height;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (SolidBrush b = new SolidBrush(Theme.Mix(T.Bg, T.Accent, 0.18f))) g.FillRectangle(b, 0, 0, Width, h);
+            float x0 = Width * 0.35f, x1 = Width * 0.65f;
+            if (timer.Enabled)
+            {
+                float p = (clock.ElapsedMilliseconds % CycleMs) / (float)CycleMs;
+                float head = Fx.EaseInOut(Math.Min(1f, p / 0.8f));
+                float tail = Fx.EaseInOut(Math.Max(0f, (p - 0.2f) / 0.8f));
+                x0 = Math.Max(0, tail * (Width + h) - h);
+                x1 = Math.Min(Width, head * (Width + h) - h);
+            }
+            if (x1 - x0 < 1) return;
+            Shapes.Fill(g, new RectangleF(x0, 0, x1 - x0, h), h / 2f, T.Accent);
         }
 
         protected override void Dispose(bool disposing)
@@ -217,11 +225,14 @@ namespace TrackVice
         public bool Primary;
         public bool Checked;
         public bool Compact;
-        // A thin border around the button, for buttons that sit alone and must look like buttons.
+        // The three looks: Primary is filled with the accent, for the one main action; Outline has a thin border, for
+        // buttons that sit alone and must look like buttons; neither is the quiet one, which shows only on hover.
         public bool Outline;
+        readonly Tween fade;
 
         public FlatButton(string text, string glyph)
         {
+            fade = new Tween(delegate { Invalidate(); }, 140);
             Text = text;
             Glyph = glyph;
             Cursor = Cursors.Hand;
@@ -255,23 +266,47 @@ namespace TrackVice
             Invalidate();
         }
 
+        protected override void OnMouseEnter(EventArgs e) { fade.To(1f); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { fade.To(0f); base.OnMouseLeave(e); }
+
+        // A button that is hidden or turned off under the mouse gets no mouse-leave, and must not come back lit.
+        protected override void OnVisibleChanged(EventArgs e) { if (!Visible) Unlight(); base.OnVisibleChanged(e); }
+        protected override void OnEnabledChanged(EventArgs e) { if (!Enabled) Unlight(); Invalidate(); base.OnEnabledChanged(e); }
+
+        void Unlight()
+        {
+            hover = false;
+            down = false;
+            fade.Snap(0f);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) fade.Dispose();
+            base.Dispose(disposing);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.Clear(Parent != null ? Parent.BackColor : T.Bg);
             RectangleF r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+            float rad = Dpi.S(8);
+            float t = Enabled ? fade.Value : 0f;
             Color fg = T.Text;
             if (Primary)
             {
-                Shapes.Fill(g, r, Dpi.S(5), !Enabled ? T.Divider : hover ? T.AccentHover : T.Accent);
+                Color fill = !Enabled ? T.Divider : down ? Theme.Mix(T.Accent, T.Card, 0.18f) : Theme.Mix(T.Accent, T.AccentHover, t);
+                Shapes.Fill(g, r, rad, fill);
                 fg = Enabled ? T.OnAccent : T.Text3;
             }
             else
             {
-                Color bg = Checked ? T.AccentSoft : down ? T.Pressed : hover ? T.Hover : Color.Empty;
-                if (!bg.IsEmpty) Shapes.Fill(g, r, Dpi.S(5), bg);
-                if (Checked) Shapes.Stroke(g, r, Dpi.S(5), T.Accent, 1f);
-                else if (Outline) Shapes.Stroke(g, r, Dpi.S(5), hover ? T.Text3 : T.Divider, 1f);
+                if (Checked) Shapes.Fill(g, r, rad, T.AccentSoft);
+                else if (down && Enabled) Shapes.Fill(g, r, rad, T.Pressed);
+                else if (t > 0.01f) Shapes.Fill(g, r, rad, Color.FromArgb((int)(255 * t), T.Hover));
+                if (Checked) Shapes.Stroke(g, r, rad, T.Accent, 1f);
+                else if (Outline) Shapes.Stroke(g, r, rad, !Enabled ? T.Divider : Theme.Mix(T.FieldStroke, T.Text3, down ? 1f : t), 1f);
                 if (!Enabled) fg = T.Text3;
             }
             int x = Dpi.S(Compact ? 10 : 14);
@@ -287,7 +322,7 @@ namespace TrackVice
                 if (!HasGlyph) tr = new Rectangle(0, 0, Width, Height);
                 TextRenderer.DrawText(g, Text, Fonts.Ui, tr, fg, (HasGlyph ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter) | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             }
-            if (Focused && ShowFocusCues) Shapes.Stroke(g, new RectangleF(1.5f, 1.5f, Width - 3.5f, Height - 3.5f), Dpi.S(5), T.Accent, 1.5f);
+            if (Focused && ShowFocusCues) Shapes.Stroke(g, new RectangleF(1.5f, 1.5f, Width - 3.5f, Height - 3.5f), rad - 1, Primary ? T.Text : T.Accent, 2f);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -352,11 +387,23 @@ namespace TrackVice
         readonly List<Rectangle> hits = new List<Rectangle>();
         int selected, hot = -1;
         public event EventHandler SelectedChanged;
+        // The underline slides from where it was drawn last to the selected tab.
+        readonly Tween slide;
+        float fromX, fromW, drawX, drawW;
+        bool haveDraw;
 
         public TabStrip()
         {
             Height = Dpi.S(38);
             Cursor = Cursors.Hand;
+            slide = new Tween(delegate { Invalidate(); }, 180);
+            slide.Snap(1f);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) slide.Dispose();
+            base.Dispose(disposing);
         }
 
         public void SetTabs(params string[] names)
@@ -382,6 +429,7 @@ namespace TrackVice
             {
                 if (value == selected) return;
                 selected = value;
+                if (haveDraw && Fx.On) { fromX = drawX; fromW = drawW; slide.Snap(0f); slide.To(1f); }
                 Invalidate();
                 if (SelectedChanged != null) SelectedChanged(this, EventArgs.Empty);
             }
@@ -402,12 +450,24 @@ namespace TrackVice
                 int w = TextRenderer.MeasureText(tabs[i], f).Width + pad;
                 Rectangle r = new Rectangle(x, 0, w, Height);
                 hits.Add(r);
-                if (i == hot && i != selected) Shapes.Fill(g, new RectangleF(r.X, Dpi.S(4), r.Width, Height - Dpi.S(10)), Dpi.S(5), T.Hover);
+                if (i == hot && i != selected) Shapes.Fill(g, new RectangleF(r.X, Dpi.S(4), r.Width, Height - Dpi.S(12)), Dpi.S(8), T.Hover);
                 TextRenderer.DrawText(g, tabs[i], f, new Rectangle(r.X, 0, r.Width, Height - Dpi.S(4)), i == selected ? T.Text : T.Text2, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                if (i == selected) Shapes.Fill(g, new RectangleF(r.X + Dpi.S(10), Height - Dpi.S(5), r.Width - Dpi.S(20), Dpi.S(3)), Dpi.S(1.5f), T.Accent);
+                if (i == selected)
+                {
+                    float tx = r.X + Dpi.S(10), tw = r.Width - Dpi.S(20);
+                    if (slide.Value < 1f && haveDraw)
+                    {
+                        float k = slide.Value;
+                        drawX = fromX + (tx - fromX) * k;
+                        drawW = fromW + (tw - fromW) * k;
+                    }
+                    else { drawX = tx; drawW = tw; }
+                    haveDraw = true;
+                }
                 x += w + Dpi.S(4);
             }
             using (Pen p = new Pen(T.Divider)) g.DrawLine(p, 0, Height - 1, Width, Height - 1);
+            if (haveDraw && selected >= 0 && selected < tabs.Count) Shapes.Fill(g, new RectangleF(drawX, Height - Dpi.S(4), drawW, Dpi.S(3)), Dpi.S(1.5f), T.Accent);
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -437,6 +497,19 @@ namespace TrackVice
         public Func<T, string> Text;
         public int Width;
         public bool Mono;
+        // Aligns the column to the right, for numbers, times and durations.
+        bool right;
+        public bool Right
+        {
+            get { return right; }
+            set
+            {
+                right = value;
+                if (GridColumn == null) return;
+                GridColumn.DefaultCellStyle.Alignment = value ? DataGridViewContentAlignment.MiddleRight : DataGridViewContentAlignment.NotSet;
+                GridColumn.HeaderCell.Style.Alignment = value ? DataGridViewContentAlignment.MiddleRight : DataGridViewContentAlignment.NotSet;
+            }
+        }
         // Sorts by this text instead of the shown one, for example seconds for a duration.
         public Func<T, string> SortKey;
         internal DataGridViewColumn GridColumn;
@@ -479,9 +552,13 @@ namespace TrackVice
         // Shown in the grid when it has no rows.
         public string EmptyText;
         int menuCol = -1;
+        int hotRow = -1;
 
         public Table()
         {
+            Grid.CellMouseEnter += delegate (object s, DataGridViewCellEventArgs e) { SetHot(e.RowIndex); };
+            Grid.MouseLeave += delegate { SetHot(-1); };
+            Grid.HandleCreated += delegate { Draw.ScrollTheme(Grid, theme); };
             try
             {
                 PropertyInfo db = typeof(DataGridView).GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -541,7 +618,7 @@ namespace TrackVice
             Grid.EnableHeadersVisualStyles = false;
             Grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
             Grid.ColumnHeadersHeight = Dpi.S(32);
-            Grid.RowTemplate.Height = Dpi.S(28);
+            Grid.RowTemplate.Height = Dpi.S(30);
             Grid.Dock = DockStyle.Fill;
             Grid.StandardTab = true;
             Grid.ShowCellToolTips = true;
@@ -556,7 +633,9 @@ namespace TrackVice
             };
             Grid.CellFormatting += delegate (object s, DataGridViewCellFormattingEventArgs e)
             {
-                if (ForeColor == null || e.RowIndex < 0 || e.RowIndex >= rows.Count) return;
+                if (e.RowIndex < 0 || e.RowIndex >= rows.Count) return;
+                if (e.RowIndex == hotRow && !Grid.Rows[e.RowIndex].Selected) e.CellStyle.BackColor = theme.Hover;
+                if (ForeColor == null) return;
                 try
                 {
                     Color c = ForeColor(rows[e.RowIndex]);
@@ -586,6 +665,19 @@ namespace TrackVice
             };
             Grid.SelectionChanged += delegate { RaiseSelection(); };
             Grid.DataError += delegate (object s, DataGridViewDataErrorEventArgs e) { e.ThrowException = false; };
+        }
+
+        void SetHot(int row)
+        {
+            if (row == hotRow) return;
+            int old = hotRow;
+            hotRow = row;
+            try
+            {
+                if (old >= 0 && old < Grid.RowCount) Grid.InvalidateRow(old);
+                if (row >= 0 && row < Grid.RowCount) Grid.InvalidateRow(row);
+            }
+            catch (Exception) { }
         }
 
         void RaiseSelection()
@@ -669,6 +761,7 @@ namespace TrackVice
             }
             if (c.Mono) col.DefaultCellStyle.Font = Fonts.Mono;
             c.GridColumn = col;
+            if (c.Right) c.Right = true;
             Grid.Columns.Add(col);
         }
 
@@ -761,14 +854,17 @@ namespace TrackVice
             Grid.DefaultCellStyle.SelectionForeColor = t.Text;
             Grid.DefaultCellStyle.Font = Fonts.Ui;
             Grid.DefaultCellStyle.Padding = new Padding(Dpi.S(6), 0, Dpi.S(4), 0);
-            Grid.AlternatingRowsDefaultCellStyle.BackColor = t.Zebra;
+            // Zebra stripes are off: the hairlines between rows and the hover colour carry the rows.
+            Grid.AlternatingRowsDefaultCellStyle.BackColor = t.Card;
             Grid.AlternatingRowsDefaultCellStyle.SelectionBackColor = t.AccentSoft;
             Grid.ColumnHeadersDefaultCellStyle.BackColor = t.Header;
             Grid.ColumnHeadersDefaultCellStyle.ForeColor = t.Text2;
+            Grid.GridColor = t.Divider;
             Grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = t.Header;
             Grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = t.Text2;
             Grid.ColumnHeadersDefaultCellStyle.Font = Fonts.UiSemibold;
             Grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(Dpi.S(6), 0, Dpi.S(4), 0);
+            if (Grid.IsHandleCreated) Draw.ScrollTheme(Grid, t);
             Grid.Invalidate();
         }
 

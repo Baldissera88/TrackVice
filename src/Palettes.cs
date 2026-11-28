@@ -12,9 +12,13 @@ namespace TrackVice
         public float Corners = 1f;
         // Numbers, times and durations are drawn in the monospace font.
         public bool MonoNumbers;
+        // The surface ladder, each a small step from the one before: Bg (the window), Card, CardAlt (raised: chips
+        // and headers on a card), then Hover and Pressed on a card. Divider is the hairline around and between them.
+        // Text3 is the grey of what waits or is expected; it still reaches 4.5:1 on every surface.
         public int Bg, Card, CardAlt, Stroke, Divider, Text, Text2, Text3;
         public int Accent, AccentHover, OnAccent, AccentSoft;
         public int Hover, Pressed, Field, FieldStroke;
+        // The states: OkFg done (teal or green), WarnFg slow or a warning (amber), ErrFg a real failure (red).
         public int ErrBg, ErrFg, WarnBg, WarnFg, OkFg, Zebra, Header;
     }
 
@@ -63,7 +67,7 @@ namespace TrackVice
             t.Card = 0xFFFFFF;
             t.CardAlt = 0xF5F7FA;
             t.Stroke = 0xDCE1E8;
-            t.Divider = 0xE6E9EF;
+            t.Divider = 0xDCE1E8;
             t.Text = 0x111418;
             t.Text2 = 0x454B54;
             // Darker than LogVice's 0x6E7580, so that it reaches 4.5:1 on the page background.
@@ -72,16 +76,16 @@ namespace TrackVice
             t.AccentHover = Mix(t.Accent, White, 0.12f);
             t.OnAccent = White;
             t.AccentSoft = Mix(t.Card, t.Accent, 0.14f);
-            t.Hover = Mix(t.Card, Black, 0.055f);
-            t.Pressed = Mix(t.Card, Black, 0.03f);
+            t.Hover = Mix(t.Card, 0x1F2A44, 0.06f);
+            t.Pressed = Mix(t.Card, 0x1F2A44, 0.11f);
             t.Field = 0xFFFFFF;
             t.FieldStroke = 0xD0D5DD;
             t.ErrBg = 0xFDE3E5;
             t.ErrFg = 0xC42B1C;
             t.WarnBg = 0xFFF1C7;
-            t.WarnFg = 0x9D5D00;
-            t.OkFg = 0x0F7B0F;
-            t.Zebra = 0xF7F9FC;
+            t.WarnFg = 0x9A5B00;
+            t.OkFg = 0x0B7A5E;
+            t.Zebra = 0xF6F8FB;
             t.Header = 0xF7F9FC;
             return t;
         }
@@ -95,7 +99,7 @@ namespace TrackVice
             t.Card = 0x24272D;
             t.CardAlt = 0x2C3037;
             t.Stroke = 0x131519;
-            t.Divider = 0x363A42;
+            t.Divider = 0x3A3E47;
             t.Text = 0xF5F7FA;
             t.Text2 = 0xD3D7DE;
             t.Text3 = 0xA2A8B2;
@@ -104,14 +108,14 @@ namespace TrackVice
             t.OnAccent = 0x000000;
             t.AccentSoft = Mix(t.Card, t.Accent, 0.2f);
             t.Hover = Mix(t.Card, White, 0.06f);
-            t.Pressed = Mix(t.Card, White, 0.035f);
+            t.Pressed = Mix(t.Card, White, 0.09f);
             t.Field = 0x2A2E35;
-            t.FieldStroke = 0x3A3F48;
+            t.FieldStroke = 0x464B56;
             t.ErrBg = 0x47292B;
             t.ErrFg = 0xFF99A4;
-            t.WarnBg = 0x45391D;
-            t.WarnFg = 0xFCE100;
-            t.OkFg = 0x6CCB5F;
+            t.WarnBg = 0x45381C;
+            t.WarnFg = 0xFFC24D;
+            t.OkFg = 0x4CD4B0;
             t.Zebra = 0x282B32;
             t.Header = 0x292C33;
             return t;
@@ -126,7 +130,7 @@ namespace TrackVice
             t.Card = 0x1C1535;
             t.CardAlt = 0x251C45;
             t.Stroke = 0x0B0819;
-            t.Divider = 0x352A60;
+            t.Divider = 0x3B2F6C;
             t.Text = 0xFFF5FD;
             t.Text2 = 0xE6D5F7;
             t.Text3 = 0xB39CD6;
@@ -135,11 +139,12 @@ namespace TrackVice
             t.OnAccent = 0x1A0718;
             t.AccentSoft = Mix(t.Card, t.Accent, 0.24f);
             t.Hover = Mix(t.Card, 0xFF78DC, 0.09f);
-            t.Pressed = Mix(t.Card, 0xFF78DC, 0.05f);
+            t.Pressed = Mix(t.Card, 0xFF78DC, 0.15f);
             t.Field = 0x211A3F;
             t.FieldStroke = 0x3D3070;
-            t.ErrBg = 0x4A1638;
-            t.ErrFg = 0xFF6FA8;
+            // Red, well away from the magenta accent, so that a failure never reads as a selection.
+            t.ErrBg = 0x47151F;
+            t.ErrFg = 0xFF6464;
             t.WarnBg = 0x4A2C1F;
             t.WarnFg = 0xFFB36B;
             t.OkFg = 0x2EE6D6;
@@ -170,7 +175,7 @@ namespace TrackVice
             t.OnAccent = 0x031003;
             t.AccentSoft = Mix(t.Card, 0x39FF5A, 0.16f);
             t.Hover = Mix(t.Card, 0x39FF5A, 0.08f);
-            t.Pressed = Mix(t.Card, 0x39FF5A, 0.05f);
+            t.Pressed = Mix(t.Card, 0x39FF5A, 0.13f);
             t.Field = 0x081008;
             t.FieldStroke = 0x2A4A2E;
             t.ErrBg = 0x3A0C0C;
@@ -204,7 +209,7 @@ namespace TrackVice
             t.OnAccent = 0x140C00;
             t.AccentSoft = Mix(t.Card, 0xFFB000, 0.16f);
             t.Hover = Mix(t.Card, 0xFFB000, 0.08f);
-            t.Pressed = Mix(t.Card, 0xFFB000, 0.05f);
+            t.Pressed = Mix(t.Card, 0xFFB000, 0.13f);
             t.Field = 0x0E0901;
             t.FieldStroke = 0x4A3410;
             t.ErrBg = 0x420B06;
@@ -227,7 +232,7 @@ namespace TrackVice
             t.Card = 0x22103D;
             t.CardAlt = 0x2B154C;
             t.Stroke = 0x0B0416;
-            t.Divider = 0x40206B;
+            t.Divider = 0x48267A;
             t.Text = 0xFBF3FF;
             t.Text2 = 0xE2CCF7;
             t.Text3 = 0xB89BDD;
@@ -236,7 +241,7 @@ namespace TrackVice
             t.OnAccent = 0x0A0320;
             t.AccentSoft = Mix(t.Card, 0xFF3CAC, 0.22f);
             t.Hover = Mix(t.Card, 0xFF3CAC, 0.10f);
-            t.Pressed = Mix(t.Card, 0xFF3CAC, 0.06f);
+            t.Pressed = Mix(t.Card, 0xFF3CAC, 0.16f);
             t.Field = 0x1D0C35;
             t.FieldStroke = 0x4A2A7A;
             t.ErrBg = 0x4D0F3A;

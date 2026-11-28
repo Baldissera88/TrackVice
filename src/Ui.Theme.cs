@@ -121,10 +121,134 @@ namespace TrackVice
         }
     }
 
+    // Whether short animations run. They are off when Windows has "Show animations in Windows" or its visual
+    // effects turned off, and over Remote Desktop, where every frame is sent over the network.
+    public static class Fx
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern bool SystemParametersInfo(int action, int param, ref int value, int winIni);
+
+        const int SPI_GETCLIENTAREAANIMATION = 0x1042;
+
+        public static bool On
+        {
+            get
+            {
+                try
+                {
+                    if (!System.Windows.Forms.SystemInformation.UIEffectsEnabled) return false;
+                    if (System.Windows.Forms.SystemInformation.TerminalServerSession) return false;
+                }
+                catch (Exception) { }
+                try
+                {
+                    int on = 1;
+                    if (SystemParametersInfo(SPI_GETCLIENTAREAANIMATION, 0, ref on, 0) && on == 0) return false;
+                }
+                catch (Exception) { }
+                return true;
+            }
+        }
+
+        public static float EaseOut(float t)
+        {
+            if (t < 0) t = 0;
+            if (t > 1) t = 1;
+            float u = 1 - t;
+            return 1 - u * u * u;
+        }
+
+        public static float EaseInOut(float t)
+        {
+            if (t < 0) t = 0;
+            if (t > 1) t = 1;
+            return t < 0.5f ? 4 * t * t * t : 1 - (float)Math.Pow(-2 * t + 2, 3) / 2;
+        }
+    }
+
+    // A value that eases out from where it is to a target in Ms milliseconds and calls back to repaint on the way.
+    // With animations off it jumps to the target.
+    public sealed class Tween : IDisposable
+    {
+        public float Value;
+        public readonly int Ms;
+        readonly Action changed;
+        readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+        float from, to;
+        int start;
+
+        public Tween(Action changed, int ms)
+        {
+            this.changed = changed;
+            Ms = ms;
+            timer.Interval = 15;
+            timer.Tick += delegate { Step(); };
+        }
+
+        public bool Running
+        {
+            get { return timer.Enabled; }
+        }
+
+        public void Snap(float v)
+        {
+            timer.Stop();
+            Value = from = to = v;
+        }
+
+        public void To(float target)
+        {
+            if (target == to && (timer.Enabled || Value == target)) return;
+            if (!Fx.On || Ms <= 0) { Snap(target); changed(); return; }
+            from = Value;
+            to = target;
+            start = Environment.TickCount;
+            timer.Start();
+        }
+
+        void Step()
+        {
+            float t = Math.Min(1f, (Environment.TickCount - start) / (float)Ms);
+            Value = from + (to - from) * Fx.EaseOut(t);
+            if (t >= 1f) { Value = to; timer.Stop(); }
+            changed();
+        }
+
+        public void Dispose()
+        {
+            timer.Dispose();
+        }
+    }
+
     public static class Fonts
     {
         public static Font Ui, UiSemibold, Small, SmallSemibold, Title, Mono, MonoSmall, MonoSemibold, MonoTitle, Icons, IconsSmall;
         public static string UiName = "", MonoName = "";
+        // The type scale, in pixels at 100 %: Display 22, Title 19, Heading 15, body 13 (Ui), Small 11.
+        // A big single number, such as a percentage in a ring, uses Px(32, true).
+        public static Font Display { get { return Px(22, true); } }
+        public static Font Heading { get { return Px(15, true); } }
+        static string family = "Segoe UI", semiFamily, displayFamily;
+        static readonly Dictionary<string, Font> px = new Dictionary<string, Font>();
+
+        // A font of the UI family at a height in pixels at 100 %, cached. It follows the size of Ui, so it grows with
+        // the screen scale like the other fonts. Semibold uses the semibold face when one is installed, and the
+        // Display face from 20 pixels up.
+        public static Font Px(float pixels, bool semibold)
+        {
+            float pt = pixels * (Ui != null ? Ui.Size / 13f : 0.75f);
+            string key = pt.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + (semibold ? "s" : "r");
+            Font f;
+            lock (px)
+            {
+                if (px.TryGetValue(key, out f)) return f;
+                string semi = pixels >= 20 && displayFamily != null ? displayFamily : semiFamily;
+                if (!semibold) f = new Font(family, pt);
+                else f = semi != null ? new Font(semi, pt) : new Font(family, pt, FontStyle.Bold);
+                px[key] = f;
+            }
+            return f;
+        }
 
         public static void Init()
         {
@@ -139,9 +263,14 @@ namespace TrackVice
             catch (Exception) { }
             string ui = Pick(installed, SystemFonts.MessageBoxFont.FontFamily.Name, "Segoe UI Variable Text", "Segoe UI");
             string semi = Pick(installed, null, "Segoe UI Variable Text Semibold", "Segoe UI Semibold");
-            string disp = Pick(installed, null, "Segoe UI Variable Display Semibold", "Segoe UI Semibold");
+            // Windows cuts a font name at 31 characters, so the Display semibold face is listed as "... Semib".
+            string disp = Pick(installed, null, "Segoe UI Variable Display Semibold", "Segoe UI Variable Display Semib", "Segoe UI Semibold");
             string mono = Pick(installed, null, "Cascadia Mono", "Consolas", "Lucida Console");
             string icons = Pick(installed, null, "Segoe Fluent Icons", "Segoe MDL2 Assets");
+            family = ui ?? "Segoe UI";
+            semiFamily = semi;
+            displayFamily = disp;
+            lock (px) px.Clear();
             Ui = new Font(ui, 9.75f);
             UiSemibold = semi != null ? new Font(semi, 9.75f) : new Font(ui, 9.75f, FontStyle.Bold);
             Small = new Font(ui, 8.25f);

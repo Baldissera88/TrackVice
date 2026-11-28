@@ -2,6 +2,7 @@ namespace TrackVice
 {
     using System;
     using System.Drawing;
+    using System.Drawing.Drawing2D;
     using System.Windows.Forms;
 
     // The theme choice in Settings: one tile per theme, each with a small sample of its colours, four to a row.
@@ -25,8 +26,8 @@ namespace TrackVice
             Height = Dpi.S(6) + rows * TileH();
         }
 
-        static int TileW() { return Dpi.S(108); }
-        static int TileH() { return Dpi.S(34); }
+        static int TileW() { return Dpi.S(112); }
+        static int TileH() { return Dpi.S(36); }
 
         public string SelectedName
         {
@@ -112,44 +113,58 @@ namespace TrackVice
             Graphics g = e.Graphics;
             g.Clear(Parent != null ? Parent.BackColor : T.Card);
             RectangleF outer = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
-            Shapes.Fill(g, outer, Dpi.S(5), T.Field);
-            Shapes.Stroke(g, outer, Dpi.S(5), T.FieldStroke, 1f);
+            Shapes.Fill(g, outer, Dpi.S(10), T.Field);
+            Shapes.Stroke(g, outer, Dpi.S(10), T.FieldStroke, 1f);
             for (int i = 0; i < names.Length; i++)
             {
                 Rectangle r = TileRect(i);
                 RectangleF rf = new RectangleF(r.X + 1, r.Y + 1, r.Width - 2, r.Height - 2);
                 if (i == sel)
                 {
-                    Shapes.Fill(g, rf, Dpi.S(4), Theme.Mix(T.Field, T.Accent, T.IsDark ? 0.22f : 0.13f));
-                    Shapes.Stroke(g, rf, Dpi.S(4), T.Accent, 1f);
+                    Shapes.Fill(g, rf, Dpi.S(7), Theme.Mix(T.Field, T.Accent, T.IsDark ? 0.24f : 0.14f));
+                    Shapes.Stroke(g, rf, Dpi.S(7), Theme.Mix(T.Field, T.Accent, 0.55f), 1f);
                 }
-                else if (i == hot) Shapes.Fill(g, rf, Dpi.S(4), T.Hover);
-                int s = Dpi.S(18);
+                else if (i == hot) Shapes.Fill(g, rf, Dpi.S(7), T.Hover);
+                int s = Dpi.S(20);
                 Rectangle sw = new Rectangle(r.X + Dpi.S(8), r.Y + (r.Height - s) / 2, s, s);
                 Sample(g, sw, samples[i]);
                 Rectangle tr = new Rectangle(sw.Right + Dpi.S(8), r.Y, r.Right - sw.Right - Dpi.S(12), r.Height);
                 Draw.Text(g, names[i], i == sel ? Fonts.UiSemibold : Fonts.Ui, tr, i == sel ? T.Accent : T.Text, Draw.Line);
             }
-            if (Focused && ShowFocusCues) Shapes.Stroke(g, outer, Dpi.S(5), T.Text, 2f);
+            if (Focused && ShowFocusCues) Shapes.Stroke(g, outer, Dpi.S(10), T.Text, 2f);
         }
 
-        // The theme's card with a bar in its accent and a dot in its done colour. System shows Light and Dark side by side.
+        // A small window of the theme: its background with a card on it, a line in its accent, a line of its text and
+        // its done and failed colours. System shows Light and Dark side by side.
         void Sample(Graphics g, Rectangle r, Theme t)
         {
+            RectangleF rf = new RectangleF(r.X + 0.5f, r.Y + 0.5f, r.Width - 1, r.Height - 1);
+            float rad = Dpi.S(5);
+            Color edge = Theme.Mix(T.Field, T.Text3, 0.55f);
             if (t == null)
             {
                 Theme l = Theme.Light(), d = Theme.Dark();
-                using (SolidBrush b = new SolidBrush(l.Card)) g.FillRectangle(b, r.X, r.Y, r.Width / 2, r.Height);
-                using (SolidBrush b = new SolidBrush(d.Card)) g.FillRectangle(b, r.X + r.Width / 2, r.Y, r.Width - r.Width / 2, r.Height);
-                using (Pen p = new Pen(T.FieldStroke)) g.DrawRectangle(p, r.X, r.Y, r.Width - 1, r.Height - 1);
+                GraphicsState st = g.Save();
+                using (GraphicsPath clip = Shapes.Round(rf, rad))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.SetClip(clip, CombineMode.Intersect);
+                    using (SolidBrush b = new SolidBrush(l.Card)) g.FillRectangle(b, rf);
+                    using (SolidBrush b = new SolidBrush(d.Card)) g.FillPolygon(b, new PointF[] { new PointF(rf.Right, rf.Y), new PointF(rf.Right, rf.Bottom), new PointF(rf.X, rf.Bottom) });
+                }
+                g.Restore(st);
+                Shapes.Stroke(g, rf, rad, edge, 1f);
                 return;
             }
-            using (SolidBrush b = new SolidBrush(t.Bg)) g.FillRectangle(b, r);
-            using (SolidBrush b = new SolidBrush(t.Accent)) g.FillRectangle(b, r.X + Dpi.S(3), r.Y + Dpi.S(4), r.Width - Dpi.S(6), Dpi.S(3));
-            using (SolidBrush b = new SolidBrush(t.Text2)) g.FillRectangle(b, r.X + Dpi.S(3), r.Y + Dpi.S(9), r.Width - Dpi.S(9), Dpi.S(2));
-            using (SolidBrush b = new SolidBrush(t.OkFg)) g.FillRectangle(b, r.X + Dpi.S(3), r.Bottom - Dpi.S(6), Dpi.S(4), Dpi.S(3));
-            using (SolidBrush b = new SolidBrush(t.ErrFg)) g.FillRectangle(b, r.X + Dpi.S(9), r.Bottom - Dpi.S(6), Dpi.S(4), Dpi.S(3));
-            using (Pen p = new Pen(T.FieldStroke)) g.DrawRectangle(p, r.X, r.Y, r.Width - 1, r.Height - 1);
+            Shapes.Fill(g, rf, rad, t.Bg);
+            int u = Dpi.S(2), x = r.X + Dpi.S(4), w = r.Width - Dpi.S(8);
+            Shapes.Fill(g, new RectangleF(x, r.Y + Dpi.S(4), w * 0.7f, u + 1), u, t.Accent);
+            Shapes.Fill(g, new RectangleF(x, r.Y + Dpi.S(9), w, u), u / 2f, t.Text2);
+            float dot = Dpi.S(4);
+            Shapes.Fill(g, new RectangleF(x, r.Bottom - Dpi.S(4) - dot, dot, dot), dot / 2f, t.OkFg);
+            Shapes.Fill(g, new RectangleF(x + dot + Dpi.S(2), r.Bottom - Dpi.S(4) - dot, dot, dot), dot / 2f, t.WarnFg);
+            Shapes.Fill(g, new RectangleF(x + (dot + Dpi.S(2)) * 2, r.Bottom - Dpi.S(4) - dot, dot, dot), dot / 2f, t.ErrFg);
+            Shapes.Stroke(g, rf, rad, edge, 1f);
         }
     }
 }

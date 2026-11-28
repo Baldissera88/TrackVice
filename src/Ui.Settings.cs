@@ -106,10 +106,10 @@ namespace TrackVice
                 bool sel = pages[i].Id == selected;
                 if (sel)
                 {
-                    Shapes.Fill(g, r, Dpi.S(5), Theme.Mix(T.Bg, T.Accent, T.IsDark ? 0.22f : 0.13f));
+                    Shapes.Fill(g, r, Dpi.S(8), Theme.Mix(T.Bg, T.Accent, T.IsDark ? 0.22f : 0.13f));
                     Shapes.Fill(g, new RectangleF(r.X, r.Y + Dpi.S(9), Dpi.S(3), r.Height - Dpi.S(18)), 1.5f, T.Accent);
                 }
-                else if (i == hot) Shapes.Fill(g, r, Dpi.S(5), T.Hover);
+                else if (i == hot) Shapes.Fill(g, r, Dpi.S(8), T.Hover);
                 Color fg = sel ? T.Text : T.Text2;
                 Font f = sel ? Fonts.UiSemibold : Fonts.Ui;
                 if (compact)
@@ -136,7 +136,7 @@ namespace TrackVice
                 }
             }
             int si = SelectedIndex;
-            if (Focused && ShowFocusCues && si >= 0) Shapes.Stroke(g, RowRect(si), Dpi.S(5), T.Text, 2f);
+            if (Focused && ShowFocusCues && si >= 0) Shapes.Stroke(g, RowRect(si), Dpi.S(8), T.Text, 2f);
         }
 
         protected override void OnMouseMove(MouseEventArgs e)

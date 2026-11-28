@@ -39,8 +39,22 @@ namespace TrackVice
         public static void Card(Graphics g, Rectangle bounds, Theme t)
         {
             RectangleF r = new RectangleF(0.5f, 0.5f, bounds.Width - 1.5f, bounds.Height - 1.5f);
-            Shapes.Fill(g, r, Dpi.S(7), t.Card);
-            Shapes.Stroke(g, r, Dpi.S(7), t.Divider, 1f);
+            Shapes.Fill(g, r, Dpi.S(10), t.Card);
+            Shapes.Stroke(g, r, Dpi.S(10), t.Divider, 1f);
+        }
+
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        static extern int SetWindowTheme(IntPtr hwnd, string app, string ids);
+
+        // Native scroll bars follow the theme: the dark ones on dark themes (Windows 10 1809 and later).
+        public static void ScrollTheme(Control c, Theme t)
+        {
+            try
+            {
+                if (c == null || !c.IsHandleCreated) return;
+                SetWindowTheme(c.Handle, t.IsDark ? "DarkMode_Explorer" : "Explorer", null);
+            }
+            catch (Exception) { }
         }
 
         public static void Glyph(Graphics g, string glyph, Rectangle r, Color c)
@@ -96,6 +110,7 @@ namespace TrackVice
     public sealed class Toggle : FlatControl
     {
         bool on;
+        readonly Tween slide;
         public event EventHandler Changed;
 
         public Toggle()
@@ -103,6 +118,13 @@ namespace TrackVice
             TabStop = true;
             Cursor = Cursors.Hand;
             Size = new Size(Dpi.S(96), Dpi.S(32));
+            slide = new Tween(delegate { Invalidate(); }, 160);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) slide.Dispose();
+            base.Dispose(disposing);
         }
 
         public bool On
@@ -112,6 +134,7 @@ namespace TrackVice
             {
                 if (on == value) return;
                 on = value;
+                if (IsHandleCreated && Visible) slide.To(on ? 1f : 0f); else slide.Snap(on ? 1f : 0f);
                 Invalidate();
                 if (Changed != null) Changed(this, EventArgs.Empty);
             }
@@ -136,22 +159,20 @@ namespace TrackVice
         {
             Graphics g = e.Graphics;
             g.Clear(Parent != null ? Parent.BackColor : T.Card);
-            int w = Dpi.S(40), h = Dpi.S(20);
+            int w = Dpi.S(40), h = Dpi.S(22);
             RectangleF track = new RectangleF(Width - w - Dpi.S(2), (Height - h) / 2f, w, h);
             string text = on ? "On" : "Off";
             int tw = Draw.Measure(text, Fonts.Ui).Width + 2;
             Draw.Text(g, text, Fonts.Ui, new Rectangle((int)track.X - Dpi.S(12) - tw, 0, tw, Height), T.Text, Draw.Line);
-            float d = hover ? Dpi.S(14) : Dpi.S(12);
-            if (on)
-            {
-                Shapes.Fill(g, track, h / 2f, hover ? T.AccentHover : T.Accent);
-                Shapes.Fill(g, new RectangleF(track.Right - h / 2f - d / 2f, track.Y + (h - d) / 2f, d, d), d / 2f, T.OnAccent);
-            }
-            else
-            {
-                Shapes.Stroke(g, track, h / 2f, T.Text2, 1f);
-                Shapes.Fill(g, new RectangleF(track.X + h / 2f - d / 2f, track.Y + (h - d) / 2f, d, d), d / 2f, T.Text2);
-            }
+            float k = slide.Value;
+            float d = Dpi.S(14) + (hover ? Dpi.S(2) : 0) + (down ? Dpi.S(2) : 0);
+            Color offFill = Theme.Mix(T.Field, T.Text3, 0.35f);
+            Color fill = Theme.Mix(offFill, hover ? T.AccentHover : T.Accent, k);
+            Shapes.Fill(g, track, h / 2f, fill);
+            float left = track.X + h / 2f, right = track.Right - h / 2f;
+            float cx = left + (right - left) * k;
+            Color knob = Theme.Mix(T.IsDark ? T.Text : Color.White, T.OnAccent, k);
+            Shapes.Fill(g, new RectangleF(cx - d / 2f, track.Y + (h - d) / 2f, d, d), d / 2f, knob);
             if (Focused && ShowFocusCues) Shapes.Stroke(g, RectangleF.Inflate(track, 3, 3), h / 2f + 3, T.Text, 2f);
         }
     }
@@ -161,9 +182,20 @@ namespace TrackVice
         readonly string[] items;
         int sel, hot = -1;
         public event EventHandler Changed;
+        readonly Tween slide;
+        float fromX, fromW, drawX, drawW;
+        bool haveDraw;
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) slide.Dispose();
+            base.Dispose(disposing);
+        }
 
         public Segmented(params string[] items)
         {
+            slide = new Tween(delegate { Invalidate(); }, 180);
+            slide.Snap(1f);
             this.items = items;
             TabStop = true;
             Cursor = Cursors.Hand;
@@ -185,6 +217,7 @@ namespace TrackVice
             {
                 if (value < 0 || value >= items.Length || value == sel) return;
                 sel = value;
+                if (haveDraw && Fx.On) { fromX = drawX; fromW = drawW; slide.Snap(0f); slide.To(1f); }
                 Invalidate();
                 if (Changed != null) Changed(this, EventArgs.Empty);
             }
@@ -244,24 +277,43 @@ namespace TrackVice
             Graphics g = e.Graphics;
             g.Clear(Parent != null ? Parent.BackColor : T.Card);
             RectangleF outer = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
-            Shapes.Fill(g, outer, Dpi.S(5), T.Field);
-            Shapes.Stroke(g, outer, Dpi.S(5), T.FieldStroke, 1f);
+            float orad = outer.Height / 2f;
+            Shapes.Fill(g, outer, orad, T.Field);
+            Shapes.Stroke(g, outer, orad, T.FieldStroke, 1f);
             int x = Dpi.S(3);
+            float ph = Height - Dpi.S(6);
             for (int i = 0; i < items.Length; i++)
             {
                 int w = ItemW(i);
-                RectangleF r = new RectangleF(x, Dpi.S(3), w, Height - Dpi.S(6));
                 if (i == sel)
                 {
-                    Shapes.Fill(g, r, Dpi.S(4), Theme.Mix(T.Field, T.Accent, T.IsDark ? 0.22f : 0.13f));
-                    float pw = Dpi.S(16);
-                    Shapes.Fill(g, new RectangleF(r.X + (w - pw) / 2f, r.Bottom - Dpi.S(3), pw, Dpi.S(3)), 1.5f, T.Accent);
+                    float tx = x, tw = w;
+                    if (slide.Value < 1f && haveDraw)
+                    {
+                        drawX = fromX + (tx - fromX) * slide.Value;
+                        drawW = fromW + (tw - fromW) * slide.Value;
+                    }
+                    else { drawX = tx; drawW = tw; }
+                    haveDraw = true;
                 }
-                else if (i == hot) Shapes.Fill(g, r, Dpi.S(4), T.Hover);
+                x += w;
+            }
+            if (haveDraw)
+            {
+                RectangleF pill = new RectangleF(drawX, Dpi.S(3), drawW, ph);
+                Shapes.Fill(g, pill, ph / 2f, Theme.Mix(T.Field, T.Accent, T.IsDark ? 0.24f : 0.14f));
+                Shapes.Stroke(g, pill, ph / 2f, Theme.Mix(T.Field, T.Accent, 0.55f), 1f);
+            }
+            x = Dpi.S(3);
+            for (int i = 0; i < items.Length; i++)
+            {
+                int w = ItemW(i);
+                RectangleF r = new RectangleF(x, Dpi.S(3), w, ph);
+                if (i != sel && i == hot) Shapes.Fill(g, r, ph / 2f, T.Hover);
                 Draw.Text(g, items[i], i == sel ? Fonts.UiSemibold : Fonts.Ui, Rectangle.Round(r), i == sel ? T.Accent : T.Text, Draw.Line | TextFormatFlags.HorizontalCenter);
                 x += w;
             }
-            if (Focused && ShowFocusCues) Shapes.Stroke(g, outer, Dpi.S(5), T.Text, 2f);
+            if (Focused && ShowFocusCues) Shapes.Stroke(g, outer, orad, T.Text, 2f);
         }
     }
 
@@ -427,7 +479,7 @@ namespace TrackVice
             Graphics g = e.Graphics;
             g.Clear(Parent != null ? Parent.BackColor : theme.Bg);
             Draw.Card(g, ClientRectangle, theme);
-            if (Highlight) Shapes.Stroke(g, new RectangleF(1f, 1f, Width - 2.5f, Height - 2.5f), Dpi.S(7), theme.Accent, 2f);
+            if (Highlight) Shapes.Stroke(g, new RectangleF(1f, 1f, Width - 2.5f, Height - 2.5f), Dpi.S(10), theme.Accent, 2f);
             int s = Dpi.S(20);
             Draw.Glyph(g, Glyph, new Rectangle(Dpi.S(18), (Height - s) / 2, s, s), theme.Text2);
             int tx = TextX();
@@ -483,7 +535,7 @@ namespace TrackVice
             Text = text;
             TabStop = false;
             SetStyle(ControlStyles.Selectable, false);
-            Height = Dpi.S(34);
+            Height = Dpi.S(36);
         }
 
         public int Measure(int width)
@@ -494,7 +546,7 @@ namespace TrackVice
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(T.Bg);
-            Draw.Text(e.Graphics, Text, Fonts.UiSemibold, new Rectangle(Dpi.S(2), Height - Fonts.UiSemibold.Height - Dpi.S(8), Width, Fonts.UiSemibold.Height + 2), T.Text, Draw.Line);
+            Draw.Text(e.Graphics, Text, Fonts.Heading, new Rectangle(Dpi.S(2), Height - Fonts.Heading.Height - Dpi.S(6), Width, Fonts.Heading.Height + 2), T.Text, Draw.Line);
         }
     }
 
@@ -602,8 +654,8 @@ namespace TrackVice
                 int h = RowH(r, Width);
                 int kh = KeyFont.Height + Dpi.S(6);
                 Rectangle key = new Rectangle(Dpi.S(20), y + (h - kh) / 2, Math.Min(kw, Draw.Measure(r[0], KeyFont).Width + Dpi.S(16)), kh);
-                Shapes.Fill(g, key, Dpi.S(4), T.CardAlt);
-                Shapes.Stroke(g, key, Dpi.S(4), T.Divider, 1f);
+                Shapes.Fill(g, key, Dpi.S(6), T.CardAlt);
+                Shapes.Stroke(g, key, Dpi.S(6), T.Divider, 1f);
                 Draw.Text(g, r[0], KeyFont, key, T.Text, Draw.Line | TextFormatFlags.HorizontalCenter);
                 int dw = Math.Max(0, Width - dx - Dpi.S(20));
                 int dh = Draw.WrapHeight(r[1], Fonts.Ui, dw);
@@ -649,6 +701,11 @@ namespace TrackVice
             footer.Height = Dpi.S(60);
             footer.Padding = new Padding(Dpi.S(24), Dpi.S(14), Dpi.S(24), Dpi.S(14));
             footer.BackColor = t.Bg;
+            footer.Paint += delegate (object s, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(theme.Divider)) e.Graphics.DrawLine(p, 0, 0, footer.Width, 0);
+            };
+            scroll.HandleCreated += delegate { Draw.ScrollTheme(scroll, theme); };
             bClose.Primary = true;
             bClose.Width = Math.Max(bClose.Width, Dpi.S(96));
             bClose.Dock = DockStyle.Right;
@@ -674,6 +731,8 @@ namespace TrackVice
             foreach (Control c in items) { IThemed th = c as IThemed; if (th != null) th.ApplyTheme(t); }
             foreach (Control c in footer.Controls) { IThemed th = c as IThemed; if (th != null) th.ApplyTheme(t); }
             if (IsHandleCreated) Draw.TitleBar(Handle, t);
+            Draw.ScrollTheme(scroll, t);
+            footer.Invalidate();
             Invalidate(true);
         }
 
@@ -722,9 +781,9 @@ namespace TrackVice
             {
                 IMeasured m = c as IMeasured;
                 int h = m != null ? m.Measure(w) : c.Height;
-                if (c is SectionTitle && y > Dpi.S(8)) y += Dpi.S(10);
+                if (c is SectionTitle && y > Dpi.S(8)) y += Dpi.S(8);
                 c.SetBounds(0, y, w, h);
-                y += h + (c is SectionTitle ? Dpi.S(2) : Dpi.S(6));
+                y += h + (c is SectionTitle ? Dpi.S(2) : Dpi.S(8));
             }
             col.ResumeLayout(true);
             col.SetBounds(pad, scroll.AutoScrollPosition.Y, w, y + Dpi.S(16));

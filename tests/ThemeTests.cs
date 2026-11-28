@@ -35,6 +35,10 @@ namespace TrackVice.Tests
             T.Eq(1.0, Palettes.Contrast(0x123456, 0x123456), "contrast of a colour with itself");
 
             foreach (Palette p in Palettes.All()) Contrast(p);
+            foreach (Palette p in Palettes.All()) Ladder(p);
+
+            // Vice: a failure is red, not the magenta of the accent.
+            T.Check(HueGap(Palettes.Vice().ErrFg, Palettes.Vice().Accent) >= 25, "Vice: failed is not in the accent colour");
 
             // Terminal and Amber: running, done and waiting differ in brightness, not only in hue.
             foreach (Palette p in new Palette[] { Palettes.Terminal(), Palettes.Amber() })
@@ -62,6 +66,20 @@ namespace TrackVice.Tests
             AA(p, "ErrFg on ErrBg", p.ErrFg, p.ErrBg);
             AA(p, "Text on WarnBg", p.Text, p.WarnBg);
             AA(p, "OnAccent on Accent", p.OnAccent, p.Accent);
+        }
+
+        // The surfaces step up from the window to a pressed control, and the hairline shows on the window and on a card.
+        static void Ladder(Palette p)
+        {
+            double card = Palettes.Contrast(p.Card, p.Bg), hover = Palettes.Contrast(p.Hover, p.Card), pressed = Palettes.Contrast(p.Pressed, p.Card);
+            T.Check(card > 1.0 && card < 1.3, p.Name + ": the card is one small step from the background, " + card.ToString("0.00"));
+            T.Check(Palettes.Contrast(p.CardAlt, p.Card) > 1.0, p.Name + ": raised differs from the card");
+            T.Check(hover >= 1.08, p.Name + ": hover shows on a card, " + hover.ToString("0.00"));
+            T.Check(pressed > hover, p.Name + ": pressed is a step past hover");
+            T.Check(Palettes.Contrast(p.Divider, p.Card) >= 1.25, p.Name + ": the hairline shows on a card");
+            T.Check(Palettes.Contrast(p.Divider, p.Bg) >= 1.15, p.Name + ": the hairline shows on the background");
+            T.Check(Palettes.Contrast(p.FieldStroke, p.Field) >= 1.4, p.Name + ": the border of a field shows");
+            T.Check(Palettes.Contrast(p.Text, p.Pressed) >= 4.5, p.Name + ": Text on Pressed");
         }
 
         static void AA(Palette p, string what, int fore, int back)
