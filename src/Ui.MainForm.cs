@@ -314,7 +314,7 @@ namespace TrackVice
             AddReportLinks(foot);
             BuildDetailFoot(foot);
             itemDetail.Dock = DockStyle.Fill;
-            detailHost.Controls.Add(Padded(itemDetail));
+            AttachItemView(detailHost);
             detailHost.Controls.Add(foot);
             plain.Add(foot);
             views[TabProgress] = Split(list, detailHost, bar);
@@ -1110,6 +1110,7 @@ namespace TrackVice
                 Field(r, "Raw", Txt.Short(ev.Text, 2000), true);
             }
             End(r);
+            ShowItemCard(i, ph);
         }
 
         void ShowPhase(Phase p)
@@ -1129,6 +1130,7 @@ namespace TrackVice
             foreach (Item i in p.Items)
                 Line(r, States.Label(i.State), StateLook.Color(i.State, theme), i.DisplayName + (i.Duration(now).HasValue ? "  ·  " + Txt.Duration(i.Duration(now)) : ""), Color.Empty);
             End(r);
+            ShowPhaseCard(p);
         }
 
         void ShowOverview()
@@ -1151,6 +1153,7 @@ namespace TrackVice
                 }
             }
             End(r);
+            ShowEmptyCard();
         }
 
         void ShowEvent(TEvent e)
