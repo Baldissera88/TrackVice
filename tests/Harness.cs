@@ -38,6 +38,7 @@ namespace TrackVice.Tests
             AgentTests.Run();
             NetworkOutageTests.Run();
             SignInsTests.Run();
+            CommandSearchTests.Run();
             NameCacheTests.Run();
             EspStepTests.Run();
             MdmTests.Run();

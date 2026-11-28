@@ -219,6 +219,8 @@ namespace TrackVice
         public bool Compact;
         // A thin border around the button, for buttons that sit alone and must look like buttons.
         public bool Outline;
+        // A quiet button, such as in the header: soft text, a pill on hover and an accent underline when it is the active one.
+        public bool Quiet;
 
         public FlatButton(string text, string glyph)
         {
@@ -265,6 +267,21 @@ namespace TrackVice
             {
                 Shapes.Fill(g, r, Dpi.S(5), !Enabled ? T.Divider : hover ? T.AccentHover : T.Accent);
                 fg = Enabled ? T.OnAccent : T.Text3;
+            }
+            else if (Quiet)
+            {
+                if (down) Shapes.Fill(g, r, Dpi.S(7), T.Pressed);
+                else if (hover) Shapes.Fill(g, r, Dpi.S(7), T.Hover);
+                fg = !Enabled ? T.Text3 : Checked ? T.Text : hover ? T.Text : T.Text2;
+                if (Checked)
+                {
+                    using (SolidBrush ub = new SolidBrush(T.Accent))
+                    {
+                        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                        int inset = Dpi.S(Compact ? 10 : 12);
+                        g.FillRectangle(ub, inset, Height - Dpi.S(4), Math.Max(Dpi.S(8), Width - inset * 2), Dpi.S(2));
+                    }
+                }
             }
             else
             {

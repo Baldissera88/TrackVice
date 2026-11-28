@@ -175,6 +175,7 @@ namespace TrackVice
         void PageTitle(string title)
         {
             subtitle.Text = title;
+            ShowHeaderPage(title);
             Text = title + " - TrackVice";
         }
 
