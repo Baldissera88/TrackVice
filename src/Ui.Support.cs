@@ -92,10 +92,12 @@ namespace TrackVice
     public sealed partial class MainForm
     {
         public const string NotePage = "note";
-        readonly FlowLayoutPanel supportBox = new FlowLayoutPanel();
+        readonly Panel supportBox = new Panel();
         FlatButton bTicket, bNote, bIntune;
         DeploymentEstimate estimate;
         DeploymentHistory history;
+        // Edit, in Segoe Fluent Icons and Segoe MDL2 Assets.
+        const string NoteGlyph = "\uE70F";
 
         void BuildSupport()
         {
@@ -104,13 +106,11 @@ namespace TrackVice
                 DeviceNotes.Current = start.Shot != null ? new DeviceNotes(null) : new DeviceNotes(DeviceNotes.DefaultPath);
                 if (start.Shot != null) DeviceNotes.Current.Set("CONTOSO-LT0417", "Spare laptop for Finance. Hand over on Friday.");
             }
-            supportBox.FlowDirection = FlowDirection.TopDown;
-            supportBox.WrapContents = true;
-            supportBox.Height = Dpi.S(62);
+            supportBox.Height = Hero.CardHeight;
             supportBox.Padding = new Padding(0);
-            supportBox.Margin = new Padding(Dpi.S(4), 0, 0, 0);
+            supportBox.Margin = new Padding(0);
             bTicket = SupportButton("Copy for ticket", Glyphs.Copy, delegate { CopyTicket(); });
-            bNote = SupportButton("Add a note", null, delegate { EditNote(); });
+            bNote = SupportButton("Add a note", NoteGlyph, delegate { EditNote(); });
             bIntune = SupportButton("Open in Intune", Glyphs.Export, delegate { OpenInIntune(); });
             Tip(bTicket, "Copy a short summary of this device for a support ticket: device, user, state, what failed and why, what it waits for, start and time taken. Secrets are masked.");
             Tip(bIntune, "Open the device's page in the Intune admin center");
@@ -123,17 +123,17 @@ namespace TrackVice
             FlatButton b = new FlatButton(text, glyph);
             b.Compact = true;
             b.Outline = true;
-            b.Height = Dpi.S(27);
             b.AutoWidth();
-            b.Margin = new Padding(0, 0, Dpi.S(6), Dpi.S(4));
             b.Click += Safe.Wrap(click);
             themed.Add(b);
             supportBox.Controls.Add(b);
             return b;
         }
 
-        // On its own row in the chips the buttons stand side by side; next to the chips they stand in two lines.
-        bool supportRow;
+        // On their own row under the chips the buttons stand side by side. Beside the chips they fill the height of the
+        // cards in two rows: Copy for ticket and Open in Intune, then the note as wide as both. Open in Intune only shows
+        // for a device that Intune knows (Visible says false for all of them while the window is not shown yet).
+        bool supportRow, supportIntune;
 
         void LayoutSupport() { LayoutSupport(supportRow); }
 
@@ -143,18 +143,26 @@ namespace TrackVice
             bTicket.AutoWidth();
             bNote.AutoWidth();
             bIntune.AutoWidth();
-            supportBox.FlowDirection = row ? FlowDirection.LeftToRight : FlowDirection.TopDown;
-            supportBox.WrapContents = !row;
-            supportBox.Height = row ? bTicket.Height + Dpi.S(4) : Dpi.S(62);
+            int gap = Dpi.S(8);
             if (row)
             {
-                supportBox.Width = bTicket.Width + bNote.Width + Dpi.S(12) + (bIntune.Visible ? bIntune.Width + Dpi.S(6) : 0);
+                int h = Dpi.S(32), x = 0;
+                foreach (FlatButton b in new FlatButton[] { bTicket, bIntune, bNote })
+                {
+                    if (b == bIntune && !supportIntune) continue;
+                    b.SetBounds(x, 0, b.Width, h);
+                    x += b.Width + gap;
+                }
+                supportBox.Size = new Size(Math.Max(1, x - gap), h);
                 return;
             }
-            int col1 = Math.Max(bTicket.Width, bNote.Width);
-            bTicket.Width = col1;
-            bNote.Width = col1;
-            supportBox.Width = col1 + Dpi.S(6) + (bIntune.Visible ? bIntune.Width + Dpi.S(6) : 0);
+            int bh = (Hero.CardHeight - gap) / 2;
+            int top = bTicket.Width + (supportIntune ? gap + bIntune.Width : 0);
+            int w = Math.Max(top, bNote.Width);
+            bTicket.SetBounds(0, 0, supportIntune ? w - gap - bIntune.Width : w, bh);
+            bIntune.SetBounds(w - bIntune.Width, 0, bIntune.Width, bh);
+            bNote.SetBounds(0, Hero.CardHeight - bh, w, bh);
+            supportBox.Size = new Size(w, Hero.CardHeight);
         }
 
         // Runs at the end of every bind.
@@ -168,7 +176,8 @@ namespace TrackVice
             bNote.Text = note.Length > 0 ? "Note: " + Txt.Short(note, 18) : "Add a note";
             tips.SetToolTip(bNote, note.Length > 0 ? note + "\n\nClick to change the note. It is kept on this PC." : "A short note about this device, kept on this PC and shown in the device lists.");
             bool intune = PortalLinks.Intune(s.GetInfo(DeviceFacts.IntuneId)) != null;
-            if (bIntune.Visible != intune) bIntune.Visible = intune;
+            supportIntune = intune;
+            bIntune.Visible = intune;
             LayoutSupport();
             chips.PerformLayout();
             RefreshEstimate();
@@ -191,15 +200,7 @@ namespace TrackVice
                 estimate = DeploymentEstimate.Make(s, engine.Now, AutopilotFlow.BoxedTime(s, engine.Now), expected);
             }
             catch (Exception) { estimate = null; }
-            string[] variants = estimate != null ? estimate.Variants() : new string[0];
-            string left = variants.Length > 0 ? variants[0] : "";
-            if (overall.Remaining != left || overall.Variants.Length != variants.Length)
-            {
-                overall.Remaining = left;
-                overall.Variants = variants;
-                overall.Invalidate();
-                chips.PerformLayout();
-            }
+            if (overall.SetWords(HeroText.From(estimate))) chips.PerformLayout();
             tips.SetToolTip(overall, "How far the deployment has come, counting the items TrackVice has seen. Click to show everything." + (estimate != null ? "\n\nTime left: " + estimate.Basis : ""));
         }
 

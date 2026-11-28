@@ -71,7 +71,10 @@ namespace TrackVice
 
         int chipsHeight = Dpi.S(74);
 
-        // No chip is left out. They shrink to their minimum, then wrap into more rows, the support buttons last.
+        // No chip is left out. With room to spare the counts get one width and the support buttons end at the right edge.
+        // Else the chips shrink to their minimum; then the support buttons go to a row of their own under them; then the
+        // overall card and the support buttons share the first row and the counts get the second; and in the narrowest
+        // window the chips wrap as they come. Every row of cards ends at the right edge.
         void FitChips()
         {
             if (fitting || cItems == null || bTicket == null || chips.ClientSize.Width <= 0) return;
@@ -80,37 +83,67 @@ namespace TrackVice
             {
                 StatChip[] stats = new StatChip[] { cItems, cActive, cWaiting, cFailed, cFindings };
                 Control[] all = new Control[] { overall, cItems, cActive, cWaiting, cFailed, cFindings, supportBox };
-                int n = all.Length - 1;
+                int n = all.Length - 1, gap = Hero.Gap;
                 int[] nat = new int[n], min = new int[n];
-                nat[0] = overall.NaturalWidth + overall.Margin.Horizontal;
-                min[0] = overall.MinWidth + overall.Margin.Horizontal;
+                nat[0] = overall.NaturalWidth + gap;
+                min[0] = overall.MinWidth + gap;
                 for (int i = 1; i < n; i++)
                 {
-                    nat[i] = stats[i - 1].NaturalWidth + all[i].Margin.Horizontal;
-                    min[i] = stats[i - 1].MinWidth + all[i].Margin.Horizontal;
+                    nat[i] = stats[i - 1].NaturalWidth + gap;
+                    min[i] = stats[i - 1].MinWidth + gap;
                 }
-                supportBox.Margin = new Padding(Dpi.S(4), 0, 0, 0);
                 LayoutSupport(false);
                 int room = chips.ClientSize.Width - chips.Padding.Horizontal;
-                NarrowFit.ChipPlan plan = NarrowFit.Chips(nat, min, supportBox.Width + supportBox.Margin.Horizontal, room);
+                NarrowFit.ChipPlan plan = NarrowFit.Chips(nat, min, supportBox.Width, room);
+                int rows = plan.Rows[n - 1] + 1, lead = 0;
                 bool own = plan.Rows[n] > plan.Rows[n - 1];
+                bool stacked = rows > 1 && HeroText.Stack(min, supportBox.Width, room, gap, plan.Widths);
+                if (stacked)
+                {
+                    own = false;
+                    rows = 2;
+                }
+                else if (plan.RowCount == 1)
+                {
+                    // In a wide window the counts grow first, then the overall card, which then shows the time so far apart.
+                    lead = HeroText.Spread(plan.Widths, 1, n, Dpi.S(192) + gap, room);
+                    int more = Math.Min(lead, Dpi.S(150));
+                    plan.Widths[0] += more;
+                    lead -= more;
+                }
+                // The gap after the last card of a row is past the edge.
+                else if (rows == 1) plan.Widths[0] += HeroText.Spread(plan.Widths, 1, n, room, room + gap + plan.Widths[n]);
+                else
+                {
+                    for (int from = 0, i = 1; i <= n; i++)
+                    {
+                        if (i < n && plan.Rows[i] == plan.Rows[from]) continue;
+                        HeroText.Level(plan.Widths, from, i, room + gap);
+                        from = i;
+                    }
+                }
                 chips.SuspendLayout();
                 if (own)
                 {
-                    supportBox.Margin = new Padding(0);
                     LayoutSupport(true);
                     supportBox.Width = Math.Min(supportBox.Width, Math.Max(room, 0));
                 }
-                chips.WrapContents = plan.RowCount > 1;
+                int at = stacked ? 1 : chips.Controls.Count - 1;
+                if (chips.Controls.GetChildIndex(supportBox) != at) chips.Controls.SetChildIndex(supportBox, at);
+                supportBox.Margin = new Padding(lead, 0, 0, stacked ? gap : 0);
+                chips.WrapContents = stacked || plan.RowCount > 1;
                 for (int i = 0; i < n; i++)
                 {
                     all[i].Visible = true;
-                    all[i].Width = Math.Max(1, plan.Widths[i] - all[i].Margin.Horizontal);
-                    chips.SetFlowBreak(all[i], plan.Rows[i + 1] != plan.Rows[i]);
+                    bool last = stacked ? i == n - 1 : plan.Rows[i + 1] != plan.Rows[i];
+                    all[i].Margin = new Padding(0, 0, last ? 0 : gap, gap);
+                    all[i].Size = new Size(Math.Max(1, plan.Widths[i] - gap), Hero.CardHeight);
+                    chips.SetFlowBreak(all[i], last && !stacked);
                 }
                 supportBox.Visible = true;
-                chips.SetFlowBreak(supportBox, false);
-                chipsHeight = chips.Padding.Vertical + (plan.Rows[n - 1] + 1) * Dpi.S(62) + (own ? supportBox.Height : 0);
+                chips.SetFlowBreak(supportBox, stacked);
+                // The rows of cards with the room between them, the support buttons' own row, and a little above the phases.
+                chipsHeight = chips.Padding.Top + rows * Hero.CardHeight + (rows - 1) * gap + (own ? gap + supportBox.Height : 0) + Dpi.S(6);
                 chips.ResumeLayout(true);
             }
             finally { fitting = false; }
