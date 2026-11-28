@@ -59,6 +59,8 @@ namespace TrackVice
         public const string RoleNote = "Key Vault Secrets User reads. The update key is the one secret that lets someone sign updates for every device, so give the role on that one secret only to the people who may publish.";
         public const string KeyDeniedText = "This account can read the setup but not the update key (the vault answered 403). Ask for the role Key Vault Secrets User on the secret " + KeyName + ", or publish from a PC that has the key.";
 
+        public const string NotAzureText = "The storage settings in the vault have an address that is not of their storage account in Azure, so they were not used.";
+
         readonly IVaultHttp http;
         readonly Func<string> token;
         readonly VaultTarget target;
@@ -167,7 +169,7 @@ namespace TrackVice
             try
             {
                 VaultSetupSecret s = Read(StorageName);
-                OwnStorage o = s == null ? null : OwnStorage.Parse(s.Value);
+                OwnStorage o = s == null ? null : FromVault(s.Value);
                 parts.Add(s == null ? "no storage settings" : o == null ? "storage settings that could not be read" : "storage account " + o.Account);
             }
             catch (VaultException ex)
@@ -178,7 +180,8 @@ namespace TrackVice
             try
             {
                 VaultSetupSecret k = Read(KeyName);
-                string fp = k == null ? null : (FingerprintOf(Convert64(k.Value)) ?? (k.Fingerprint.Length > 0 ? k.Fingerprint : null));
+                // The tag is only a label that anyone who can write the secret sets, so it never stands in for the key.
+                string fp = k == null ? null : FingerprintOf(Convert64(k.Value));
                 parts.Add(k == null ? "no update key" : fp == null ? "an update key that could not be read" : "update key " + fp);
             }
             catch (VaultException ex)
@@ -187,6 +190,13 @@ namespace TrackVice
                 parts.Add("update key: access refused");
             }
             return "The vault holds: " + string.Join(", ", parts.ToArray()) + ".";
+        }
+
+        // The storage settings of a secret, or null when they cannot be read or point anywhere but at their own account.
+        public static OwnStorage FromVault(string value)
+        {
+            OwnStorage o = OwnStorage.Parse(value);
+            return o == null || StorageTrust.Problem(o) != null ? null : o;
         }
 
         static byte[] Convert64(string s)
@@ -227,7 +237,8 @@ namespace TrackVice
                 try
                 {
                     VaultSetupSecret have = Read(KeyName);
-                    if (have != null) vaultFp = FingerprintOf(Convert64(have.Value)) ?? (have.Fingerprint.Length > 0 ? have.Fingerprint : "unknown");
+                    // A key that cannot be read is another key: the tag alone never makes it "the same already".
+                    if (have != null) vaultFp = FingerprintOf(Convert64(have.Value)) ?? "unknown";
                 }
                 catch (VaultException ex)
                 {
@@ -281,6 +292,8 @@ namespace TrackVice
             if (st == null) { res.Lines.Add("The vault has no storage settings."); return; }
             OwnStorage vault = OwnStorage.Parse(st.Value);
             if (vault == null) { res.Lines.Add("The storage settings in the vault could not be read."); return; }
+            // The settings say where the account key signs for and where the Azure sign-in is sent.
+            if (StorageTrust.Problem(vault) != null) { res.Lines.Add(NotAzureText); return; }
             OwnStorage local = OwnStorage.Load(secrets);
             KeyChoice c = GetStorage(local, vault);
             if (c == KeyChoice.Leave)

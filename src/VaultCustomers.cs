@@ -33,6 +33,8 @@ namespace TrackVice
     public sealed class VaultGetResult
     {
         public int Added, Updated, Skipped;
+        // Customer codes in the vault that do not hold the update key of this PC, so they were not kept.
+        public int CodesNotKept;
         public bool HadLinks;
     }
 
@@ -43,6 +45,8 @@ namespace TrackVice
         public const string ContentType = "application/vnd.trackvice.customer+json";
         public const string Prefix = "tv-";
         public const int MaxName = 127;
+        // Key Vault takes values of up to 25 kilobytes.
+        public const int MaxValue = 65536;
         public const string CodeMember = "CustomerCode";
 
         // "tv-" and the name with letters and digits only, in lower case. A name that cannot be written like that
@@ -71,6 +75,14 @@ namespace TrackVice
             uint h = 2166136261;
             foreach (byte x in Encoding.UTF8.GetBytes(s)) { h ^= x; h *= 16777619; }
             return h.ToString("x8", CultureInfo.InvariantCulture);
+        }
+
+        // A name the vault allows for a secret: letters, digits and hyphens.
+        public static bool IsSecretName(string name)
+        {
+            if (string.IsNullOrEmpty(name) || name.Length > MaxName) return false;
+            foreach (char ch in name) if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-')) return false;
+            return true;
         }
 
         public static bool IsOurs(VaultSecret s)
@@ -121,6 +133,34 @@ namespace TrackVice
             return string.IsNullOrEmpty(c) ? null : c;
         }
 
+        // Null when the secret is what Save writes: one customer, under the secret name of that customer. Roles can be given
+        // per secret, so a secret must not be able to change another customer than the one it is named for.
+        public static string Problem(VaultSecret s)
+        {
+            if (s == null || s.Value == null) return "The secret is empty.";
+            if (s.Value.Length > MaxValue) return "The secret is too long to be a customer.";
+            System.Collections.IList l = ImeJson.Get(Doc(s.Value), "Customers") as System.Collections.IList;
+            if (l == null || l.Count != 1) return "The secret does not hold one customer.";
+            string name = Http.Str(l[0] as Dictionary<string, object>, "Name");
+            if (string.IsNullOrEmpty(name) || name.Trim().Length == 0) return "The customer in the secret has no name.";
+            if (!string.Equals(SecretName(name), s.Name, StringComparison.OrdinalIgnoreCase)) return "The secret is named for another customer than the one it holds.";
+            return null;
+        }
+
+        // A customer code as TrackVice writes it, signed for updateKey, the public update key of this PC. Every code TrackVice
+        // makes holds that key, and the devices installed with a code accept only versions signed with the key in it. A
+        // secret of one customer can be changed by someone who may not publish, so a code with any other key is not kept:
+        // it would let that person sign updates for the customer's devices.
+        public static bool CodeFits(string code, string updateKey)
+        {
+            if (code == null || code.Length > MaxValue || string.IsNullOrEmpty(updateKey) || !code.StartsWith(CustomerCode.Prefix, StringComparison.Ordinal)) return false;
+            foreach (char ch in code) if (ch <= ' ' || ch > '~') return false;
+            CustomerCode c;
+            try { c = CustomerCode.Parse(code); }
+            catch (ArgumentException) { return false; }
+            return c.Problem() == null && string.Equals((c.Key ?? "").Trim(), updateKey.Trim(), StringComparison.Ordinal);
+        }
+
         static Dictionary<string, object> Doc(string value)
         {
             try { return ImeJson.Parse(value ?? "") as Dictionary<string, object>; }
@@ -130,12 +170,14 @@ namespace TrackVice
         // ---------- get ----------
 
         // Adds and updates the customers of the secrets the way Import does. A secret that cannot be read is skipped.
-        // A customer code is kept with ISecretStore when the secret has one.
-        public static VaultGetResult Merge(CustomerBook book, IEnumerable<VaultSecret> secrets, ISecretStore codes)
+        // A customer code is kept with ISecretStore when the secret has one that holds updateKey, the public update key of
+        // this PC. Without a key on this PC no code is kept; getting the customers again after the setup keeps them.
+        public static VaultGetResult Merge(CustomerBook book, IEnumerable<VaultSecret> secrets, ISecretStore codes, string updateKey)
         {
             VaultGetResult res = new VaultGetResult();
             foreach (VaultSecret s in secrets)
             {
+                if (Problem(s) != null) { res.Skipped++; continue; }
                 try
                 {
                     ImportResult r = book.Import(s.Value);
@@ -144,7 +186,11 @@ namespace TrackVice
                     if (r.HadLinks) res.HadLinks = true;
                     string name = NameIn(s.Value), code = CodeIn(s.Value);
                     Customer have = name == null ? null : book.Find(name);
-                    if (codes != null && code != null && have != null) CustomerCodes.Save(codes, have.Name, code);
+                    if (codes != null && code != null && have != null)
+                    {
+                        if (CodeFits(code, updateKey)) CustomerCodes.Save(codes, have.Name, code);
+                        else res.CodesNotKept++;
+                    }
                     if (r.Added + r.Updated == 0) res.Skipped++;
                 }
                 catch (InvalidDataException) { res.Skipped++; }
@@ -186,11 +232,14 @@ namespace TrackVice
             return utc.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
         }
 
+        const long MaxEpoch = 253402300799;
+
         // The vault gives times as seconds since 1 January 1970.
         public static DateTime? FromEpoch(object seconds)
         {
             long? n = ImeJson.Long(seconds);
-            if (!n.HasValue || n.Value <= 0) return null;
+            // Past 31 December 9999 a DateTime throws, and the whole list would fail on one answer.
+            if (!n.HasValue || n.Value <= 0 || n.Value > MaxEpoch) return null;
             return new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(n.Value);
         }
     }

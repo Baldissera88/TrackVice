@@ -27,6 +27,29 @@ namespace TrackVice.Tests
             return c;
         }
 
+        // The public update key of this PC in the tests, and a customer code that holds it.
+        internal static string UpdateKey()
+        {
+            if (updateKey == null)
+            {
+                bool made;
+                using (System.Security.Cryptography.RSACryptoServiceProvider k = UpdateKeys.LoadOrCreate(new MemoryKeyStore(), out made)) updateKey = UpdateKeys.PublicKey(k);
+            }
+            return updateKey;
+        }
+
+        static string updateKey;
+
+        internal static string Code(string key)
+        {
+            CustomerCode c = new CustomerCode();
+            c.Name = "Contoso";
+            c.Upload = "https://contosoagents.blob.core.windows.net/tv-contoso?si=upload&spr=https&sv=2022-11-02&sr=c&sig=TESTSIGNATURE";
+            c.Agent = "https://contosoagents.blob.core.windows.net/trackvice-agent?sp=r&sig=TESTSIGNATURE";
+            c.Key = key;
+            return c.ToString();
+        }
+
         static CustomerBook NewBook()
         {
             return new CustomerBook(new MemoryCustomerStorage(), new NoProtect());
@@ -91,10 +114,11 @@ namespace TrackVice.Tests
             CustomerBook src = NewBook();
             src.Add(Contoso());
             src.Add(Fabrikam());
-            string v = VaultCustomers.ToValue(src.Find("Contoso"), "tv1:abcdef");
+            string code = Code(UpdateKey());
+            string v = VaultCustomers.ToValue(src.Find("Contoso"), code);
             T.Check(v.Contains("contosoagents.blob.core.windows.net"), "the value has the storage link");
             T.Eq("Contoso", VaultCustomers.NameIn(v), "name in the value");
-            T.Eq("tv1:abcdef", VaultCustomers.CodeIn(v), "customer code in the value");
+            T.Eq(code, VaultCustomers.CodeIn(v), "customer code in the value");
             T.Eq(null, VaultCustomers.CodeIn(VaultCustomers.ToValue(src.Find("Fabrikam"), null)), "no code when there is none");
 
             MemoryVault vault = new MemoryVault();
@@ -107,26 +131,26 @@ namespace TrackVice.Tests
 
             CustomerBook dst = NewBook();
             MemorySecrets codes = new MemorySecrets();
-            VaultGetResult r = VaultCustomers.Merge(dst, got, codes);
+            VaultGetResult r = VaultCustomers.Merge(dst, got, codes, UpdateKey());
             T.Eq(2, r.Added, "two added");
             T.Eq(0, r.Updated, "none updated");
             Customer c = dst.Find("Contoso");
             T.Check(c != null && c.Tenant == "contoso.onmicrosoft.com" && c.SccmSite == "CTO" && c.Notes == "Made up, for tests." && c.SccmServer == "CM01.contoso.com", "details of Contoso");
             T.Eq(Contoso().AgentLocation, c.AgentLocation, "storage link kept");
-            T.Eq("tv1:abcdef", CustomerCodes.Load(codes, "Contoso"), "customer code kept");
+            T.Eq(code, CustomerCodes.Load(codes, "Contoso"), "customer code kept");
             T.Eq(@"\\FS01\TrackVice$\Uploads", dst.Find("Fabrikam").AgentLocation, "folder of Fabrikam");
             T.Eq("6f1d3c2a-8b4e-4f7a-9c0d-2e5b7a1f3c94", dst.Find("Fabrikam").GraphClientId, "client id of Fabrikam");
             T.Eq(null, CustomerCodes.Load(codes, "Fabrikam"), "no code for Fabrikam");
 
             // The same again updates and adds none.
-            VaultGetResult again = VaultCustomers.Merge(dst, got, codes);
+            VaultGetResult again = VaultCustomers.Merge(dst, got, codes, UpdateKey());
             T.Check(again.Added == 0 && again.Updated == 2, "second read updates");
 
             // The value is also a customers file of one customer.
             CustomerBook file = NewBook();
             T.Eq(1, file.Import(v).Added, "the value imports as a file");
 
-            VaultGetResult bad = VaultCustomers.Merge(dst, new VaultSecret[] { new VaultSecret { Name = "tv-x", Value = "not json" } }, codes);
+            VaultGetResult bad = VaultCustomers.Merge(dst, new VaultSecret[] { new VaultSecret { Name = "tv-x", Value = "not json" } }, codes, UpdateKey());
             T.Eq(1, bad.Skipped, "a secret that is not a customer is skipped");
         }
 
@@ -271,10 +295,10 @@ namespace TrackVice.Tests
             KeyVaultStore store = Store(vault);
             List<VaultSecret> got = new List<VaultSecret>();
             foreach (VaultSecret s in store.List()) got.Add(store.Get(s.Name));
-            VaultGetResult r = VaultCustomers.Merge(book, got, null);
+            VaultGetResult r = VaultCustomers.Merge(book, got, null, null);
             T.Eq(3, book.Count, "customers that are not in the vault stay");
             T.Check(r.Added == 0 && r.Updated == 1, "one updated");
-            VaultGetResult none = VaultCustomers.Merge(book, new VaultSecret[0], null);
+            VaultGetResult none = VaultCustomers.Merge(book, new VaultSecret[0], null, null);
             T.Eq(3, book.Count, "an empty vault removes nothing");
             T.Check(none.Added == 0 && none.Updated == 0, "nothing to do");
 

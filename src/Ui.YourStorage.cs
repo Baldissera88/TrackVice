@@ -104,8 +104,10 @@ namespace TrackVice
             return new SettingRow(glyph, title, desc, right);
         }
 
+        // Only a web page is opened: the address of a sign-in comes from the answer of the sign-in service.
         protected static void Open(string url)
         {
+            if (!WebLinks.IsHttps(url)) { Menus.Copy(url); return; }
             try { Process.Start(url); }
             catch (Exception) { Menus.Copy(url); }
         }

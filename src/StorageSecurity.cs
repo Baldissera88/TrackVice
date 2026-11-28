@@ -157,6 +157,7 @@ namespace TrackVice
 
         public SecurityCheck Read(AzureAccount a)
         {
+            StorageTrust.RequireId(a);
             SecurityCheck c = new SecurityCheck();
             c.Account = a;
             WebReply r = arm.Send("GET", a.Id + Api, null);
@@ -247,6 +248,7 @@ namespace TrackVice
         public void SetCustomerRule(AzureAccount a, int days)
         {
             if (days < 1) throw new SetupException("Uploads are deleted after at least 1 day.");
+            StorageTrust.RequireId(a);
             List<object> rules = Merge(ReadRules(a), days);
             WebReply r = arm.Send("PUT", a.Id + "/managementPolicies/default" + Api, SetupJson.Obj("properties", SetupJson.Obj("policy", SetupJson.Obj("rules", rules))));
             if (r.Status != 200 && r.Status != 201) throw Fail(r, "set the lifecycle rule " + RuleName);
@@ -271,10 +273,104 @@ namespace TrackVice
             if (id == RuleId) { SetCustomerRule(a, days); return; }
             Dictionary<string, object> body = FixBody(id);
             if (body == null) throw new SetupException("TrackVice does not change this setting.");
+            StorageTrust.RequireId(a);
             WebReply r;
             if (id == BlobSoftId || id == ContainerSoftId) r = arm.Send("PUT", a.Id + "/blobServices/default" + Api, body);
             else r = arm.Send("PATCH", a.Id + Api, body);
             if (r.Status != 200 && r.Status != 201 && r.Status != 202) throw Fail(r, "change the storage account " + a.Name);
+        }
+    }
+
+    // ---------- what may be called ----------
+
+    // Your storage settings can come from the Key Vault or from an older copy, and they say where the account key signs
+    // requests for and where the Azure sign-in is sent. Only the blob service of that one account and a storage account
+    // ID of Azure Resource Manager pass, so neither a signature nor a token goes to another address.
+    public static class StorageTrust
+    {
+        static readonly string[] Suffixes = { ".blob.core.windows.net", ".blob.core.chinacloudapi.cn", ".blob.core.usgovcloudapi.net" };
+        // Accounts in an Azure DNS zone: <account>.z<nn>.blob.storage.azure.net.
+        const string ZoneSuffix = ".blob.storage.azure.net";
+        static readonly Regex RxAccount = new Regex(@"^[a-z0-9]{3,24}\z", RegexOptions.CultureInvariant);
+        static readonly Regex RxZone = new Regex(@"^z[0-9]{1,3}\z", RegexOptions.CultureInvariant);
+        static readonly Regex RxId = new Regex(@"^/subscriptions/[0-9a-z-]{1,64}/resourceGroups/[\w\-\.\(\)]{1,90}/providers/Microsoft\.Storage/storageAccounts/([a-z0-9]{3,24})\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        static readonly Regex RxTenant = new Regex(@"^[a-z0-9][a-z0-9.-]{0,252}\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        public static bool IsAccountName(string name)
+        {
+            return name != null && RxAccount.IsMatch(name);
+        }
+
+        // The host of the blob service of this account, or null when the address is anything else.
+        static string HostOf(string account, string endpoint)
+        {
+            if (!IsAccountName(account) || string.IsNullOrEmpty(endpoint)) return null;
+            foreach (char ch in endpoint) if (ch <= ' ' || ch > '~') return null;
+            string e = endpoint.ToLowerInvariant();
+            if (e.EndsWith("/", StringComparison.Ordinal)) e = e.Substring(0, e.Length - 1);
+            const string start = "https://";
+            if (!e.StartsWith(start, StringComparison.Ordinal)) return null;
+            string host = e.Substring(start.Length);
+            foreach (string s in Suffixes) if (host == account + s) return host;
+            string head = account + ".";
+            if (host.StartsWith(head, StringComparison.Ordinal) && host.EndsWith(ZoneSuffix, StringComparison.Ordinal) && host.Length > head.Length + ZoneSuffix.Length
+                && RxZone.IsMatch(host.Substring(head.Length, host.Length - head.Length - ZoneSuffix.Length))) return host;
+            return null;
+        }
+
+        // Null when the address is https://<account>.blob.core.windows.net/ or the same in another Azure cloud.
+        public static string EndpointProblem(string account, string endpoint)
+        {
+            if (!IsAccountName(account)) return "The storage account name is not a storage account name.";
+            if (HostOf(account, endpoint) == null) return "The address of the storage account " + account + " is not its blob address in Azure.";
+            return null;
+        }
+
+        // Null when the ID is /subscriptions/.../storageAccounts/<name>, and of this account when one is given.
+        public static string IdProblem(string id, string account)
+        {
+            Match m = RxId.Match(id ?? "");
+            if (!m.Success) return "The resource ID is not the ID of a storage account.";
+            if (account != null && !string.Equals(m.Groups[1].Value, account, StringComparison.OrdinalIgnoreCase)) return "The resource ID is of another storage account.";
+            return null;
+        }
+
+        // Null when the link is an https link to the blob service of the account.
+        public static string LinkProblem(string account, string endpoint, string link)
+        {
+            string host = HostOf(account, endpoint);
+            Uri u;
+            if (host == null || string.IsNullOrEmpty(link) || !link.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || !Uri.TryCreate(link, UriKind.Absolute, out u)) return "The link does not point at the storage account.";
+            if (u.Scheme != Uri.UriSchemeHttps || u.UserInfo.Length > 0 || !u.IsDefaultPort || !string.Equals(u.Host, host, StringComparison.OrdinalIgnoreCase) || link.IndexOf('\\') >= 0)
+                return "The link does not point at the storage account.";
+            return null;
+        }
+
+        // Null when every address in the settings is of the one account they name.
+        public static string Problem(OwnStorage own)
+        {
+            if (own == null) return "There are no storage settings.";
+            string p = EndpointProblem(own.Account, own.BlobEndpoint);
+            if (p != null) return p;
+            if (!string.IsNullOrEmpty(own.Id) && (p = IdProblem(own.Id, own.Account)) != null) return p;
+            if ((p = LinkProblem(own.Account, own.BlobEndpoint, own.AgentRead)) != null) return p;
+            if (!string.IsNullOrEmpty(own.AgentWrite) && (p = LinkProblem(own.Account, own.BlobEndpoint, own.AgentWrite)) != null) return p;
+            if (!string.IsNullOrEmpty(own.Tenant) && !RxTenant.IsMatch(own.Tenant)) return "The tenant is not a tenant ID or domain.";
+            return null;
+        }
+
+        // Before a request is signed with the account key or a link is made for it.
+        public static void RequireEndpoint(OwnStorage own)
+        {
+            string p = own == null ? "There are no storage settings." : EndpointProblem(own.Account, own.BlobEndpoint);
+            if (p != null) throw new SetupException(p + " Set up Your storage again.");
+        }
+
+        // Before the Azure sign-in is sent with a request for this account.
+        public static void RequireId(AzureAccount a)
+        {
+            string p = a == null ? "There is no storage account." : IdProblem(a.Id, null);
+            if (p != null) throw new SetupException(p + " Set up Your storage again.");
         }
     }
 
@@ -360,7 +456,10 @@ namespace TrackVice
         // Your storage in Azure: by its resource ID when it is kept, otherwise by its name in the subscriptions of the sign-in.
         public static AzureAccount Locate(Arm arm, OwnStorage own)
         {
-            if (!string.IsNullOrEmpty(own.Id))
+            // The address is where the links of this run point, so it must be the account's own.
+            StorageTrust.RequireEndpoint(own);
+            // An ID that is not the ID of this account is not used: the account is then looked up by its name.
+            if (!string.IsNullOrEmpty(own.Id) && StorageTrust.IdProblem(own.Id, own.Account) == null)
             {
                 AzureAccount a = new AzureAccount();
                 a.Id = own.Id;
