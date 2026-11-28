@@ -631,8 +631,11 @@ namespace TrackVice
         }
 
         // Same, and fills written with each entry's name in the zip and the file it was written to.
+        // The zip comes from the storage, where anyone with the upload link can write, so nothing in it is trusted:
+        // not its names, not its sizes and not how many files it says it holds.
         public static int Unpack(byte[] zip, string folder, Dictionary<string, string> written)
         {
+            if (zip == null || zip.Length == 0) throw new InvalidDataException("The log bundle is empty.");
             Directory.CreateDirectory(folder);
             int n = 0;
             long total = 0;
@@ -640,6 +643,17 @@ namespace TrackVice
             using (MemoryStream ms = new MemoryStream(zip))
             using (ZipArchive a = new ZipArchive(ms, ZipArchiveMode.Read))
             {
+                // Checked before anything is written: a bundle of the agent holds some tens of files.
+                if (a.Entries.Count > MaxEntries) throw new InvalidDataException("The log bundle holds more than " + MaxEntries + " files. It was not unpacked.");
+                long claimed = 0;
+                foreach (ZipArchiveEntry e in a.Entries)
+                {
+                    if (e.Length < 0 || e.Length > MaxUnpackedBytes) throw new InvalidDataException(TooLarge);
+                    claimed += e.Length;
+                    if (claimed > MaxUnpackedBytes) throw new InvalidDataException(TooLarge);
+                }
+                // How many files took each name, so the next free "name (k)" is found without trying them all again.
+                Dictionary<string, int> taken = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 foreach (ZipArchiveEntry e in a.Entries)
                 {
                     // Only the last part of the name is used, so an entry cannot write outside the folder.
@@ -648,8 +662,16 @@ namespace TrackVice
                     string dest = Path.GetFullPath(Path.Combine(root, name));
                     if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
                     // Two entries with the same name both stay, the second as "name (2)".
-                    int k = 2;
-                    while (File.Exists(dest)) dest = Path.Combine(root, Path.GetFileNameWithoutExtension(name) + " (" + k++ + ")" + Path.GetExtension(name));
+                    int k;
+                    if (!taken.TryGetValue(name, out k)) k = 1;
+                    string stem = Path.GetFileNameWithoutExtension(name), ext = Path.GetExtension(name);
+                    while (true)
+                    {
+                        dest = Path.Combine(root, k == 1 ? name : stem + " (" + k + ")" + ext);
+                        k++;
+                        if (!File.Exists(dest)) break;
+                    }
+                    taken[name] = k;
                     using (Stream src = e.Open())
                     using (FileStream dst = new FileStream(dest, FileMode.CreateNew, FileAccess.Write))
                     {
@@ -658,7 +680,7 @@ namespace TrackVice
                         while ((r = src.Read(buf, 0, buf.Length)) > 0)
                         {
                             total += r;
-                            if (total > MaxUnpackedBytes) throw new InvalidDataException("The log bundle is larger than 1 GB when unpacked. It was not unpacked.");
+                            if (total > MaxUnpackedBytes) throw new InvalidDataException(TooLarge);
                             dst.Write(buf, 0, r);
                         }
                     }
@@ -669,7 +691,28 @@ namespace TrackVice
             return n;
         }
 
+        const string TooLarge = "The log bundle is larger than 1 GB when unpacked. It was not unpacked.";
+        // More files than this in one bundle and it is not unpacked.
+        public const int MaxEntries = 2000;
+        // The longest file name that is written. A longer one is cut, and keeps its extension.
+        public const int MaxNameChars = 120;
+        // What a bundle holds: logs, text, the session and the cab. A file of any other type, such as a program, a script
+        // or a shortcut, is written with ".txt" after its name, so nothing in the folder runs when it is opened there.
+        static readonly string[] KnownTypes = new string[] { ".log", ".lo_", ".txt", ".json", ".cab", ".csv", ".evtx", ".etl" };
+
+        // CON, NUL, COM1 and the like are devices in every folder, with or without an extension.
+        static bool IsDevice(string name)
+        {
+            int dot = name.IndexOf('.');
+            string stem = (dot >= 0 ? name.Substring(0, dot) : name).Trim().ToUpperInvariant();
+            if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" || stem == "CONIN$" || stem == "CONOUT$" || stem == "CLOCK$") return true;
+            if (stem.Length == 4 && (stem.StartsWith("COM", StringComparison.Ordinal) || stem.StartsWith("LPT", StringComparison.Ordinal)))
+                return (stem[3] >= '0' && stem[3] <= '9') || stem[3] == '\u00b9' || stem[3] == '\u00b2' || stem[3] == '\u00b3';
+            return false;
+        }
+
         // The file name part of a zip entry, cut at both kinds of slash, without a drive or characters Windows does not allow.
+        // It is never the name of a device, never longer than MaxNameChars, and never of a type that Windows runs.
         public static string SafeName(string entry)
         {
             if (string.IsNullOrEmpty(entry)) return null;
@@ -679,9 +722,23 @@ namespace TrackVice
             cut = name.LastIndexOf(':');
             if (cut >= 0) name = name.Substring(cut + 1);
             StringBuilder b = new StringBuilder();
-            foreach (char c in name) b.Append(c < 32 || "<>\"|?*".IndexOf(c) >= 0 ? '_' : c);
-            name = b.ToString().Trim().TrimEnd('.');
+            // Format characters, such as the one that writes right to left, would show a name other than the real one.
+            foreach (char c in name) b.Append(c < 32 || c == 127 || "<>\"|?*".IndexOf(c) >= 0 || char.GetUnicodeCategory(c) == UnicodeCategory.Format ? '_' : c);
+            name = b.ToString().Trim().TrimEnd('.', ' ');
             if (name.Length == 0) return null;
+            if (IsDevice(name)) name = "_" + name;
+            int dot = name.LastIndexOf('.');
+            string ext = dot > 0 ? name.Substring(dot) : "";
+            if (dot == 0 || (ext.Length > 0 && Array.IndexOf(KnownTypes, ext.ToLowerInvariant()) < 0))
+            {
+                name += ".txt";
+                ext = ".txt";
+            }
+            if (name.Length > MaxNameChars)
+            {
+                string stem = name.Substring(0, MaxNameChars - ext.Length).TrimEnd('.', ' ');
+                name = (stem.Length > 0 ? stem : "_") + ext;
+            }
             return name;
         }
     }

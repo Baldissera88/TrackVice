@@ -6,6 +6,8 @@ namespace TrackVice
     using System.Globalization;
     using System.IO;
     using System.IO.Compression;
+    using System.Security.AccessControl;
+    using System.Security.Principal;
     using System.Text;
     using System.Threading;
 
@@ -99,6 +101,15 @@ namespace TrackVice
             return File.Exists(PathOf(tool));
         }
 
+        // Adds a line of output, and never more than max characters in all: one very long line is cut too.
+        public static void AddLine(StringBuilder sb, string line, int max)
+        {
+            int left = max - sb.Length;
+            if (left <= 0 || line == null) return;
+            if (line.Length > left) sb.Append(line, 0, left);
+            else sb.AppendLine(line);
+        }
+
         public int Run(DiagTool tool, string cabFolder, out string output)
         {
             int timeoutMs = DiagCommands.TimeoutMs(tool);
@@ -116,7 +127,7 @@ namespace TrackVice
                 DataReceivedEventHandler got = delegate (object s, DataReceivedEventArgs e)
                 {
                     if (e.Data == null) return;
-                    lock (gate) if (sb.Length < MaxOutputChars) sb.AppendLine(e.Data);
+                    lock (gate) AddLine(sb, e.Data, MaxOutputChars);
                 };
                 p.OutputDataReceived += got;
                 p.ErrorDataReceived += got;
@@ -149,6 +160,7 @@ namespace TrackVice
         public static readonly TimeSpan After = TimeSpan.FromMinutes(10);
         public const string StateFile = "diagnostics.txt";
         public const string TempFolder = "diagnostics-tmp";
+        const string NewSuffix = ".new";
         public const string NotesName = "diagnostics-notes.txt";
         public const string DsregName = "dsregcmd-status.txt";
         public const string ImeName = "ime-registry.txt";
@@ -228,16 +240,18 @@ namespace TrackVice
             if (statePath == null) return;
             try
             {
-                if (!File.Exists(statePath)) return;
-                bool changed = false;
-                foreach (string l in File.ReadAllLines(statePath, Encoding.UTF8))
+                // A stop while the state was saved can leave the second file beside the first, or only the second. The
+                // second holds the newest id, so the ids of both are read: the requests that were followed stay followed.
+                string next = statePath + NewSuffix;
+                bool main = File.Exists(statePath), second = File.Exists(next);
+                if (!main && !second) return;
+                bool changed = second;
+                if (main && second)
+                    foreach (string l in File.ReadAllLines(next, Encoding.UTF8)) Handled(l);
+                foreach (string l in File.ReadAllLines(main ? statePath : next, Encoding.UTF8))
                 {
-                    if (l.StartsWith("handled ", StringComparison.Ordinal))
-                    {
-                        string id = l.Substring(8).Trim();
-                        if (DiagnosticsRequest.IsRequestId(id) && !handled.Contains(id)) handled.Add(id);
-                    }
-                    else if (l.StartsWith("entry ", StringComparison.Ordinal))
+                    if (Handled(l)) continue;
+                    if (l.StartsWith("entry ", StringComparison.Ordinal))
                     {
                         foreach (DiagnosticsEntry e in DiagnosticsStatus.Decode(l.Substring(6)))
                         {
@@ -262,6 +276,15 @@ namespace TrackVice
             }
         }
 
+        // A "handled <id>" line: the id is remembered. True when the line is one.
+        bool Handled(string l)
+        {
+            if (!l.StartsWith("handled ", StringComparison.Ordinal)) return false;
+            string id = l.Substring(8).Trim();
+            if (DiagnosticsRequest.IsRequestId(id) && !handled.Contains(id)) handled.Add(id);
+            return true;
+        }
+
         // Writes the whole state through a second file, so a stop half way leaves the old one.
         bool SaveState()
         {
@@ -278,10 +301,11 @@ namespace TrackVice
                     one.Add(entries[k]);
                     b.Append("entry ").Append(DiagnosticsStatus.Encode(one)).Append("\r\n");
                 }
-                string tmp = statePath + ".new";
+                string tmp = statePath + NewSuffix;
                 File.WriteAllText(tmp, b.ToString(), new UTF8Encoding(false));
-                if (File.Exists(statePath)) File.Delete(statePath);
-                File.Move(tmp, statePath);
+                // Replaced in one step: there is no moment without a list, which would let a request be followed again.
+                if (File.Exists(statePath)) File.Replace(tmp, statePath, null);
+                else File.Move(tmp, statePath);
                 return true;
             }
             catch (Exception ex)
@@ -320,7 +344,7 @@ namespace TrackVice
             // and someone who keeps writing new files there cannot fill the log.
             if (told.Count >= TellAtMost) return;
             if (!told.Add(AgentUpdate.Sha256Hex(raw))) return;
-            log("Diagnostics request ignored: " + why + (told.Count == TellAtMost ? " Further requests that are ignored are not logged." : ""));
+            log("Diagnostics request ignored: " + Short(why) + (told.Count == TellAtMost ? " Further requests that are ignored are not logged." : ""));
         }
 
         // ---- the cycle ----
@@ -333,6 +357,8 @@ namespace TrackVice
             try
             {
                 if (active != null) return Advance(s, nowUtc);
+                // A clock that was set back does not keep the agent from reading requests until the old time comes again.
+                if (nextUtc - nowUtc > After) nextUtc = nowUtc;
                 if (stateBroken || nowUtc < nextUtc) return false;
                 nextUtc = nowUtc + (deploying ? Deploying : After);
                 string name = DiagnosticsRequest.NameFor(sid);
@@ -423,6 +449,7 @@ namespace TrackVice
             Extras done = work;
             if (!done.Done)
             {
+                if (nowUtc < workStartedUtc) workStartedUtc = nowUtc;
                 if (nowUtc - workStartedUtc < DiagCommands.Longest) return false;
                 // Every program has its own time limit, so this is not expected. The thread is left to end by itself.
                 string id = active.RequestId;
@@ -554,7 +581,7 @@ namespace TrackVice
             }
             try
             {
-                Directory.CreateDirectory(x.Folder);
+                MakePrivateFolder(x.Folder);
                 string cab = Path.Combine(x.Folder, DiagCommands.CabName);
                 string o;
                 int code = runner.Run(DiagTool.MdmDiagnostics, x.Folder, out o);
@@ -566,6 +593,29 @@ namespace TrackVice
             }
             catch (TimeoutException) { x.Notes.Add("MdmDiagnosticsTool.exe did not finish in " + DiagCommands.MdmSeconds + " seconds and was stopped" + none); }
             catch (Exception ex) { x.Notes.Add("MdmDiagnosticsTool.exe was skipped: " + Short(ex.Message)); }
+        }
+
+        // The folder the cab is written to. The cab is not masked, and the folder of the agent can be read by every user
+        // of the device, so this folder is for SYSTEM and administrators only, and for the account the agent runs as.
+        // When that cannot be set the folder is not made, and there is no cab.
+        public static void MakePrivateFolder(string path)
+        {
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+            {
+                Directory.CreateDirectory(path);
+                return;
+            }
+            DirectorySecurity sec = new DirectorySecurity();
+            sec.SetAccessRuleProtection(true, false);
+            List<SecurityIdentifier> who = new List<SecurityIdentifier>();
+            who.Add(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null));
+            who.Add(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+            using (WindowsIdentity me = WindowsIdentity.GetCurrent())
+                if (me.User != null && !who.Contains(me.User)) who.Add(me.User);
+            foreach (SecurityIdentifier sid in who)
+                sec.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            if (Directory.Exists(path)) throw new IOException("The folder for the cab is there already.");
+            Directory.CreateDirectory(path, sec);
         }
 
         static string Limit
