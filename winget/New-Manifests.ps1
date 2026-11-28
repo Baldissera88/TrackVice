@@ -31,6 +31,8 @@
 
 .PARAMETER Token
     A GitHub token for wingetcreate. Without it, wingetcreate uses the token it has stored.
+    It is handed over in the WINGET_CREATE_GITHUB_TOKEN environment variable, never on the command line.
+    Storing one once with "wingetcreate token --store" keeps it out of the PowerShell history too.
 
 .EXAMPLE
     .\winget\New-Manifests.ps1 -Validate
@@ -277,12 +279,19 @@ if ($Submit -and $PSCmdlet.ShouldProcess($dir, 'Submit to microsoft/winget-pkgs 
     if (-not (Get-Command -Name wingetcreate.exe -ErrorAction SilentlyContinue)) {
         throw 'wingetcreate.exe was not found. Install it with: winget install wingetcreate'
     }
-    $submitArgs = @('submit')
-    if ($Token) {
-        $submitArgs += @('--token', $Token)
+    # The token goes to wingetcreate in its environment variable, not on the command line, where every
+    # process on this PC could read it. The variable is put back afterwards.
+    $submitArgs = @('submit', $dir)
+    $tokenBefore = $env:WINGET_CREATE_GITHUB_TOKEN
+    try {
+        if ($Token) {
+            $env:WINGET_CREATE_GITHUB_TOKEN = $Token
+        }
+        & wingetcreate.exe @submitArgs
     }
-    $submitArgs += $dir
-    & wingetcreate.exe @submitArgs
+    finally {
+        $env:WINGET_CREATE_GITHUB_TOKEN = $tokenBefore
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "wingetcreate submit failed with exit code $LASTEXITCODE."
     }

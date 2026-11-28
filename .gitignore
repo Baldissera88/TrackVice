@@ -11,3 +11,20 @@ out/
 art/png/
 __pycache__/
 .gsf-save-*
+
+# Keys, certificates and customer data must never be committed
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.snk
+*.tvcustomers
+agent-update-key.bin
+customers.json
+metadata.json
+.env
+# Logs and log bundles from a device, dropped in the repository folder. Sample logs elsewhere stay addable.
+/*.log
+/*.zip
+/*.cab

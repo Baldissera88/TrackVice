@@ -11,6 +11,11 @@ if [ -z "$version" ] || [ ! -f "$msi" ] || [ -z "$out" ]; then
   echo "Usage: $0 <version> <TrackVice.msi> <release notes file> <output folder>" >&2
   exit 2
 fi
+# The version becomes part of a folder name and of the download link, so it must be a plain version.
+if ! printf '%s\n' "$version" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+  echo "$version is not a version like 1.2.0." >&2
+  exit 2
+fi
 
 id=DanielBaldissera.TrackVice
 repo=Baldissera88/TrackVice
@@ -119,4 +124,4 @@ EOF
 echo "Wrote $dir"
 echo "On Windows, check them with: winget validate --manifest $dir"
 echo "Test the install with: winget install --manifest $dir (after: winget settings --enable LocalManifestFiles)"
-echo "Submit them with: wingetcreate submit --token <GitHub token> $dir"
+echo "Submit them with: wingetcreate submit $dir (store the GitHub token once with: wingetcreate token --store)"

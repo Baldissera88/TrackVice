@@ -27,6 +27,8 @@
 
 .PARAMETER PfxPassword
     The password of the .pfx file. When it is left out, the file must have no password.
+    signtool.exe takes the password on its command line, where every process on this PC can read it while
+    it signs. Prefer -Thumbprint or -TrustedSigningMetadata, and sign with a .pfx file only on a PC nobody else uses.
 
 .PARAMETER TrustedSigningMetadata
     Sign with Azure Trusted Signing. The path of the metadata.json with Endpoint, CodeSigningAccountName
@@ -466,7 +468,7 @@ if ($PSCmdlet.ShouldProcess($outDir, 'Write SHA256SUMS.txt and release-notes.md'
 
 if ($Publish) {
     $notesPath = Join-Path -Path $outDir -ChildPath 'release-notes.md'
-    $ghArgs = @('release', 'create', $tag, $exe, $msi, $sumsPath, $agentScript, $linksScript, $customerScript, '--title', "TrackVice $version", '--notes-file', $notesPath, '--target', $commit)
+    $ghArgs = @('release', 'create', $tag, $exe, $msi, $sumsPath, $agentScript, $linksScript, $shareScript, $customerScript, '--title', "TrackVice $version", '--notes-file', $notesPath, '--target', $commit)
     if ($Prerelease) {
         $ghArgs += '--prerelease'
     }
