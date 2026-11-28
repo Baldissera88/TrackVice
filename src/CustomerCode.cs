@@ -13,6 +13,10 @@ namespace TrackVice
     {
         public const string Prefix = "tv1:";
         public const int DefaultMaxAgeHours = 24, DefaultKeepHours = 48, DefaultMaxDays = 30;
+        // A real code is about 1,500 characters. Anything much longer is not one.
+        public const int MaxLength = 32768;
+        // Ten years. A larger number is a mistake or made to overflow a date on the device.
+        public const int MaxHours = 87600, MaxDaysLimit = 3650;
 
         public string Name;
         // Container SAS link with Create and Write: where the devices upload.
@@ -47,12 +51,15 @@ namespace TrackVice
         public string Problem()
         {
             if (string.IsNullOrWhiteSpace(Upload) || !Upload.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return "The customer code has no upload link.";
+            if (!CustomerRules.HttpsOk(Upload)) return "The upload link in the customer code is not a well-formed https address.";
             if (string.IsNullOrWhiteSpace(Agent) || !Agent.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return "The customer code has no link to download TrackVice from.";
+            if (!CustomerRules.HttpsOk(Agent)) return "The link to download TrackVice from in the customer code is not a well-formed https address.";
             if (string.IsNullOrWhiteSpace(Key)) return "The customer code has no update key.";
             string k = UpdateKeys.Problem(Key);
             if (k != null) return k;
-            if (!string.IsNullOrEmpty(Alert) && !Alert.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return "The alert link in the customer code is not an https address.";
+            if (!string.IsNullOrEmpty(Alert) && !CustomerRules.HttpsOk(Alert)) return "The alert link in the customer code is not an https address.";
             if (MaxAgeHours < 0 || KeepHours <= 0 || MaxDays <= 0) return "The customer code has a setting below zero.";
+            if (MaxAgeHours > MaxHours || KeepHours > MaxHours || MaxDays > MaxDaysLimit) return "The customer code has a setting that is too large.";
             return null;
         }
 
@@ -79,8 +86,20 @@ namespace TrackVice
         {
             string s = (text ?? "").Trim();
             if (!s.StartsWith(Prefix, StringComparison.Ordinal)) throw new ArgumentException("This is not a TrackVice customer code. It starts with " + Prefix);
-            string b = s.Substring(Prefix.Length).Replace('-', '+').Replace('_', '/');
-            while (b.Length % 4 != 0) b += "=";
+            if (s.Length > MaxLength) throw new ArgumentException("The customer code is too long. Copy it again from TrackVice.");
+            // Only base64url after the prefix. Line breaks from a mail or a wrapped paste are skipped, and padding at the end is allowed.
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(s.Length);
+            string body = s.Substring(Prefix.Length).TrimEnd('=');
+            foreach (char ch in body)
+            {
+                if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') continue;
+                if (ch == '-') sb.Append('+');
+                else if (ch == '_') sb.Append('/');
+                else if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) sb.Append(ch);
+                else throw new ArgumentException("The customer code could not be read. Copy it again from TrackVice.");
+            }
+            while (sb.Length % 4 != 0) sb.Append('=');
+            string b = sb.ToString();
             Doc d;
             try
             {
@@ -89,7 +108,7 @@ namespace TrackVice
             catch (Exception) { throw new ArgumentException("The customer code could not be read. Copy it again from TrackVice."); }
             if (d == null) throw new ArgumentException("The customer code is empty.");
             CustomerCode c = new CustomerCode();
-            c.Name = d.Name;
+            c.Name = CleanName(d.Name);
             c.Upload = d.Upload;
             c.Agent = d.Agent;
             c.Key = d.Key;
@@ -99,6 +118,16 @@ namespace TrackVice
             c.MaxDays = d.MaxDays > 0 ? d.MaxDays : DefaultMaxDays;
             c.AutoTimeZone = d.AutoTimeZone;
             return c;
+        }
+
+        // The name is shown, written to the registry of the device and uploaded with each session: one short line of text.
+        static string CleanName(string name)
+        {
+            if (name == null) return null;
+            System.Text.StringBuilder b = new System.Text.StringBuilder();
+            foreach (char ch in name) if (!CustomerRules.Odd(ch.ToString())) b.Append(ch);
+            string n = b.ToString().Trim();
+            return n.Length > CustomerRules.MaxName ? n.Substring(0, CustomerRules.MaxName).Trim() : n;
         }
     }
 }

@@ -104,6 +104,116 @@ namespace TrackVice
         }
     }
 
+    // What a value from a customers file, a Key Vault secret or a customer code may look like. Such a file can come from
+    // anyone, and TrackVice connects to what it names with the Windows account and the sign-ins of the person using it.
+    public static class CustomerRules
+    {
+        public const int MaxName = 80, MaxNotes = 4000, MaxLocation = 4096, MaxCustomers = 2000;
+        // Characters in a document that is read as an import.
+        public const int MaxDocument = 4 * 1024 * 1024;
+
+        // Control characters, and the characters that turn the reading direction and so show a text as another one.
+        public static bool Odd(string s)
+        {
+            if (s == null) return false;
+            foreach (char c in s)
+            {
+                if (char.IsControl(c) || c == '\u2028' || c == '\u2029') return true;
+                if ((c >= '\u202A' && c <= '\u202E') || (c >= '\u2066' && c <= '\u2069') || c == '\u200E' || c == '\u200F') return true;
+            }
+            return false;
+        }
+
+        public static bool NameOk(string s)
+        {
+            return !Customer.Blank(s) && s.Trim().Length <= MaxName && !Odd(s);
+        }
+
+        // A tenant ID or a domain.
+        public static bool TenantOk(string s)
+        {
+            return HostLike(s, false);
+        }
+
+        public static bool ClientIdOk(string s)
+        {
+            Guid g;
+            return !string.IsNullOrEmpty(s) && Guid.TryParse(s.Trim().Trim('{', '}'), out g);
+        }
+
+        // A computer name, a DNS name or an IPv4 address: nothing that reads as a path or a WMI namespace.
+        public static bool ServerOk(string s)
+        {
+            return HostLike(s, true);
+        }
+
+        static bool HostLike(string s, bool underscore)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length > 253) return false;
+            foreach (char c in s)
+            {
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || (underscore && c == '_');
+                if (!ok) return false;
+            }
+            return s[0] != '.' && s[0] != '-';
+        }
+
+        // A site code is three letters or digits. It becomes part of a WMI namespace.
+        public static bool SiteOk(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length != 3) return false;
+            foreach (char c in s) if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return false;
+            return true;
+        }
+
+        // An https address without a user name in it, or a full folder path: a share or a drive.
+        public static bool LocationOk(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length > MaxLocation || Odd(s)) return false;
+            if (s.IndexOf("://", StringComparison.Ordinal) >= 0 || s.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return HttpsOk(s);
+            // \\server\share. Not \\?\ or \\.\, which reach devices, pipes and other paths the dialog does not show as such.
+            if (s.StartsWith(@"\\", StringComparison.Ordinal)) return s.Length > 2 && s[2] != '\\' && s[2] != '?' && s[2] != '.';
+            return s.Length >= 3 && ((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z')) && s[1] == ':' && s[2] == '\\';
+        }
+
+        // A well-formed https address: no other scheme, no user name or password before the host, no spaces.
+        public static bool HttpsOk(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length > MaxLocation || Odd(s)) return false;
+            if (!s.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (char c in s) if (char.IsWhiteSpace(c) || c == '\\' || c == '"' || c == '\'' || c == '<' || c == '>' || c == '`') return false;
+            int end = s.IndexOfAny(new char[] { '/', '?', '#' }, 8);
+            string authority = end < 0 ? s.Substring(8) : s.Substring(8, end - 8);
+            if (authority.Length == 0 || authority.IndexOf('@') >= 0) return false;
+            Uri u;
+            if (!Uri.TryCreate(s, UriKind.Absolute, out u)) return false;
+            return u.Scheme == Uri.UriSchemeHttps && u.Host.Length > 0 && u.UserInfo.Length == 0;
+        }
+
+        // Where a location points, without the SAS token: safe to show.
+        public static string Where(string location)
+        {
+            string s = location ?? "";
+            if (!s.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return s;
+            int q = s.IndexOfAny(new char[] { '?', '#' });
+            return q >= 0 ? s.Substring(0, q) : s;
+        }
+
+        // Notes are free text: line breaks stay, other control characters go, and a very long text is cut.
+        public static string CleanNotes(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            StringBuilder b = new StringBuilder();
+            foreach (char c in s)
+            {
+                if (b.Length >= MaxNotes) break;
+                if (c == '\r' || c == '\n' || c == '\t') b.Append(c);
+                else if (!Odd(c.ToString())) b.Append(c);
+            }
+            return b.ToString();
+        }
+    }
+
     [DataContract(Name = "Customer", Namespace = "")]
     sealed class CustomerRecord
     {
@@ -134,6 +244,10 @@ namespace TrackVice
     {
         public int Added, Updated;
         public bool HadLinks;
+        // Values the file had that were left out because they are not what such a value looks like.
+        public int Ignored;
+        // What TrackVice would connect to that it does not connect to now, one line each, without any SAS token.
+        public List<string> Connections = new List<string>();
     }
 
     // The saved customers of this Windows user, and which one is in use.
@@ -326,21 +440,35 @@ namespace TrackVice
         }
 
         // Adds the customers of an export. A customer with a name that exists already gets the details
-        // the file has; an empty value in the file leaves the saved one as it is.
+        // the file has; an empty value in the file leaves the saved one as it is. The file may come from anyone:
+        // a value that is not what it should be is left out, and a file never turns downloads on.
         public ImportResult Import(string json)
         {
+            if (json != null && json.Length > CustomerRules.MaxDocument) throw new InvalidDataException("This customers file is too large.");
             CustomerDocument d = Parse(json);
             ImportResult res = new ImportResult();
             if (d.Customers == null) return res;
+            if (d.Customers.Count > CustomerRules.MaxCustomers) throw new InvalidDataException("This customers file has too many customers.");
             foreach (CustomerRecord r in d.Customers)
             {
+                if (r == null || !CustomerRules.NameOk(r.Name)) continue;
                 Customer c = FromRecord(r);
-                if (c.Name.Length == 0 || c.Name.Length > 80) continue;
+                if (c.Name.Length == 0 || c.Name.Length > CustomerRules.MaxName) continue;
                 // A file never turns downloads on. It is turned on in Settings on this PC.
                 c.AllowDownloads = false;
                 c.DownloadsWithoutAsking = false;
+                if (c.AgentLocation.Length > 0 && !CustomerRules.LocationOk(c.AgentLocation)) { c.AgentLocation = ""; res.Ignored++; }
+                if (c.Tenant.Length > 0 && !CustomerRules.TenantOk(c.Tenant)) { c.Tenant = ""; res.Ignored++; }
+                if (c.GraphClientId.Length > 0 && !CustomerRules.ClientIdOk(c.GraphClientId)) { c.GraphClientId = ""; res.Ignored++; }
+                if (c.SccmServer.Length > 0 && !CustomerRules.ServerOk(c.SccmServer)) { c.SccmServer = ""; res.Ignored++; }
+                if (c.SccmSite.Length > 0 && !CustomerRules.SiteOk(c.SccmSite)) { c.SccmSite = ""; res.Ignored++; }
+                c.Notes = CustomerRules.CleanNotes(c.Notes);
                 if (c.AgentLocation.Length > 0) res.HadLinks = true;
                 Customer have = Find(c.Name);
+                Connection(res, c.Name, "agent uploads read from", have == null ? "" : have.AgentLocation, c.AgentLocation, true);
+                Connection(res, c.Name, "Intune tenant", have == null ? "" : have.Tenant, c.Tenant, false);
+                Connection(res, c.Name, "sign-in with the app", have == null ? "" : have.GraphClientId, c.GraphClientId, false);
+                Connection(res, c.Name, "SCCM server", have == null ? "" : have.SccmServer, c.SccmServer, false);
                 if (have == null)
                 {
                     Add(c);
@@ -356,6 +484,26 @@ namespace TrackVice
                 res.Updated++;
             }
             return res;
+        }
+
+        // What Import would do with this file, without doing it: the counts, and in Connections every place the
+        // customers would connect to that they do not connect to now. Ask before importing when there are any.
+        public ImportResult Preview(string json)
+        {
+            CustomerBook scratch = new CustomerBook(new MemoryCustomerStorage(), new PlainProtector());
+            foreach (Customer c in list) scratch.list.Add(c.Copy());
+            scratch.current = current;
+            return scratch.Import(json);
+        }
+
+        static void Connection(ImportResult res, string customer, string what, string now, string next, bool link)
+        {
+            if (string.IsNullOrEmpty(next) || string.Equals(now ?? "", next, StringComparison.OrdinalIgnoreCase)) return;
+            string show = link ? CustomerRules.Where(next) : next;
+            string was = string.IsNullOrEmpty(now) ? "" : link ? CustomerRules.Where(now) : now;
+            string line = customer + ": " + what + " " + show;
+            if (was.Length > 0) line += string.Equals(was, show, StringComparison.OrdinalIgnoreCase) ? " (another link to the same place)" : " (now " + was + ")";
+            res.Connections.Add(line);
         }
 
         // Made-up customers for the demo and for screenshots.

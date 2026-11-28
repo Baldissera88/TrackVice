@@ -129,11 +129,7 @@ namespace TrackVice
         // Where the agents upload to, without the SAS token.
         public static string Where(Customer c)
         {
-            string s = c.AgentLocation;
-            if (s.Length == 0) return "";
-            int q = s.IndexOf('?');
-            if (s.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return q > 0 ? s.Substring(0, q) : s;
-            return s;
+            return CustomerRules.Where(c.AgentLocation);
         }
 
         public static string Summary(Customer c)
@@ -461,6 +457,7 @@ namespace TrackVice
                 ImportResult r;
                 try
                 {
+                    if (new FileInfo(d.FileName).Length > CustomerFile.MaxBytes) { note.Say("This customers file is too large.", true); return; }
                     byte[] data = File.ReadAllBytes(d.FileName);
                     string json;
                     if (CustomerFile.IsSealed(data))
@@ -471,10 +468,21 @@ namespace TrackVice
                         password = null;
                     }
                     else json = System.Text.Encoding.UTF8.GetString(data);
+                    // The file decides where TrackVice connects with this Windows account and these sign-ins, so it is asked first.
+                    ImportResult plan = book.Preview(json);
+                    if (plan.Connections.Count > 0)
+                    {
+                        System.Text.StringBuilder q = new System.Text.StringBuilder("This file makes TrackVice connect to places it does not connect to now, with your Windows account and your sign-ins:\n\n");
+                        int shown = Math.Min(plan.Connections.Count, 12);
+                        for (int i = 0; i < shown; i++) q.Append(Txt.Short(plan.Connections[i], 200)).Append('\n');
+                        if (plan.Connections.Count > shown) q.Append("and ").Append(plan.Connections.Count - shown).Append(" more\n");
+                        q.Append("\nImport only a file from someone you trust. Import it?");
+                        if (MessageBox.Show(this, q.ToString(), "Import customers", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+                    }
                     r = book.Import(json);
                 }
                 catch (InvalidDataException ex) { note.Say(ex.Message, true); return; }
-                Done(before, "Imported: " + r.Added + " new, " + r.Updated + " updated." + (r.HadLinks ? "" : " The file had no storage links."));
+                Done(before, "Imported: " + r.Added + " new, " + r.Updated + " updated." + (r.HadLinks ? "" : " The file had no storage links.") + (r.Ignored > 0 ? " " + r.Ignored + " value" + (r.Ignored == 1 ? " was" : "s were") + " left out because " + (r.Ignored == 1 ? "it is" : "they are") + " not a valid address, tenant, client ID, server or site code." : ""));
             }
         }
     }
@@ -511,7 +519,9 @@ namespace TrackVice
             site.MaxLength = 3;
             where = Field(v.AgentLocation, 300, true);
             where.UseSystemPasswordChar = v.AgentLocation.StartsWith("http", StringComparison.OrdinalIgnoreCase);
-            where.TextChanged += delegate { where.UseSystemPasswordChar = false; };
+            // The saved link stays hidden while any of it is in the box: it shows again only once the box was emptied
+            // or typed over, so one keystroke does not put the SAS token on the screen.
+            where.TextChanged += delegate { if (where.Text.Length <= 1) where.UseSystemPasswordChar = false; };
 
             storage = YourStorageUi.Load();
             upload = Field("", 300, true);

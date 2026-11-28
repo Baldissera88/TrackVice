@@ -72,7 +72,7 @@ namespace TrackVice
                 DateTime old;
                 Dictionary<string, string> all = Load(key, out old);
                 foreach (KeyValuePair<string, string> kv in found)
-                    if (!string.IsNullOrEmpty(kv.Key) && !string.IsNullOrEmpty(kv.Value)) all[kv.Key] = kv.Value.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
+                    if (KeyOk(kv.Key) && !string.IsNullOrEmpty(kv.Value)) all[kv.Key] = kv.Value.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
                 Directory.CreateDirectory(folder);
                 StringBuilder b = new StringBuilder();
                 b.Append("#read\t").Append(readUtc.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture)).Append("\r\n");
@@ -84,6 +84,15 @@ namespace TrackVice
                 return true;
             }
             catch (Exception) { return false; }
+        }
+
+        // An ID is one word. One with a tab or a line break would write lines of its own into the file, and one that
+        // starts with # would be read as the line that says when the names were read.
+        static bool KeyOk(string id)
+        {
+            if (string.IsNullOrEmpty(id) || id.Length > 200 || id[0] == '#') return false;
+            foreach (char c in id) if (char.IsControl(c) || c == '\u2028' || c == '\u2029') return false;
+            return true;
         }
 
         public void Delete(string key)

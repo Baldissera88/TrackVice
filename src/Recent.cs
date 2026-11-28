@@ -70,6 +70,8 @@ namespace TrackVice
     public sealed class RecentStore
     {
         public const int MaxUnpinned = 100;
+        const int MaxField = 4000;
+        const long MaxFile = 8 * 1024 * 1024;
         const string Header = "#TrackVice recent devices 1";
         readonly string path;
         readonly object gate = new object();
@@ -221,8 +223,12 @@ namespace TrackVice
         static string Field(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
-            string t = s.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ').Trim();
-            return Txt.Short(Secrets.Mask(t), 300);
+            // Device names, users and profiles come from uploads and from Intune. A very long one is cut before it is
+            // searched for secrets, and no control character gets into the file, where a line is one device.
+            if (s.Length > MaxField) s = s.Substring(0, MaxField);
+            StringBuilder b = new StringBuilder(s.Length);
+            foreach (char c in s) b.Append(char.IsControl(c) || c == '\u2028' || c == '\u2029' ? ' ' : c);
+            return Txt.Short(Secrets.Mask(b.ToString().Trim()), 300);
         }
 
         void Ensure()
@@ -233,6 +239,7 @@ namespace TrackVice
             try
             {
                 if (!System.IO.File.Exists(path)) return;
+                if (new FileInfo(path).Length > MaxFile) return;
                 foreach (string line in System.IO.File.ReadAllLines(path, Encoding.UTF8))
                 {
                     RecentDevice d = Parse(line);

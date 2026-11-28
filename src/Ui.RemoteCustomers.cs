@@ -27,6 +27,13 @@ namespace TrackVice
             themed.Add(picker);
             head.Controls.Add(picker);
             PlacePicker();
+            // A SAS link in the Upload location box is a credential: it is not shown. What is typed into an emptied box is.
+            Shown += delegate
+            {
+                if (listKind != Agents || server == null) return;
+                server.UseSystemPasswordChar = Stores.IsUrl(server.Text);
+                server.TextChanged += delegate { if (server.Text.Length <= 1) server.UseSystemPasswordChar = false; };
+            };
         }
 
         void PlacePicker()
@@ -81,6 +88,7 @@ namespace TrackVice
             if (listKind == Agents)
             {
                 server.Text = c.AgentLocation;
+                server.UseSystemPasswordChar = Stores.IsUrl(c.AgentLocation);
                 bConnect.Enabled = true;
                 if (c.AgentLocation.Length > 0) ConnectAgents();
                 else
