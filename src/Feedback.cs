@@ -168,7 +168,7 @@ namespace TrackVice
         public static string Scrub(string text, IEnumerable<string> names)
         {
             if (string.IsNullOrEmpty(text)) return text ?? "";
-            string s = Secrets.Mask(text);
+            string s = ShareMask.Text(text);
             s = RxLink.Replace(s, "<link>");
             s = RxMail.Replace(s, "<e-mail>");
             s = RxGuid.Replace(s, "<id>");
@@ -265,16 +265,17 @@ namespace TrackVice
         public List<FeedbackField> Fields()
         {
             List<FeedbackField> l = new List<FeedbackField>();
-            l.Add(new FeedbackField("what-happened", "What happened", What, true));
-            l.Add(new FeedbackField("expected", "What you expected", Expected, true));
-            l.Add(new FeedbackField("steps", "Steps to repeat it", Steps, true));
+            // A GitHub issue is public: a password or customer code pasted along with a message is masked.
+            l.Add(new FeedbackField("what-happened", "What happened", ShareMask.Text(What), true));
+            l.Add(new FeedbackField("expected", "What you expected", ShareMask.Text(Expected), true));
+            l.Add(new FeedbackField("steps", "Steps to repeat it", ShareMask.Text(Steps), true));
             l.AddRange(Filled());
             return l;
         }
 
         public string Title
         {
-            get { string s = Feedback.Short(What, 80); return "[Bug]: " + (s.Length > 0 ? s : ""); }
+            get { string s = Feedback.Short(ShareMask.Text(What), 80); return "[Bug]: " + (s.Length > 0 ? s : ""); }
         }
 
         public string IssueUrl()
@@ -284,7 +285,7 @@ namespace TrackVice
 
         public string MailUrl()
         {
-            return Feedback.MailUrl("TrackVice problem: " + Feedback.Short(What, 80), Feedback.Body(Fields()), Feedback.MaxMailUrl);
+            return Feedback.MailUrl("TrackVice problem: " + Feedback.Short(ShareMask.Text(What), 80), Feedback.Body(Fields()), Feedback.MaxMailUrl);
         }
     }
 
@@ -296,15 +297,15 @@ namespace TrackVice
         public List<FeedbackField> Fields()
         {
             List<FeedbackField> l = new List<FeedbackField>();
-            l.Add(new FeedbackField("what", "What you would like", What, true));
-            l.Add(new FeedbackField("why", "Why", Why, true));
-            l.Add(new FeedbackField("how", "How you would use it", How, true));
+            l.Add(new FeedbackField("what", "What you would like", ShareMask.Text(What), true));
+            l.Add(new FeedbackField("why", "Why", ShareMask.Text(Why), true));
+            l.Add(new FeedbackField("how", "How you would use it", ShareMask.Text(How), true));
             return l;
         }
 
         public string Title
         {
-            get { return "[Feature]: " + Feedback.Short(What, 80); }
+            get { return "[Feature]: " + Feedback.Short(ShareMask.Text(What), 80); }
         }
 
         public string IssueUrl()
@@ -314,7 +315,7 @@ namespace TrackVice
 
         public string MailUrl()
         {
-            return Feedback.MailUrl("TrackVice wish: " + Feedback.Short(What, 80), Feedback.Body(Fields()), Feedback.MaxMailUrl);
+            return Feedback.MailUrl("TrackVice wish: " + Feedback.Short(ShareMask.Text(What), 80), Feedback.Body(Fields()), Feedback.MaxMailUrl);
         }
     }
 

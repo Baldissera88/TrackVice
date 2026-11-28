@@ -347,9 +347,10 @@ namespace TrackVice
             return b.ToString();
         }
 
+        // A device name in the header line: no separators, quotes or line breaks, so it cannot start a cell or a row of its own.
         static string Clean(string s)
         {
-            return (s ?? "").Replace(";", " ").Replace("\"", "");
+            return (ShareMask.Text(s ?? "") ?? "").Replace(";", " ").Replace("\"", "").Replace("\r", " ").Replace("\n", " ").Replace("\t", " ");
         }
 
         static string Sec(double? s)
@@ -357,9 +358,10 @@ namespace TrackVice
             return s.HasValue ? s.Value.ToString("0", CultureInfo.InvariantCulture) : "";
         }
 
+        // Quoted, with a ' before a leading = + - @ tab or carriage return so a spreadsheet does not run it as a formula.
         static string Q(string s)
         {
-            return "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
+            return Report.Q(s);
         }
     }
 

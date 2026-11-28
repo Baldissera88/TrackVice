@@ -21,10 +21,15 @@ namespace TrackVice
 
     public static partial class Report
     {
+        // Escaped for HTML text and attributes, with passwords, keys, tokens and customer codes masked.
         static string H(string s)
         {
-            return WebUtility.HtmlEncode(s ?? "");
+            return WebUtility.HtmlEncode(ShareMask.Text(s ?? ""));
         }
+
+        // Every report is a file that is opened in a browser or printed by Edge: no scripts, frames, forms or remote loads.
+        // The style is inline, and so are the SVG charts.
+        public const string CspMeta = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'\">";
 
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
@@ -123,7 +128,7 @@ namespace TrackVice
 
         static void Head(StringBuilder b, string pageTitle)
         {
-            b.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            b.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">").Append(CspMeta).Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             b.Append("<title>").Append(H(pageTitle)).Append("</title><style>").Append(Style).Append("</style></head><body><main>");
         }
 
@@ -480,11 +485,11 @@ namespace TrackVice
             }
         }
 
-        static string Q(string v)
+        public static string Q(string v)
         {
-            v = v ?? "";
-            // Keep spreadsheets from running a value as a formula.
-            if (v.Length > 0 && "=+-@".IndexOf(v[0]) >= 0) v = "'" + v;
+            v = ShareMask.Text(v ?? "") ?? "";
+            // Keep spreadsheets from running a value as a formula, also one that starts with a tab or a carriage return.
+            if (v.Length > 0 && "=+-@\t\r".IndexOf(v[0]) >= 0) v = "'" + v;
             return "\"" + v.Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ") + "\"";
         }
 
@@ -515,13 +520,19 @@ namespace TrackVice
                 s.Save(Path.Combine(tmp, "session.json"));
                 StringBuilder index = new StringBuilder();
                 HashSet<string> logs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (TEvent e in s.Events) if (e.Evidence != null && e.Evidence.IsLogFile) logs.Add(e.Evidence.Path);
-                if (extra != null)
+                // The log paths of a session from another device (an upload, a saved session of another PC, Intune or SCCM)
+                // name files on that device: reading them here would bundle this PC's own files, or reach out to a share.
+                bool here = ReadHere(s);
+                if (here)
+                    foreach (TEvent e in s.Events)
+                        if (e.Evidence != null && e.Evidence.IsLogFile && LogPathOk(s, e.Evidence.Path)) logs.Add(e.Evidence.Path);
+                if (extra != null && here)
                     foreach (string[] x in extra)
                     {
                         try
                         {
-                            if (Directory.Exists(x[0]))
+                            if (x == null || x.Length < 2 || !ExtraDirOk(x[0], Environment.GetEnvironmentVariable("SystemDrive"))) continue;
+                            if (Directory.Exists(x[0]) && !IsLink(x[0], true))
                                 foreach (string f in Directory.GetFiles(x[0], x[1])) logs.Add(Path.GetFullPath(f));
                         }
                         catch (Exception) { }
@@ -530,7 +541,7 @@ namespace TrackVice
                 {
                     try
                     {
-                        if (!File.Exists(log)) continue;
+                        if (!File.Exists(log) || IsLink(log, false)) continue;
                         string name = Path.GetFileName(log);
                         string dest = Path.Combine(tmp, name);
                         int k = 2;
@@ -555,6 +566,59 @@ namespace TrackVice
                 try { Directory.Delete(tmp, true); } catch (Exception) { }
             }
             return files;
+        }
+
+        // Whether the session was read on this PC, so the log paths in it are files of this PC. The mode is set by the
+        // engine that read the session (Session.Load makes it File, an agent upload Agent), never taken from the file.
+        public static bool ReadHere(Session s)
+        {
+            if (s == null) return false;
+            if (string.IsNullOrEmpty(s.Mode) || s.Mode == Modes.Live || s.Mode == Modes.Folder) return true;
+            return s.Mode == Modes.File && !string.IsNullOrEmpty(s.Computer) && string.Equals(s.Computer, Environment.MachineName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // A log path of the session that may be read into a bundle: a full path to a .log or .lo_ file, no device or
+        // stream names, no "..", and a share only inside the folder of logs that was opened.
+        public static bool LogPathOk(Session s, string path)
+        {
+            if (string.IsNullOrEmpty(path) || path.Length > 1024 || path.IndexOfAny(Path.GetInvalidPathChars()) >= 0) return false;
+            if (path.Length < 5 || path.IndexOf('\0') >= 0 || path.IndexOf(':', 2) >= 0) return false;
+            string ext = Path.GetExtension(path);
+            if (!string.Equals(ext, ".log", StringComparison.OrdinalIgnoreCase) && !string.Equals(ext, ".lo_", StringComparison.OrdinalIgnoreCase)) return false;
+            string n = path.Replace('/', '\\');
+            if (n.StartsWith(@"\\?\", StringComparison.Ordinal) || n.StartsWith(@"\\.\", StringComparison.Ordinal) || n.StartsWith(@"\??\", StringComparison.Ordinal)) return false;
+            foreach (string part in n.Split('\\')) if (part == "..") return false;
+            bool drive = n.Length >= 3 && char.IsLetter(n[0]) && n[1] == ':' && n[2] == '\\';
+            bool unc = n.StartsWith(@"\\", StringComparison.Ordinal);
+            if (unc)
+            {
+                if (s == null || s.Mode != Modes.Folder || string.IsNullOrEmpty(s.SourcePath)) return false;
+                string root = s.SourcePath.Replace('/', '\\').TrimEnd('\\') + "\\";
+                return root.StartsWith(@"\\", StringComparison.Ordinal) && n.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+            }
+            if (drive) return true;
+            // Only where paths have no drive letters (Mono on Linux): a rooted path.
+            return Path.DirectorySeparatorChar == '/' && path.StartsWith("/", StringComparison.Ordinal) && !path.StartsWith("//", StringComparison.Ordinal);
+        }
+
+        // X: is the RAM drive of Windows PE. On a running Windows it can be a USB stick or another drive of the user, so
+        // its folders are only read when Windows itself runs from X:.
+        public static bool ExtraDirOk(string dir, string systemDrive)
+        {
+            if (string.IsNullOrEmpty(dir)) return false;
+            if (dir.StartsWith("X:", StringComparison.OrdinalIgnoreCase)) return string.Equals((systemDrive ?? "").TrimEnd('\\'), "X:", StringComparison.OrdinalIgnoreCase);
+            return true;
+        }
+
+        // A junction or symbolic link, which could point the bundle at files outside the log folders.
+        static bool IsLink(string path, bool dir)
+        {
+            try
+            {
+                FileAttributes a = dir ? new DirectoryInfo(path).Attributes : new FileInfo(path).Attributes;
+                return (a & FileAttributes.ReparsePoint) != 0;
+            }
+            catch (Exception) { return true; }
         }
     }
 

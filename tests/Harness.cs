@@ -50,6 +50,7 @@ namespace TrackVice.Tests
             CompareTests.Run();
             DeviceLogTests.Run();
             ReportTests.Run();
+            ShareSecurityTests.Run();
             CustomerTests.Run();
             VaultCustomerTests.Run();
             VaultSetupTests.Run();
