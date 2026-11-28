@@ -21,6 +21,8 @@ namespace TrackVice
         public const string Name = "agent/latest.json";
         public const int KeyBits = 3072;
         public const long MaxSize = 200L * 1024 * 1024;
+        // agent/latest.json is a few hundred bytes. Anything much larger is not one, and is not read into memory.
+        public const int MaxJson = 64 * 1024;
 
         public string Version;
         public string Sha256;
@@ -56,7 +58,7 @@ namespace TrackVice
         public string Problem()
         {
             if (!SemVer.IsValid(Version)) return "The version \"" + Version + "\" is not a version number.";
-            if (Sha256 == null || !Regex.IsMatch(Sha256, "^[0-9A-Fa-f]{64}$")) return "The SHA-256 is not 64 hexadecimal characters.";
+            if (Sha256 == null || !Regex.IsMatch(Sha256, @"\A[0-9A-Fa-f]{64}\z")) return "The SHA-256 is not 64 hexadecimal characters.";
             if (Size <= 0 || Size > MaxSize) return "The size " + Size + " is not possible.";
             if (Blob != BlobFor(Version)) return "The file name " + Blob + " does not match the version " + Version + ".";
             return null;
@@ -107,6 +109,8 @@ namespace TrackVice
         public static UpdateManifest Parse(byte[] json)
         {
             Doc d;
+            if (json == null) throw new StoreException("agent/latest.json is empty.");
+            if (json.Length > MaxJson) throw new StoreException("agent/latest.json has " + json.Length + " bytes, which is more than the " + MaxJson + " it can have.");
             try
             {
                 using (MemoryStream ms = new MemoryStream(json)) d = (Doc)new DataContractJsonSerializer(typeof(Doc)).ReadObject(ms);
@@ -278,7 +282,8 @@ namespace TrackVice
     // Versions such as 1.0.5 or 1.1.0-beta2. A version with a suffix comes before the same version without one.
     public static class SemVer
     {
-        static readonly Regex Shape = new Regex(@"^\d{1,9}(\.\d{1,9}){0,3}(-[0-9A-Za-z][0-9A-Za-z.]*)?$");
+        // [0-9], not \d, which also takes the digits of other scripts that Compare would read as 0.
+        static readonly Regex Shape = new Regex(@"\A[0-9]{1,9}(\.[0-9]{1,9}){0,3}(-[0-9A-Za-z][0-9A-Za-z.]*)?\z");
 
         public static bool IsValid(string v)
         {
@@ -454,7 +459,14 @@ namespace TrackVice
             r.Decision = UpdateDecision.Invalid;
             UpdateManifest m;
             byte[] raw;
-            try { raw = store.Get(UpdateManifest.Name); }
+            try { raw = UpdateSource.Read(store, UpdateManifest.Name, UpdateManifest.MaxJson); }
+            catch (StoreTooLargeException ex)
+            {
+                // Not a manifest, whoever put it there. The same answer next time, so no quick retries.
+                r.Message = UpdateManifest.Name + " in " + store.Title + " cannot be used: " + ex.Message;
+                r.Why = AgentVersions.Invalid;
+                return r;
+            }
             catch (StoreMissingException)
             {
                 r.Message = MissingText(store.Title);
@@ -511,7 +523,16 @@ namespace TrackVice
                 return r;
             }
             byte[] exe;
-            try { exe = store.Get(m.Blob); }
+            // Never more than the signed size is read, so a replaced file cannot fill the memory of the agent.
+            try { exe = UpdateSource.Read(store, m.Blob, m.Size); }
+            catch (StoreTooLargeException)
+            {
+                r.Decision = UpdateDecision.Invalid;
+                r.Kind = UpdateKind.Transient;
+                r.Message = m.Blob + " has more than the signed size of " + m.Size + " bytes. It is not installed.";
+                r.Why = AgentVersions.Download;
+                return r;
+            }
             catch (Exception ex)
             {
                 r.Decision = UpdateDecision.Invalid;
@@ -544,6 +565,148 @@ namespace TrackVice
             r.Kind = UpdateKind.Ok;
             r.Message = "Version " + m.Version + " is downloaded and its signature, size and SHA-256 are correct.";
             return r;
+        }
+    }
+
+    // ---------- reading the update location ----------
+
+    // The file is larger than what was asked for. Nothing of it is kept.
+    public sealed class StoreTooLargeException : StoreException
+    {
+        public StoreTooLargeException(string message) : base(message) { }
+    }
+
+    // A store that stops reading at a size, so a file somebody else put there cannot fill the memory.
+    public interface ICappedStore
+    {
+        byte[] Get(string name, long maxBytes);
+    }
+
+    // The update location as the agent reads it: a container link or a folder. Whoever can write there is not trusted,
+    // so a file is never read past the size it may have, a download does not go on for ever, and a redirect is not followed.
+    public sealed class UpdateSource : ISessionStore, ICappedStore
+    {
+        public static readonly TimeSpan MaxTime = TimeSpan.FromMinutes(30);
+        readonly ISessionStore inner;
+        // For a link: the container address and its token. For a folder: the folder.
+        readonly string root, sas;
+
+        UpdateSource(ISessionStore inner, string root, string sas)
+        {
+            this.inner = inner;
+            this.root = root;
+            this.sas = sas;
+        }
+
+        // Takes what Stores.Open takes, and refuses what it refuses.
+        public static UpdateSource Open(string location)
+        {
+            ISessionStore s = Stores.Open(location);
+            location = location.Trim().Trim('"');
+            if (!Stores.IsUrl(location)) return new UpdateSource(s, location, null);
+            int q = location.IndexOf('?');
+            return new UpdateSource(s, location.Substring(0, q).TrimEnd('/'), location.Substring(q + 1).TrimStart('?', '&'));
+        }
+
+        public string Title
+        {
+            get { return inner.Title; }
+        }
+
+        public void Put(string name, byte[] data, Dictionary<string, string> meta)
+        {
+            inner.Put(name, data, meta);
+        }
+
+        public List<StoreEntry> List(string prefix)
+        {
+            return inner.List(prefix);
+        }
+
+        public byte[] Get(string name)
+        {
+            return Get(name, UpdateManifest.MaxSize);
+        }
+
+        public byte[] Get(string name, long maxBytes)
+        {
+            if (sas == null)
+            {
+                string path = Path.Combine(root, name.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(path)) throw new StoreMissingException(name + " is not in " + root + ".");
+                using (FileStream f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    return ReadCapped(f, f.Length, maxBytes, name, MaxTime);
+            }
+            System.Net.HttpWebRequest req = Http.Request(root + "/" + name + "?" + sas);
+            req.Method = "GET";
+            // Azure Storage answers a read itself. An answer that sends the agent elsewhere is not followed.
+            req.AllowAutoRedirect = false;
+            try
+            {
+                using (System.Net.HttpWebResponse resp = (System.Net.HttpWebResponse)req.GetResponse())
+                {
+                    int status = (int)resp.StatusCode;
+                    if (status != 200) throw new StoreException("The storage account answered HTTP " + status + ".");
+                    using (Stream s = resp.GetResponseStream()) return ReadCapped(s, resp.ContentLength, maxBytes, name, MaxTime);
+                }
+            }
+            catch (System.Net.WebException ex) { throw Explain(ex, name); }
+        }
+
+        // The same sentences as AzureStore, which AgentUpdate.KindOf sorts.
+        StoreException Explain(System.Net.WebException ex, string name)
+        {
+            System.Net.HttpWebResponse resp = ex.Response as System.Net.HttpWebResponse;
+            if (resp == null) return new StoreException("Could not reach " + new Uri(root).Host + ": " + ex.Message);
+            int status = (int)resp.StatusCode;
+            string code = resp.Headers["x-ms-error-code"] ?? "";
+            try { resp.Close(); } catch (Exception) { }
+            if (status == 403 && code == "AuthorizationPermissionMismatch") return new StoreException("The link does not allow TrackVice to read. The update link needs a SAS with Read.");
+            if (status == 403) return new StoreException("The storage account refused the link (" + (code.Length > 0 ? code : "HTTP 403") + "). It may have expired, be mistyped, or the storage firewall may block this network.");
+            if (status == 404) return new StoreMissingException(name + " is not in the container.");
+            return new StoreException("The storage account answered HTTP " + status + (code.Length > 0 ? " (" + code + ")" : "") + ".");
+        }
+
+        // Reads to the end, and gives up when there is more than maxBytes or it takes longer than maxTime.
+        // declared is the length the store says the file has, or -1 when it does not say.
+        public static byte[] ReadCapped(Stream s, long declared, long maxBytes, string name, TimeSpan maxTime)
+        {
+            if (declared > maxBytes) throw TooLarge(name, maxBytes);
+            Stopwatch sw = Stopwatch.StartNew();
+            using (MemoryStream ms = new MemoryStream())
+            {
+                byte[] buf = new byte[81920];
+                int n;
+                while ((n = s.Read(buf, 0, buf.Length)) > 0)
+                {
+                    if (ms.Length + n > maxBytes) throw TooLarge(name, maxBytes);
+                    ms.Write(buf, 0, n);
+                    if (sw.Elapsed > maxTime) throw new StoreException("Reading " + name + " took longer than " + AgentUpdate.Minutes(maxTime) + ". It was given up.");
+                }
+                return ms.ToArray();
+            }
+        }
+
+        static StoreTooLargeException TooLarge(string name, long maxBytes)
+        {
+            return new StoreTooLargeException(name + " has more than the " + maxBytes + " bytes it can have.");
+        }
+
+        // As the viewer reads a location: null when the file is not there, and an error when the folder itself is not.
+        public byte[] Find(string name, long maxBytes)
+        {
+            if (sas == null && !Directory.Exists(root)) throw new StoreException("The folder " + root + " was not found.");
+            try { return Get(name, maxBytes); }
+            catch (StoreMissingException) { return null; }
+        }
+
+        // Reads name from any store, never keeping more than maxBytes.
+        public static byte[] Read(ISessionStore store, string name, long maxBytes)
+        {
+            ICappedStore c = store as ICappedStore;
+            byte[] b = c != null ? c.Get(name, maxBytes) : store.Get(name);
+            if (b != null && b.LongLength > maxBytes) throw TooLarge(name, maxBytes);
+            return b;
         }
     }
 
@@ -633,7 +796,7 @@ namespace TrackVice
                 return null;
             }
             ISessionStore st;
-            try { st = Stores.Open(link); }
+            try { st = UpdateSource.Open(link); }
             catch (Exception ex)
             {
                 log("Self-update is off: " + ex.Message);
@@ -772,12 +935,16 @@ namespace TrackVice
             if (!ops.WaitForAgentExit(WaitMs))
             {
                 string still = ops.StopAgents(target);
-                if (still != null || !ops.WaitForAgentExit(15000))
+                if (still != null)
                 {
-                    log("The agent did not stop" + (still != null ? ": " + still : "") + ". The update is not installed.");
+                    log("The agent did not stop: " + still + ". The update is not installed.");
                     ops.Delete(newExe);
                     return 1;
                 }
+                // The agent is stopped now. Any program on the device can make and hold a mutex with the name of the
+                // agent's, so the mutex alone must not keep an update out or leave the device without an agent:
+                // no process runs the exe any more, and the task is started again whatever happens below.
+                if (!ops.WaitForAgentExit(15000)) log("No agent process runs any more, but another program holds the mutex of the agent. The update goes on.");
             }
             Exception last = null;
             for (int i = 0; i < Tries; i++)

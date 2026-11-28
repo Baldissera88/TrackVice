@@ -33,6 +33,14 @@ namespace TrackVice
         public const int Days = 365;
         public const string Perms = "rcw";
 
+        // True for an https address, the only thing that is handed to Windows to open. The sign-in page comes in an
+        // answer from the network, and Windows would also run a program or open a file named there.
+        public static bool IsWebPage(string address)
+        {
+            Uri u;
+            return !string.IsNullOrEmpty(address) && Uri.TryCreate(address.Trim(), UriKind.Absolute, out u) && u.Scheme == Uri.UriSchemeHttps && u.Host.Length > 0;
+        }
+
         // The steps of the portal, with the account and the container filled in.
         public static string ManualSteps(string account, string container, bool keyOff)
         {
