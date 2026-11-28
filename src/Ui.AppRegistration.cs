@@ -131,6 +131,11 @@ namespace TrackVice
             if (found != null)
             {
                 l.Add(new SectionTitle("Already there"));
+                if (found.Problems.Count > 0)
+                {
+                    l.Add(Row(Glyphs.Shield, "An app named " + AppName + " is in this tenant, but TrackVice did not make it", "Client ID " + found.ClientId + ": " + string.Join("; ", found.Problems.ToArray()) + ". An admin consent for it would also serve whoever holds that. TrackVice does not use it: check who made it, or remove it and sign in again.", null));
+                    return;
+                }
                 l.Add(Row(Glyphs.Info, "An app named " + AppName + " is in this tenant", "Client ID " + found.ClientId + ". TrackVice does not change it. Use it to fill in its Client ID, and check its permissions against the list in Settings.", bUse));
                 return;
             }

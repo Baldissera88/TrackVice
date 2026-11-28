@@ -17,9 +17,16 @@ namespace TrackVice
 
     public static class AgentScript
     {
+        // PowerShell also ends a single-quoted string at the typographic quotes U+2018 to U+201B, so each is doubled
+        // like the apostrophe; a doubled one stands for itself.
         public static string Quote(string s)
         {
             return CustomerScript.Literal(s);
+        }
+
+        public static bool IsSingleQuote(char c)
+        {
+            return c == '\'' || c == '\u2018' || c == '\u2019' || c == '\u201A' || c == '\u201B';
         }
 
         // Replaces the value on the line that sets $name, and keeps the comment after it.

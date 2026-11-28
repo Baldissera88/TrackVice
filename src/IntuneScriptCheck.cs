@@ -316,6 +316,10 @@ namespace TrackVice
         public void Fix(ScriptCheck c)
         {
             if (!c.CanFix) throw new SetupException("There is no device assignment to keep.");
+            // The assign action replaces them all, so an assignment that cannot be sent back as it was stops the change.
+            foreach (ScriptAssignment a in c.Keep)
+                if ((a.Kind == TargetKind.Group || a.Kind == TargetKind.Exclusion) && a.GroupId.Length == 0)
+                    throw new SetupException("The platform script has an assignment TrackVice cannot keep (" + (a.OdataType.Length > 0 ? a.OdataType : "no type") + "). Change the assignments in Intune.");
             WebReply r = web.Send(WebCall.Json("POST", IntuneScripts.ScriptsUrl + "/" + Uri.EscapeDataString(c.ScriptId) + "/assign", scriptToken(), SetupJson.Write(ScriptChecker.AssignBody(c.Keep))));
             if (r.Status != 204 && r.Status != 200) throw IntuneSetup.Fail(r, "assign the platform script");
         }
