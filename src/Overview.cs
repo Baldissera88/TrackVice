@@ -353,12 +353,15 @@ namespace TrackVice
         // The time left of the deployment, short: "~25 min left" or "longer than usual". Null when there is no estimate.
         public string Left;
         public bool Failed;
+        // When the estimate says it will be done, and whether it already takes longer than usual.
+        public DateTime? FinishUtc;
+        public bool Slow;
     }
 
     public sealed class PeriodStats
     {
         public int Finished, Succeeded, Failed;
-        public double AvgSeconds;
+        public double AvgSeconds, MedianSeconds;
         public readonly List<OverviewDevice> FinishedDevices = new List<OverviewDevice>();
         public readonly List<OverviewDevice> FailedDevices = new List<OverviewDevice>();
 
@@ -612,7 +615,7 @@ namespace TrackVice
                     DeploymentEstimate est = null;
                     try { est = DeploymentEstimate.Make(s, nowUtc, AutopilotFlow.BoxedTime(s, nowUtc), history); }
                     catch (Exception) { est = null; }
-                    if (est != null) r.Left = est.Brief;
+                    if (est != null) { r.Left = est.Brief; r.Slow = est.Over; if (!est.Over) r.FinishUtc = est.FinishUtc; }
                 }
                 Item cur = null;
                 foreach (Item i in s.Items)
@@ -656,6 +659,7 @@ namespace TrackVice
         {
             double sum = 0;
             int n = 0;
+            List<double> all = new List<double>();
             foreach (OverviewDevice o in p.FinishedDevices)
             {
                 double sec = 0;
@@ -672,8 +676,11 @@ namespace TrackVice
                 if (sec <= 0) continue;
                 sum += sec;
                 n++;
+                all.Add(sec);
             }
             p.AvgSeconds = n == 0 ? 0 : sum / n;
+            all.Sort();
+            p.MedianSeconds = n == 0 ? 0 : n % 2 == 1 ? all[n / 2] : (all[n / 2 - 1] + all[n / 2]) / 2;
         }
 
         static void Steps(OverviewData data, List<Session> sessions, List<OverviewDevice> devices, DateTime nowUtc)

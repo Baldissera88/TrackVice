@@ -3,12 +3,13 @@ namespace TrackVice
     using System;
     using System.Collections.Generic;
     using System.Drawing;
+    using System.Drawing.Drawing2D;
     using System.Windows.Forms;
 
     // One line in a tile of Overview: a device, an app, a step or a heading.
     public sealed class TileRow
     {
-        public string Text, Sub, Right, Link;
+        public string Text, Sub, Sub2, Right, Link;
         public bool HasState;
         public State State;
         public double? Percent;
@@ -17,6 +18,10 @@ namespace TrackVice
         public bool Header;
         // The second line wraps instead of being cut off.
         public bool Wrap;
+        // A number in front of the row, for a ranked list.
+        public int Rank;
+        // A row that is history, such as a deployment replaced by a newer one: drawn quieter.
+        public bool Quiet;
         public object Tag;
     }
 
@@ -27,16 +32,24 @@ namespace TrackVice
         public bool Link;
     }
 
-    // A card on Overview: a title, a small table of numbers, rows that can be clicked, or a plain empty state with the
-    // button that sets the source up.
-    public sealed class OverviewTile : FlatControl
+    // A section of Overview: a title with a note beside it, and under it a card with numbers, a chart and rows that can be
+    // clicked, device cards in a grid, one card per item, or a plain empty state with the button that sets the source up.
+    public sealed partial class OverviewTile : FlatControl
     {
         public string Title, Note;
+        public TileMode Mode;
+        // The empty state is good news, such as nothing that needs attention.
+        public bool Calm;
+        // Rows under two headings go side by side when the card is wide, such as the slowest steps and the ones that fail most.
+        public bool SplitGroups;
         public readonly List<TileRow> Rows = new List<TileRow>();
         // Label, today, last 7 days. The first entry is the heading.
         public readonly List<string[]> Stats = new List<string[]>();
         // Numbers side by side above the rows. They go two by two when the tile is narrow.
         public readonly List<CountCell> Counts = new List<CountCell>();
+        // The chart of the last days, oldest first.
+        public readonly List<DayBar> Days = new List<DayBar>();
+        public string DaysTitle;
         public string EmptyTitle, EmptyText, Footer;
         public readonly FlatButton EmptyButton = new FlatButton("", null);
         public event Action<TileRow> RowClicked;
@@ -49,6 +62,8 @@ namespace TrackVice
         readonly List<KeyValuePair<Rectangle, int>> countHits = new List<KeyValuePair<Rectangle, int>>();
         Rectangle footerHit;
         Point mouse = new Point(-1, -1);
+        readonly HoverFade fade;
+        object pressed;
 
         static int Pad { get { return Dpi.S(16); } }
 
@@ -59,11 +74,12 @@ namespace TrackVice
             EmptyButton.Visible = false;
             EmptyButton.Primary = true;
             Controls.Add(EmptyButton);
+            fade = new HoverFade(this);
         }
 
         public bool Empty
         {
-            get { return Rows.Count == 0 && Stats.Count == 0 && Counts.Count == 0; }
+            get { return Rows.Count == 0 && Stats.Count == 0 && Counts.Count == 0 && Days.Count == 0; }
         }
 
         public void SetEmptyAction(string text)
@@ -78,33 +94,65 @@ namespace TrackVice
             EmptyButton.ApplyTheme(t);
         }
 
-        int RowHeight(TileRow r)
+        // The title and the note, above the card.
+        static int HeadHeight
         {
-            if (r.Header) return Dpi.S(30);
-            int h = string.IsNullOrEmpty(r.Sub) ? Dpi.S(30) : Dpi.S(44);
-            if (r.Wrap && !string.IsNullOrEmpty(r.Sub)) h = Dpi.S(5) + Fonts.Ui.Height + Dpi.S(2) + Draw.WrapHeight(r.Sub, Fonts.Small, SubWidth(r)) + Dpi.S(9);
-            if (r.Percent.HasValue) h += Dpi.S(6);
+            get { return OvFonts.Section.Height + Dpi.S(12); }
+        }
+
+        // Where the content of the card starts.
+        static int BodyTop
+        {
+            get { return HeadHeight + Dpi.S(12); }
+        }
+
+        static int EmptyY
+        {
+            get { return HeadHeight + Pad + Dpi.S(2); }
+        }
+
+        int EmptyOffset
+        {
+            get { return Calm ? Dpi.S(46) : 0; }
+        }
+
+        int FootHeight
+        {
+            get { return string.IsNullOrEmpty(Footer) ? 0 : Dpi.S(36); }
+        }
+
+        // A key for the fade and the pressed look that stays the same when the rows are filled again.
+        string KeyOf(TileRow r)
+        {
+            return "r" + Rows.IndexOf(r).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        int RowHeight(TileRow r, int w)
+        {
+            if (r.Header) return Dpi.S(32);
+            int h = string.IsNullOrEmpty(r.Sub) ? Dpi.S(34) : Dpi.S(46);
+            if (r.Wrap && !string.IsNullOrEmpty(r.Sub)) h = Dpi.S(5) + Fonts.Ui.Height + Dpi.S(2) + Draw.WrapHeight(r.Sub, Fonts.Small, Math.Max(Dpi.S(60), w - Lead(r))) + Dpi.S(9);
+            if (r.Percent.HasValue) h += Dpi.S(8);
             return h;
         }
 
-        int SubWidth(TileRow r)
+        // The room of the state glyph or the rank in front of the text.
+        static int Lead(TileRow r)
         {
-            return Math.Max(Dpi.S(60), measureWidth - Pad * 2 - (r.HasState ? Dpi.S(24) : 0));
+            return r.HasState || r.Rank > 0 ? Dpi.S(24) : 0;
         }
 
-        int measureWidth = 400;
-
         // The columns of the count strip: all in one row when each gets room for "Last 30 days" and a number, else two.
-        int CountColumns(int width)
+        int CountColumns(int inner)
         {
             int n = Counts.Count;
             if (n == 0) return 1;
-            return (width - Pad * 2) / n >= Dpi.S(104) ? n : Math.Min(2, n);
+            return inner / n >= Dpi.S(104) ? n : Math.Min(2, n);
         }
 
-        int CountsHeight(int width)
+        int CountsHeight(int inner)
         {
-            int cols = CountColumns(width);
+            int cols = CountColumns(inner);
             int rows = (Counts.Count + cols - 1) / cols;
             return rows * CountCellHeight + Dpi.S(8);
         }
@@ -114,39 +162,37 @@ namespace TrackVice
             get { return Fonts.Small.Height + Fonts.Title.Height + Fonts.Small.Height + Dpi.S(18); }
         }
 
-        int HeadHeight
+        int StatsHeight
         {
-            get { return Pad + Fonts.UiSemibold.Height + Dpi.S(10); }
+            get { return Stats.Count * Dpi.S(26); }
         }
 
         public int Measure(int width)
         {
-            measureWidth = width;
-            int h = HeadHeight;
             if (Empty)
             {
-                int tw = Math.Max(Dpi.S(80), width - Pad * 2);
+                int tw = Math.Max(Dpi.S(80), width - Pad * 2 - EmptyOffset);
+                int h = EmptyY;
                 if (!string.IsNullOrEmpty(EmptyTitle)) h += Fonts.UiSemibold.Height + Dpi.S(4);
-                h += Draw.WrapHeight(EmptyText, Fonts.Ui, tw) + Dpi.S(8);
-                if (EmptyButton.Visible) h += EmptyButton.Height + Dpi.S(8);
-                return h + Pad;
+                h += Draw.WrapHeight(EmptyText, Fonts.Ui, tw);
+                if (EmptyButton.Visible) h += Dpi.S(14) + EmptyButton.Height;
+                if (Calm) h = Math.Max(h, EmptyY + Dpi.S(30));
+                return h + Pad + Dpi.S(2);
             }
-            if (Counts.Count > 0) h += CountsHeight(width);
-            if (Stats.Count > 0) h += Stats.Count * Dpi.S(26) + Dpi.S(8);
-            foreach (TileRow r in Rows) h += RowHeight(r);
-            if (!string.IsNullOrEmpty(Footer)) h += Dpi.S(34);
-            return h + Dpi.S(10);
+            if (Mode == TileMode.Grid) return HeadHeight + GridHeight(width) + FootHeight;
+            if (Mode == TileMode.Cards) return HeadHeight + CardsHeight(width) + FootHeight;
+            return Body(null, width);
         }
 
         protected override void OnLayout(LayoutEventArgs levent)
         {
             base.OnLayout(levent);
             if (EmptyButton == null || !EmptyButton.Visible) return;
-            int tw = Math.Max(Dpi.S(80), Width - Pad * 2);
-            int y = HeadHeight;
+            int tw = Math.Max(Dpi.S(80), Width - Pad * 2 - EmptyOffset);
+            int y = EmptyY;
             if (!string.IsNullOrEmpty(EmptyTitle)) y += Fonts.UiSemibold.Height + Dpi.S(4);
-            y += Draw.WrapHeight(EmptyText, Fonts.Ui, tw) + Dpi.S(12);
-            EmptyButton.Location = new Point(Pad, y);
+            y += Draw.WrapHeight(EmptyText, Fonts.Ui, tw) + Dpi.S(14);
+            EmptyButton.Location = new Point(Pad + EmptyOffset, y);
         }
 
         Color LevelColor(int level)
@@ -158,137 +204,266 @@ namespace TrackVice
         {
             Graphics g = e.Graphics;
             g.Clear(Parent != null ? Parent.BackColor : T.Bg);
-            Draw.Card(g, ClientRectangle, T);
             hits.Clear();
             statHits.Clear();
             countHits.Clear();
-            measureWidth = Width;
             footerHit = Rectangle.Empty;
-            int w = Width - Pad * 2;
             int noteW = string.IsNullOrEmpty(Note) ? 0 : Draw.Measure(Note, Fonts.Small).Width + 2;
-            Draw.Text(g, Title, Fonts.UiSemibold, new Rectangle(Pad, Pad, w - noteW - Dpi.S(8), Fonts.UiSemibold.Height + 2), T.Text, Draw.Line);
-            if (noteW > 0) Draw.Text(g, Note, Fonts.Small, new Rectangle(Width - Pad - noteW, Pad, noteW, Fonts.UiSemibold.Height + 2), T.Text3, Draw.Line);
-            int y = HeadHeight;
+            Draw.Text(g, Title, OvFonts.Section, new Rectangle(0, 0, Width - noteW - Dpi.S(12), OvFonts.Section.Height + 2), T.Text, Draw.Line);
+            if (noteW > 0) Draw.Text(g, Note, Fonts.Small, new Rectangle(Width - noteW - Dpi.S(2), 0, noteW, OvFonts.Section.Height + 2), T.Text3, Draw.Line);
             if (Empty)
             {
-                if (!string.IsNullOrEmpty(EmptyTitle))
-                {
-                    Draw.Text(g, EmptyTitle, Fonts.Ui, new Rectangle(Pad, y, w, Fonts.UiSemibold.Height + 2), T.Text, Draw.Line);
-                    y += Fonts.UiSemibold.Height + Dpi.S(4);
-                }
-                Draw.Text(g, EmptyText, Fonts.Ui, new Rectangle(Pad, y, w, Height - y), T.Text3, Draw.Wrap);
+                Frame(g, HeadHeight, Height);
+                PaintEmpty(g);
                 return;
             }
-            if (Counts.Count > 0)
+            if (Mode == TileMode.List)
             {
-                int cols = CountColumns(Width);
-                int cw = w / cols, ch = CountCellHeight;
-                for (int k = 0; k < Counts.Count; k++)
-                {
-                    CountCell c = Counts[k];
-                    Rectangle cell = new Rectangle(Pad + (k % cols) * cw, y + (k / cols) * ch, cw, ch);
-                    bool hot = c.Link && cell.Contains(mouse);
-                    int ty = cell.Y + Dpi.S(2);
-                    Draw.Text(g, c.Label, Fonts.Small, new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Small.Height + 2), T.Text3, Draw.Line);
-                    ty += Fonts.Small.Height + Dpi.S(4);
-                    Font vf = hot ? new Font(Fonts.Title, FontStyle.Underline) : Fonts.Title;
-                    try { Draw.Text(g, c.Value, T.Num(vf), new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Title.Height + 2), c.Link ? T.Accent : T.Text, Draw.Line); }
-                    finally { if (hot) vf.Dispose(); }
-                    ty += Fonts.Title.Height + Dpi.S(2);
-                    Draw.Text(g, c.Sub, Fonts.Small, new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Small.Height + 2), T.Text2, Draw.Line);
-                    if (c.Link) countHits.Add(new KeyValuePair<Rectangle, int>(cell, k));
-                }
-                y += ((Counts.Count + cols - 1) / cols) * ch + Dpi.S(8);
+                Frame(g, HeadHeight, Height);
+                Body(g, Width);
+                return;
             }
-            if (Stats.Count > 0)
-            {
-                int colW = Math.Min(Dpi.S(130), w / 3);
-                for (int k = 0; k < Stats.Count; k++)
-                {
-                    string[] s = Stats[k];
-                    bool head = k == 0;
-                    Rectangle row = new Rectangle(Pad, y, w, Dpi.S(26));
-                    Font f = head ? Fonts.Small : Fonts.Ui;
-                    Draw.Text(g, s[0], f, new Rectangle(row.X, row.Y, w - colW * 2, row.Height), head ? T.Text3 : T.Text2, Draw.Line);
-                    for (int c = 1; c <= 2; c++)
-                    {
-                        Rectangle cell = new Rectangle(row.Right - colW * (3 - c), row.Y, colW, row.Height);
-                        bool link = !head && s.Length > 3 && s[3] == "link" && s[c] != "0" && s[c] != "-";
-                        bool hot = link && cell.Contains(mouse);
-                        Color col = head ? T.Text3 : link ? (s.Length > 4 && s[4] == "err" ? T.ErrFg : T.Accent) : T.Text;
-                        Font cf = head ? Fonts.Small : T.Num(hot ? Fonts.UiSemibold : Fonts.Ui);
-                        Draw.Text(g, s[c], cf, cell, col, Draw.Line | TextFormatFlags.Right);
-                        if (link) statHits.Add(new KeyValuePair<Rectangle, int[]>(cell, new int[] { k, c }));
-                    }
-                    y += row.Height;
-                }
-                y += Dpi.S(8);
-            }
-            foreach (TileRow r in Rows)
-            {
-                int h = RowHeight(r);
-                Rectangle rr = new Rectangle(Dpi.S(6), y, Width - Dpi.S(12), h);
-                if (r.Header)
-                {
-                    Draw.Text(g, r.Text, Fonts.SmallSemibold, new Rectangle(Pad, y + Dpi.S(8), w, h - Dpi.S(8)), T.Text3, Draw.Line);
-                    y += h;
-                    continue;
-                }
-                bool hot = rr.Contains(mouse);
-                if (hot) Shapes.Fill(g, rr, Dpi.S(5), T.Hover);
-                hits.Add(new KeyValuePair<Rectangle, TileRow>(rr, r));
-                int x = Pad;
-                if (r.HasState)
-                {
-                    int d = Dpi.S(14);
-                    StateLook.Icon(g, r.State, new RectangleF(x, y + (string.IsNullOrEmpty(r.Sub) ? (h - d) / 2f : Dpi.S(8)), d, d), T, 0f);
-                    x += d + Dpi.S(10);
-                }
-                string right = r.Link ?? r.Right;
-                Font rf = r.Link != null ? Fonts.Ui : T.Num(Fonts.Ui);
-                int rw = string.IsNullOrEmpty(right) ? 0 : Math.Min(w / 2, Draw.Measure(right, rf).Width + 2);
-                int textW = Width - Pad - x - rw - Dpi.S(10);
-                int ty = string.IsNullOrEmpty(r.Sub) ? y : y + Dpi.S(5);
-                int th = string.IsNullOrEmpty(r.Sub) ? Dpi.S(30) : Fonts.Ui.Height + 2;
-                Draw.Text(g, r.Text, Fonts.Ui, new Rectangle(x, ty, textW, th), T.Text, Draw.Line);
-                if (!string.IsNullOrEmpty(r.Sub))
-                {
-                    int sy = ty + Fonts.Ui.Height + Dpi.S(2);
-                    if (r.Wrap) Draw.Text(g, r.Sub, Fonts.Small, new Rectangle(x, sy, Width - Pad - x, y + h - sy), T.Text3, Draw.Wrap);
-                    else Draw.Text(g, r.Sub, Fonts.Small, new Rectangle(x, sy, Width - Pad - x, Fonts.Small.Height + 2), T.Text3, Draw.Line);
-                }
-                if (rw > 0)
-                    Draw.Text(g, right, rf, new Rectangle(Width - Pad - rw, ty, rw, th), r.Link != null ? T.Accent : LevelColor(r.Level), Draw.Line | TextFormatFlags.Right);
-                if (r.Percent.HasValue)
-                {
-                    int by = y + h - Dpi.S(8);
-                    RectangleF track = new RectangleF(x, by, Width - Pad - x, Dpi.S(3));
-                    Shapes.Fill(g, track, Dpi.S(1.5f), T.Divider);
-                    float p = (float)Math.Max(0, Math.Min(1, r.Percent.Value / 100));
-                    if (p > 0) Shapes.Fill(g, new RectangleF(track.X, track.Y, Math.Max(Dpi.S(3), track.Width * p), track.Height), Dpi.S(1.5f), r.Level >= 2 ? T.ErrFg : T.Accent);
-                }
-                y += h;
-            }
+            int y = Mode == TileMode.Grid ? PaintGrid(g, HeadHeight) : PaintCards(g, HeadHeight);
             if (!string.IsNullOrEmpty(Footer))
             {
-                int fw = Draw.Measure(Footer, Fonts.Ui).Width + 2;
-                footerHit = new Rectangle(Pad, y + Dpi.S(6), fw, Dpi.S(24));
-                Draw.Text(g, Footer, footerHit.Contains(mouse) ? Fonts.UiSemibold : Fonts.Ui, footerHit, T.Accent, Draw.Line);
+                footerHit = new Rectangle(Dpi.S(2), y + Dpi.S(10), Draw.Measure(Footer, Fonts.Ui).Width + 2, Dpi.S(24));
+                LinkText(g, Footer, footerHit, Equals(fade.Key, "footer"));
             }
         }
 
-        bool Over(Point p)
+        // The card under the title.
+        void Frame(Graphics g, int top, int bottom)
         {
-            foreach (KeyValuePair<Rectangle, TileRow> h in hits) if (h.Key.Contains(p)) return true;
-            foreach (KeyValuePair<Rectangle, int[]> h in statHits) if (h.Key.Contains(p)) return true;
-            foreach (KeyValuePair<Rectangle, int> h in countHits) if (h.Key.Contains(p)) return true;
-            return footerHit.Contains(p);
+            RectangleF cr = new RectangleF(0.5f, top + 0.5f, Width - 1.5f, bottom - top - 1.5f);
+            Shapes.Fill(g, cr, Dpi.S(12), T.Card);
+            Shapes.Stroke(g, cr, Dpi.S(12), T.Divider, 1f);
+        }
+
+        void LinkText(Graphics g, string text, Rectangle r, bool hot)
+        {
+            if (!hot)
+            {
+                Draw.Text(g, text, Fonts.Ui, r, T.Accent, Draw.Line);
+                return;
+            }
+            using (Font u = new Font(Fonts.Ui, FontStyle.Underline)) Draw.Text(g, text, u, r, T.AccentHover, Draw.Line);
+        }
+
+        void PaintEmpty(Graphics g)
+        {
+            int y = EmptyY;
+            if (Calm) PaintCheck(g, Pad, y + Dpi.S(1), Dpi.S(32));
+            int ex = Pad + EmptyOffset, ew = Width - Pad - ex;
+            if (!string.IsNullOrEmpty(EmptyTitle))
+            {
+                Draw.Text(g, EmptyTitle, Fonts.UiSemibold, new Rectangle(ex, y, ew, Fonts.UiSemibold.Height + 2), T.Text, Draw.Line);
+                y += Fonts.UiSemibold.Height + Dpi.S(4);
+            }
+            Draw.Text(g, EmptyText, Fonts.Ui, new Rectangle(ex, y, ew, Math.Max(Fonts.Ui.Height + 2, Height - y)), T.Text3, Draw.Wrap);
+        }
+
+        // The content of the card: the counts, the chart and the table, then the rows. Measures when g is null. Returns
+        // the bottom of the card.
+        int Body(Graphics g, int width)
+        {
+            int inner = width - Pad * 2;
+            int y = BodyTop;
+            if (Counts.Count > 0)
+            {
+                if (g != null) PaintCounts(g, Pad, y, inner);
+                y += CountsHeight(inner);
+            }
+            bool stats = Stats.Count > 0, days = Days.Count > 0;
+            if (stats && days && inner >= Dpi.S(600))
+            {
+                // The chart and the table side by side.
+                int gap = Dpi.S(40), cw = (inner - gap) * 55 / 100, sw = inner - gap - cw;
+                if (g != null)
+                {
+                    PaintDays(g, Pad, y, cw);
+                    PaintStats(g, Pad + cw + gap, y + Dpi.S(2), sw);
+                }
+                y += Math.Max(DaysHeight, StatsHeight) + Dpi.S(10);
+            }
+            else
+            {
+                if (days)
+                {
+                    if (g != null) PaintDays(g, Pad, y, inner);
+                    y += DaysHeight + Dpi.S(14);
+                }
+                if (stats)
+                {
+                    if (g != null) PaintStats(g, Pad, y, inner);
+                    y += StatsHeight + Dpi.S(8);
+                }
+            }
+            List<List<TileRow>> groups = SplitGroups ? Groups() : null;
+            if (groups != null && groups.Count == 2 && inner >= Dpi.S(620))
+            {
+                int gap = Dpi.S(32), cw = (inner - gap) / 2;
+                int a = RowsBlock(g, groups[0], Pad, y, cw), b = RowsBlock(g, groups[1], Pad + cw + gap, y, cw);
+                y += Math.Max(a, b);
+            }
+            else y += RowsBlock(g, Rows, Pad, y, inner);
+            if (!string.IsNullOrEmpty(Footer))
+            {
+                if (g != null)
+                {
+                    footerHit = new Rectangle(Pad, y + Dpi.S(6), Draw.Measure(Footer, Fonts.Ui).Width + 2, Dpi.S(24));
+                    LinkText(g, Footer, footerHit, Equals(fade.Key, "footer"));
+                }
+                y += FootHeight;
+            }
+            return y + Dpi.S(8);
+        }
+
+        // The rows split at each heading.
+        List<List<TileRow>> Groups()
+        {
+            List<List<TileRow>> l = new List<List<TileRow>>();
+            foreach (TileRow r in Rows)
+            {
+                if (r.Header || l.Count == 0) l.Add(new List<TileRow>());
+                l[l.Count - 1].Add(r);
+            }
+            return l;
+        }
+
+        int RowsBlock(Graphics g, List<TileRow> rows, int x, int y, int w)
+        {
+            int top = y;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                int h = RowHeight(rows[i], w);
+                if (g != null) PaintRow(g, rows[i], x, y, w, h, i + 1 < rows.Count ? rows[i + 1] : null);
+                y += h;
+            }
+            return y - top;
+        }
+
+        void PaintRow(Graphics g, TileRow r, int x, int y, int w, int h, TileRow next)
+        {
+            if (r.Header)
+            {
+                Draw.Text(g, r.Text, Fonts.SmallSemibold, new Rectangle(x, y + Dpi.S(10), w, h - Dpi.S(10)), T.Text3, Draw.Line);
+                return;
+            }
+            string key = KeyOf(r);
+            Rectangle rr = new Rectangle(x - Dpi.S(10), y + Dpi.S(1), w + Dpi.S(20), h - Dpi.S(2));
+            hits.Add(new KeyValuePair<Rectangle, TileRow>(rr, r));
+            float a = fade.Of(key);
+            if (Equals(pressed, key)) Shapes.Fill(g, rr, Dpi.S(6), T.Pressed);
+            else if (a > 0) Shapes.Fill(g, rr, Dpi.S(6), Theme.Mix(T.Card, T.Hover, a));
+            bool sub = !string.IsNullOrEmpty(r.Sub);
+            int ty = sub ? y + Dpi.S(5) : y;
+            int th = sub ? Fonts.Ui.Height + 2 : Dpi.S(34);
+            float mid = ty + th / 2f;
+            int gx = x, d = Dpi.S(14);
+            if (r.HasState && r.Quiet)
+            {
+                // History: a small hollow ring instead of the state.
+                float q = Dpi.S(8);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using (Pen qp = new Pen(T.Text3, Math.Max(1f, Dpi.S(1.25f)))) g.DrawEllipse(qp, gx + (d - q) / 2f, mid - q / 2f, q, q);
+                gx += d + Dpi.S(10);
+            }
+            else if (r.HasState)
+            {
+                StateLook.Icon(g, r.State, new RectangleF(gx, mid - d / 2f, d, d), T, 0f);
+                gx += d + Dpi.S(10);
+            }
+            else if (r.Rank > 0)
+            {
+                Draw.Text(g, r.Rank.ToString(System.Globalization.CultureInfo.InvariantCulture), T.Num(Fonts.SmallSemibold), new Rectangle(gx, ty, d, th), r.Rank == 1 ? T.Text2 : T.Text3, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                gx += d + Dpi.S(10);
+            }
+            string right = r.Link ?? r.Right;
+            Font rf = r.Link != null ? Fonts.Ui : T.Num(Fonts.Ui);
+            int rw = string.IsNullOrEmpty(right) ? 0 : Math.Min(w / 2, Draw.Measure(right, rf).Width + 2);
+            int textW = x + w - gx - rw - (rw > 0 ? Dpi.S(12) : 0);
+            Draw.Text(g, r.Text, Fonts.Ui, new Rectangle(gx, ty, textW, th), r.Quiet ? T.Text2 : T.Text, Draw.Line);
+            if (sub)
+            {
+                int sy = ty + Fonts.Ui.Height + Dpi.S(2);
+                if (r.Wrap) Draw.Text(g, r.Sub, Fonts.Small, new Rectangle(gx, sy, x + w - gx, y + h - sy), T.Text3, Draw.Wrap);
+                else Draw.Text(g, r.Sub, Fonts.Small, new Rectangle(gx, sy, x + w - gx, Fonts.Small.Height + 2), T.Text3, Draw.Line);
+            }
+            if (rw > 0)
+                Draw.Text(g, right, rf, new Rectangle(x + w - rw, ty, rw, th), r.Link != null ? T.Accent : r.Quiet ? T.Text3 : LevelColor(r.Level), Draw.Line | TextFormatFlags.Right);
+            if (r.Percent.HasValue)
+            {
+                RectangleF track = new RectangleF(gx, y + h - Dpi.S(12), x + w - gx, Dpi.S(4));
+                Shapes.Fill(g, track, Dpi.S(2), Theme.Mix(T.Card, T.Divider, 0.8f));
+                float p = (float)Math.Max(0, Math.Min(1, r.Percent.Value / 100));
+                if (p > 0) Shapes.Fill(g, new RectangleF(track.X, track.Y, Math.Max(Dpi.S(4), track.Width * p), track.Height), Dpi.S(2), r.Level >= 2 ? T.ErrFg : T.Accent);
+            }
+            else if (next != null && !next.Header && !next.Percent.HasValue)
+                using (Pen sep = new Pen(Theme.Mix(T.Card, T.Divider, 0.75f), 1f)) g.DrawLine(sep, gx, y + h - 1, x + w, y + h - 1);
+        }
+
+        void PaintCounts(Graphics g, int x, int y, int inner)
+        {
+            int cols = CountColumns(inner);
+            int cw = inner / cols, ch = CountCellHeight;
+            for (int k = 0; k < Counts.Count; k++)
+            {
+                CountCell c = Counts[k];
+                Rectangle cell = new Rectangle(x + (k % cols) * cw, y + (k / cols) * ch, cw, ch);
+                bool hot = c.Link && cell.Contains(mouse);
+                int ty = cell.Y + Dpi.S(2);
+                Draw.Text(g, c.Label, Fonts.Small, new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Small.Height + 2), T.Text3, Draw.Line);
+                ty += Fonts.Small.Height + Dpi.S(4);
+                Font vf = hot ? new Font(Fonts.Title, FontStyle.Underline) : Fonts.Title;
+                try { Draw.Text(g, c.Value, T.Num(vf), new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Title.Height + 2), c.Link ? (hot ? T.AccentHover : T.Accent) : T.Text, Draw.Line); }
+                finally { if (hot) vf.Dispose(); }
+                ty += Fonts.Title.Height + Dpi.S(2);
+                Draw.Text(g, c.Sub, Fonts.Small, new Rectangle(cell.X, ty, cw - Dpi.S(8), Fonts.Small.Height + 2), T.Text2, Draw.Line);
+                if (c.Link) countHits.Add(new KeyValuePair<Rectangle, int>(cell, k));
+            }
+        }
+
+        void PaintStats(Graphics g, int x, int y, int w)
+        {
+            int colW = Math.Min(Dpi.S(110), w / 3);
+            for (int k = 0; k < Stats.Count; k++)
+            {
+                string[] s = Stats[k];
+                bool head = k == 0;
+                Rectangle row = new Rectangle(x, y, w, Dpi.S(26));
+                Font f = head ? Fonts.Small : Fonts.Ui;
+                Draw.Text(g, s[0], f, new Rectangle(row.X, row.Y, w - colW * 2, row.Height), head ? T.Text3 : T.Text2, Draw.Line);
+                for (int c = 1; c <= 2; c++)
+                {
+                    Rectangle cell = new Rectangle(row.Right - colW * (3 - c), row.Y, colW, row.Height);
+                    bool link = !head && s.Length > 3 && s[3] == "link" && s[c] != "0" && s[c] != "-";
+                    bool hot = link && cell.Contains(mouse);
+                    Color col = head ? T.Text3 : link ? (s.Length > 4 && s[4] == "err" ? T.ErrFg : T.Accent) : T.Text;
+                    Font cf = head ? Fonts.Small : T.Num(hot ? Fonts.UiSemibold : Fonts.Ui);
+                    Draw.Text(g, s[c], cf, cell, col, Draw.Line | TextFormatFlags.Right);
+                    if (link) statHits.Add(new KeyValuePair<Rectangle, int[]>(cell, new int[] { k, c }));
+                }
+                if (k < Stats.Count - 1)
+                    using (Pen sep = new Pen(Theme.Mix(T.Card, T.Divider, head ? 1f : 0.6f), 1f)) g.DrawLine(sep, x, row.Bottom - 1, x + w, row.Bottom - 1);
+                y += row.Height;
+            }
+        }
+
+        // What is under the pointer: a key for the fade and the pressed look.
+        object HotAt(Point p)
+        {
+            foreach (KeyValuePair<Rectangle, TileRow> h in hits) if (h.Key.Contains(p)) return KeyOf(h.Value);
+            foreach (KeyValuePair<Rectangle, int[]> h in statHits) if (h.Key.Contains(p)) return "s" + h.Value[0] + ":" + h.Value[1];
+            foreach (KeyValuePair<Rectangle, int> h in countHits) if (h.Key.Contains(p)) return "c" + h.Value;
+            return footerHit.Contains(p) ? "footer" : null;
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             mouse = e.Location;
-            Cursor = Over(e.Location) ? Cursors.Hand : Cursors.Default;
+            object k = HotAt(e.Location);
+            Cursor = k != null ? Cursors.Hand : Cursors.Default;
+            fade.Set(k);
             Invalidate();
             base.OnMouseMove(e);
         }
@@ -296,8 +471,22 @@ namespace TrackVice
         protected override void OnMouseLeave(EventArgs e)
         {
             mouse = new Point(-1, -1);
+            fade.Set(null);
+            pressed = null;
             Invalidate();
             base.OnMouseLeave(e);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left) { pressed = HotAt(e.Location); Invalidate(); }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            if (pressed != null) { pressed = null; Invalidate(); }
+            base.OnMouseUp(e);
         }
 
         protected override void OnMouseClick(MouseEventArgs e)
@@ -317,6 +506,8 @@ namespace TrackVice
         public void ClearHover()
         {
             mouse = new Point(-1, -1);
+            fade.Set(null);
+            pressed = null;
         }
     }
 
@@ -335,15 +526,17 @@ namespace TrackVice
         Theme theme = Theme.Light();
         public readonly OverviewFilter Filter = new OverviewFilter();
         readonly Panel col = new Panel();
-        readonly WelcomeHead head = new WelcomeHead("Overview", "Devices deploying now, the last 7 days and what needs attention, for every customer. It refreshes by itself every minute.");
-        readonly FlowLayoutPanel bar = new FlowLayoutPanel();
-        readonly FlatButton bCustomer = new FlatButton("All customers", null);
+        readonly OverviewHeadline headline = new OverviewHeadline();
+        readonly KpiStrip kpi = new KpiStrip();
+        readonly ToolbarFlow bar = new ToolbarFlow();
+        readonly DropButton bCustomer = new DropButton("All customers");
         readonly Segmented side = SideFilterUi.Make(DeviceSides.Both);
         public readonly TextBox Search = new TextBox();
+        readonly SearchField searchField;
         readonly FlatButton bSearch = new FlatButton("Search", null);
         readonly FlatButton bRefresh = new FlatButton("Refresh", Glyphs2.Sync);
         readonly FlatButton bThisPc = new FlatButton("Follow this PC", Glyphs2.Device);
-        readonly Label status = new Label();
+        string subText = "", statusText = "";
         readonly OverviewTile now = new OverviewTile("Now");
         readonly OverviewTile attention = new OverviewTile("Needs attention");
         readonly OverviewTile deploy = new OverviewTile("Deployments");
@@ -359,30 +552,27 @@ namespace TrackVice
             Dock = DockStyle.Fill;
             AutoScroll = true;
             DoubleBuffered = true;
-            head.Mark = false;
             bar.WrapContents = true;
-            bar.Height = Dpi.S(40);
-            foreach (FlatButton b in new FlatButton[] { bCustomer, bSearch, bRefresh, bThisPc }) { b.Compact = true; b.AutoWidth(); }
-            bCustomer.Width = Math.Max(bCustomer.Width, Dpi.S(150));
-            bCustomer.Margin = new Padding(0, 0, Dpi.S(8), 0);
-            side.Margin = new Padding(0, 0, Dpi.S(12), 0);
-            Search.Width = Dpi.S(300);
-            Search.BorderStyle = BorderStyle.FixedSingle;
-            Search.Font = Fonts.Ui;
-            Search.Margin = new Padding(0, Dpi.S(4), Dpi.S(4), 0);
-            bSearch.Margin = new Padding(0, 0, Dpi.S(12), 0);
-            bRefresh.Margin = new Padding(0, 0, Dpi.S(4), 0);
-            bThisPc.Margin = new Padding(0, 0, Dpi.S(12), 0);
-            status.AutoSize = true;
-            status.Font = Fonts.Small;
-            status.Margin = new Padding(0, Dpi.S(9), 0, 0);
-            bar.Controls.Add(bCustomer);
-            bar.Controls.Add(side);
-            bar.Controls.Add(Search);
-            bar.Controls.Add(bSearch);
-            bar.Controls.Add(bRefresh);
-            bar.Controls.Add(bThisPc);
-            bar.Controls.Add(status);
+            bar.Padding = new Padding(Dpi.S(8), Dpi.S(8), Dpi.S(8), 0);
+            bar.Height = Dpi.S(48);
+            now.Mode = TileMode.Grid;
+            attention.Mode = TileMode.Cards;
+            period.SplitGroups = true;
+            kpi.Visible = false;
+            foreach (FlatButton b in new FlatButton[] { bSearch, bRefresh, bThisPc }) { b.Compact = true; b.AutoWidth(); }
+            bCustomer.MinWidth = Dpi.S(160);
+            bCustomer.Fit();
+            searchField = new SearchField(Search);
+            searchField.Width = Dpi.S(300);
+            Control[] items = { bCustomer, side, searchField, bSearch, bRefresh, bThisPc };
+            foreach (Control c in items)
+            {
+                c.Margin = new Padding(0, 0, Dpi.S(8), Dpi.S(8));
+                bar.Controls.Add(c);
+            }
+            // A little more room between the filters and the buttons that act.
+            bSearch.Margin = new Padding(0, 0, Dpi.S(16), Dpi.S(8));
+            bRefresh.Margin = new Padding(0, 0, Dpi.S(4), Dpi.S(8));
             bCustomer.Click += Safe.Wrap(delegate { CustomerMenu().Show(bCustomer, new Point(0, bCustomer.Height)); });
             side.Changed += Safe.Wrap(delegate { Filter.Side = SideFilterUi.Of(side); Changed(); });
             Search.KeyDown += delegate (object s, KeyEventArgs e)
@@ -410,12 +600,14 @@ namespace TrackVice
                 OverviewTile tile = t;
                 tile.EmptyButton.Click += Safe.Wrap(delegate { if (SetupClicked != null && tile.EmptyButton.Tag is string) SetupClicked((string)tile.EmptyButton.Tag); });
             }
-            col.Controls.Add(head);
+            kpi.Clicked += delegate (int k) { Safe.Run(delegate { KpiClicked(k); }); };
+            col.Controls.Add(headline);
             col.Controls.Add(bar);
+            col.Controls.Add(kpi);
             foreach (OverviewTile t in Tiles) col.Controls.Add(t);
             Controls.Add(col);
             Resize += delegate { Relayout(); };
-            HandleCreated += delegate { try { Cue(Search, "Search devices: name, serial number, user, profile or task sequence"); } catch (Exception) { } };
+            Search.HandleCreated += delegate { try { Cue(Search, "Search devices: name, serial number, user, profile or task sequence"); } catch (Exception) { } };
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
@@ -433,7 +625,21 @@ namespace TrackVice
 
         public string StatusText
         {
-            set { status.Text = value ?? ""; }
+            set
+            {
+                string v = (value ?? "").Trim();
+                if (statusText == v) return;
+                statusText = v;
+                SetSub();
+                Relayout();
+            }
+        }
+
+        // The line beside the headline: the date, the filters and when the data was read.
+        void SetSub()
+        {
+            headline.Sub = statusText.Length == 0 ? subText : subText + " \u00b7 " + statusText.TrimEnd('.');
+            headline.Invalidate();
         }
 
         ContextMenuStrip CustomerMenu()
@@ -453,7 +659,7 @@ namespace TrackVice
         {
             Filter.Customer = name;
             bCustomer.Text = name ?? "All customers";
-            bCustomer.Width = Math.Max(bCustomer.Width, Dpi.S(150));
+            Relayout();
             Changed();
         }
 
@@ -484,6 +690,14 @@ namespace TrackVice
             List<OverviewDevice> l = new List<OverviewDevice>();
             foreach (NowRow r in data.Now) l.Add(r.Dev);
             return l;
+        }
+
+        void KpiClicked(int k)
+        {
+            if (data == null) return;
+            if (k == 0) List("now", "Deploying now", Devices(NowDevices()));
+            else if (k == 1) Stat(1, false);
+            else if (k == 2) Stat(2, true);
         }
 
         void Stat(int row, bool week)
@@ -553,7 +767,7 @@ namespace TrackVice
 
             // Now
             now.Rows.Clear();
-            now.Note = d.HasSources ? d.Now.Count + " deploying" : null;
+            now.Note = d.HasSources && d.Now.Count > 0 ? d.Now.Count + " deploying" : null;
             for (int k = 0; k < d.Now.Count && k < NowRows; k++)
             {
                 NowRow n = d.Now[k];
@@ -563,21 +777,90 @@ namespace TrackVice
                 if (!string.IsNullOrEmpty(n.Dev.Customer)) sub.Add(n.Dev.Customer);
                 string who = Who.Short(n.Dev.S) ?? n.Dev.D.EnrollUser;
                 if (!string.IsNullOrEmpty(who)) sub.Add(who);
-                if (!string.IsNullOrEmpty(n.Phase)) sub.Add(n.Phase);
-                if (!string.IsNullOrEmpty(n.WaitsFor)) sub.Add(n.WaitsFor);
-                r.Sub = string.Join(" · ", sub.ToArray());
+                r.Sub = string.Join(" \u00b7 ", sub.ToArray());
+                List<string> doing = new List<string>();
+                if (!string.IsNullOrEmpty(n.Phase)) doing.Add(n.Phase);
+                if (!string.IsNullOrEmpty(n.WaitsFor)) doing.Add(n.WaitsFor);
+                r.Sub2 = string.Join(" \u00b7 ", doing.ToArray());
                 r.HasState = true;
                 r.State = n.Failed ? State.Failed : State.Installing;
                 r.Percent = n.Percent;
-                r.Right = n.Percent.HasValue ? n.Percent.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %" : "Running";
-                if (!string.IsNullOrEmpty(n.Left) && !n.Failed) r.Right += " \u00b7 " + n.Left;
-                if (n.Failed) { r.Right = (n.Percent.HasValue ? r.Right + " · " : "") + "failed"; r.Level = 2; }
+                List<string> when = new List<string>();
+                if (n.Failed) when.Add(n.Percent.HasValue ? "Failed at " + n.Percent.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %" : "Failed");
+                else
+                {
+                    if (!string.IsNullOrEmpty(n.Left)) when.Add(n.Left);
+                    if (n.FinishUtc.HasValue) when.Add("done " + n.FinishUtc.Value.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture));
+                    if (when.Count == 0) when.Add("Running");
+                }
+                r.Right = string.Join(" \u00b7 ", when.ToArray());
+                r.Level = n.Failed ? 2 : n.Slow ? 1 : 0;
                 r.Tag = n.Dev;
                 now.Rows.Add(r);
             }
             now.Footer = d.Now.Count > NowRows ? "Show all " + d.Now.Count : null;
             Empty(now, d.HasSources, nothing, "Now shows devices with the TrackVice agent and task sequences from SCCM while they deploy, with how far each is and what it waits for.",
-                "Nothing deploys right now.", emptyAction, emptyId);
+                "Devices show here while they deploy, with how far each is and what it waits for.", emptyAction, emptyId);
+            if (d.HasSources) now.EmptyTitle = "Nothing deploys right now";
+
+            // The headline and the key figures
+            int attn = 0, attnLevel = 0, failedNow = 0, slowNow = 0;
+            foreach (AttentionTile t in d.Attention) if (t.Level >= 1) { attn++; attnLevel = Math.Max(attnLevel, t.Level); }
+            foreach (NowRow n in d.Now) { if (n.Failed) failedNow++; else if (n.Slow) slowNow++; }
+            headline.HasSources = d.HasSources;
+            headline.Deploying = d.Now.Count;
+            headline.Attention = attn;
+            headline.AttentionLevel = attnLevel;
+            subText = DateTime.Now.ToString("dddd d MMMM", System.Globalization.CultureInfo.CurrentCulture) + " \u00b7 " + (Filter.Customer ?? "All customers") + " \u00b7 " + (Filter.Side == DeviceSides.Intune ? "Intune" : Filter.Side == DeviceSides.Sccm ? "SCCM" : "Intune and SCCM");
+            SetSub();
+            kpi.Visible = d.HasSources;
+            kpi.Cells.Clear();
+            if (d.HasSources)
+            {
+                KpiCell c0 = new KpiCell();
+                c0.Label = "Deploying now";
+                c0.Value = N(d.Now.Count);
+                c0.Link = d.Now.Count > 0;
+                if (d.Now.Count == 0) c0.Delta = "Nothing running";
+                else if (failedNow > 0) { c0.Delta = failedNow + " failed"; c0.Level = 3; }
+                else if (slowNow > 0) { c0.Delta = slowNow + " slower than usual"; c0.Level = 2; }
+                else { c0.Delta = "All on track"; c0.Level = 1; }
+                kpi.Cells.Add(c0);
+                KpiCell c1 = new KpiCell();
+                c1.Label = "Finished today";
+                c1.Value = N(d.Today.Finished);
+                c1.Link = d.Today.Finished > 0;
+                double perDay = d.Week.Finished / 7.0;
+                string avg = d.Week.Finished == 0 ? "none in 7 days" : "7-day average " + perDay.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                c1.Delta = d.Today.Failed > 0 ? d.Today.Failed + " failed \u00b7 " + avg : avg;
+                c1.Level = d.Today.Failed > 0 ? 3 : 0;
+                kpi.Cells.Add(c1);
+                KpiCell c2 = new KpiCell();
+                c2.Label = "Success rate, 7 days";
+                c2.Value = OverviewModel.Rate(d.Week.SuccessRate);
+                c2.Ring = d.Week.SuccessRate;
+                c2.Link = d.Week.Failed > 0;
+                if (d.Today.SuccessRate.HasValue && d.Week.SuccessRate.HasValue)
+                {
+                    int diff = (int)Math.Round(d.Today.SuccessRate.Value - d.Week.SuccessRate.Value);
+                    c2.Delta = "Today " + OverviewModel.Rate(d.Today.SuccessRate) + " (" + (diff >= 0 ? "+" : "\u2212") + Math.Abs(diff) + " pts)";
+                    c2.Level = diff >= 3 ? 1 : diff <= -10 ? 2 : 0;
+                }
+                else c2.Delta = d.Week.Finished == 0 ? "Nothing finished yet" : "None finished today";
+                kpi.Cells.Add(c2);
+                KpiCell c3 = new KpiCell();
+                c3.Label = "Median time, 7 days";
+                c3.Value = OverviewModel.Time(d.Week.MedianSeconds);
+                if (d.Today.MedianSeconds > 0 && d.Week.MedianSeconds > 0)
+                {
+                    c3.Delta = "Today " + OverviewModel.Time(d.Today.MedianSeconds);
+                    double ratio = d.Today.MedianSeconds / d.Week.MedianSeconds;
+                    c3.Level = ratio >= 1.2 ? 2 : ratio <= 0.85 ? 1 : 0;
+                }
+                else c3.Delta = d.Week.MedianSeconds > 0 ? "None finished today" : "Nothing finished yet";
+                kpi.Cells.Add(c3);
+            }
+            kpi.Invalidate();
 
             // Needs attention
             attention.Rows.Clear();
@@ -587,20 +870,25 @@ namespace TrackVice
                 r.Text = t.Title;
                 r.Sub = t.Text;
                 r.Right = t.Count > 0 ? t.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
-                r.Link = t.Count > 0 ? null : t.ActionText;
+                r.Link = !string.IsNullOrEmpty(t.ActionText) ? t.ActionText : t.Open != null ? "Open" : "Show devices";
                 r.Level = t.Level;
-                r.Wrap = true;
-                r.HasState = true;
-                r.State = t.Level >= 2 ? State.Failed : t.Level == 1 ? State.WaitingReboot : State.Pending;
                 r.Tag = t;
                 attention.Rows.Add(r);
             }
+            attention.Calm = false;
             Empty(attention, d.HasSources, "Nothing to check yet", "Failed devices, devices with no progress, agents that stopped sending and findings worth acting on show here.",
-                "Nothing needs attention right now.", emptyAction, emptyId);
+                "Failed devices, stalled agents and findings show up here when they need you.", emptyAction, emptyId);
+            if (d.HasSources)
+            {
+                attention.EmptyTitle = "Nothing needs you";
+                attention.Calm = true;
+            }
+            attention.Note = d.HasSources && d.Attention.Count > 0 ? d.Attention.Count + (d.Attention.Count == 1 ? " item" : " items") : null;
 
             // Today and the last 7 days
             period.Rows.Clear();
             period.Stats.Clear();
+            period.Days.Clear();
             if (d.HasSources)
             {
                 period.Stats.Add(new string[] { "", "Today", "Last 7 days" });
@@ -608,10 +896,18 @@ namespace TrackVice
                 period.Stats.Add(new string[] { "Failed", N(d.Today.Failed), N(d.Week.Failed), "link", "err" });
                 period.Stats.Add(new string[] { "Success rate", OverviewModel.Rate(d.Today.SuccessRate), OverviewModel.Rate(d.Week.SuccessRate) });
                 period.Stats.Add(new string[] { "Average time", OverviewModel.Time(d.Today.AvgSeconds), OverviewModel.Time(d.Week.AvgSeconds) });
+                period.DaysTitle = "Finished per day";
+                period.Days.AddRange(OverviewDays.Build(d.Week.FinishedDevices, nowUtc.ToLocalTime().Date, System.Globalization.CultureInfo.CurrentCulture));
+                double maxAvg = 1, maxFail = 1;
+                foreach (StepStat s in d.Slowest) maxAvg = Math.Max(maxAvg, s.AvgSeconds);
+                foreach (StepStat s in d.FailingMost) maxFail = Math.Max(maxFail, s.Failed);
                 if (d.Slowest.Count > 0) period.Rows.Add(Head("Slowest steps"));
+                int rank = 0;
                 foreach (StepStat s in d.Slowest)
                 {
                     TileRow r = new TileRow();
+                    r.Rank = ++rank;
+                    r.Percent = s.AvgSeconds / maxAvg * 100;
                     r.Text = s.Name;
                     r.Sub = s.Kind + " · on " + s.Devices + " device" + (s.Devices == 1 ? "" : "s");
                     r.Right = "avg " + OverviewModel.Time(s.AvgSeconds);
@@ -619,9 +915,12 @@ namespace TrackVice
                     period.Rows.Add(r);
                 }
                 if (d.FailingMost.Count > 0) period.Rows.Add(Head("Fail most"));
+                rank = 0;
                 foreach (StepStat s in d.FailingMost)
                 {
                     TileRow r = new TileRow();
+                    r.Rank = ++rank;
+                    r.Percent = s.Failed / maxFail * 100;
                     r.Text = s.Name;
                     r.Sub = s.Kind + " · failed on " + s.Failed + " of " + s.Devices + " device" + (s.Devices == 1 ? "" : "s");
                     r.Right = s.Failed + " failed";
@@ -658,13 +957,14 @@ namespace TrackVice
                     r.Text = rd.Device;
                     List<string> sub = new List<string>();
                     if (!string.IsNullOrEmpty(rd.Customer)) sub.Add(rd.Customer);
-                    sub.Add("last result: " + States.Label(last.D.State).ToLowerInvariant());
+                    r.Quiet = last.Replaced || (last.D.StateText ?? "").StartsWith(OverviewModel.ReplacedText, StringComparison.Ordinal);
+                    sub.Add(r.Quiet ? "replaced by a newer deployment" : "last result: " + States.Label(last.D.State).ToLowerInvariant());
                     sub.Add(Txt.Ago(OverviewCounts.StartOf(last), nowUtc));
                     r.Sub = string.Join(" \u00b7 ", sub.ToArray());
                     r.HasState = true;
                     r.State = last.D.State;
                     r.Right = OverviewCounts.Times(rd.Times);
-                    r.Level = last.D.State == State.Failed ? 2 : 0;
+                    r.Level = last.D.State == State.Failed && !r.Quiet ? 2 : 0;
                     r.Tag = rd;
                     deploy.Rows.Add(r);
                 }
@@ -691,6 +991,7 @@ namespace TrackVice
                 r.Sub = string.Join(" · ", sub.ToArray());
                 r.HasState = true;
                 r.State = f.State;
+                r.Quiet = (f.StateText ?? "").StartsWith(OverviewModel.ReplacedText, StringComparison.Ordinal);
                 r.Right = f.LastUtc.Year > 2000 ? Txt.Ago(f.LastUtc, nowUtc) : null;
                 r.Tag = f;
                 recent.Rows.Add(r);
@@ -751,6 +1052,7 @@ namespace TrackVice
 
         public void ClearHover()
         {
+            kpi.ClearHover();
             foreach (OverviewTile t in Tiles) { t.ClearHover(); t.Invalidate(); }
         }
 
@@ -764,66 +1066,89 @@ namespace TrackVice
             finally { laying = false; }
         }
 
-        // Two columns when there is room: Now and Needs attention, then the numbers and the recent devices.
+        // The headline, the toolbar and the key figures on top, Now across the page, then two columns when there is
+        // room: what needs attention and the last days on the left, the deployments and the recent devices on the right.
+        // Each column is as long as its sections: no card is stretched to fill.
         void Lay()
         {
-            int pad = Dpi.S(20);
+            int pad = Dpi.S(24);
             int avail = Width - SystemInformation.VerticalScrollBarWidth;
             int w = Math.Min(Dpi.S(1280), Math.Max(Dpi.S(320), avail - pad * 2));
-            int gap = Dpi.S(14);
+            int gap = Dpi.S(24), section = Dpi.S(32);
             bool two = NarrowFit.TwoColumns(w, Dpi.S(400), gap, 56);
             int left = two ? (w - gap) * 56 / 100 : w;
             int right = two ? w - left - gap : w;
             int y = 0;
             col.SuspendLayout();
-            int hh = head.Measure(w);
-            head.SetBounds(0, y, w, hh);
-            y += hh + Dpi.S(10);
-            int bh = Math.Max(Dpi.S(40), bar.GetPreferredSize(new Size(w, 0)).Height);
+            int hh = headline.Measure(w);
+            headline.SetBounds(0, y, w, hh);
+            y += hh + Dpi.S(16);
+            FitSearch(w);
+            int bh = Math.Max(Dpi.S(48), bar.GetPreferredSize(new Size(w, 0)).Height);
             bar.SetBounds(0, y, w, bh);
-            y += bh + Dpi.S(10);
+            y += bh + Dpi.S(24);
+            if (kpi.Visible)
+            {
+                int kh = kpi.Measure(w);
+                kpi.SetBounds(0, y, w, kh);
+                y += kh + section;
+            }
             if (setup.Visible)
             {
                 int sh = setup.Measure(w);
                 setup.SetBounds(0, y, w, sh);
-                y += sh + gap;
+                y += sh + section;
             }
+            int nh = now.Measure(w);
+            now.SetBounds(0, y, w, nh);
+            y += nh + section;
             if (two)
             {
-                y = Pair(now, attention, y, left, right, gap);
-                if (deploy.Visible)
+                int ly = y, ry = y;
+                foreach (OverviewTile t in new OverviewTile[] { attention, period })
                 {
-                    // The long tile on the left, the deployment counts and the recent devices stacked beside it.
-                    int dh = deploy.Measure(right), rh = recent.Measure(right), lh = period.Measure(left);
-                    int h = Math.Max(lh, dh + gap + rh);
-                    period.SetBounds(0, y, left, h);
-                    deploy.SetBounds(left + gap, y, right, dh);
-                    recent.SetBounds(left + gap, y + dh + gap, right, h - dh - gap);
-                    y += h + gap;
+                    int th = t.Measure(left);
+                    t.SetBounds(0, ly, left, th);
+                    ly += th + section;
                 }
-                else y = Pair(period, recent, y, left, right, gap);
+                foreach (OverviewTile t in new OverviewTile[] { deploy, recent })
+                {
+                    if (!t.Visible) continue;
+                    int th = t.Measure(right);
+                    t.SetBounds(left + gap, ry, right, th);
+                    ry += th + section;
+                }
+                y = Math.Max(ly, ry) - section;
             }
             else
             {
-                foreach (OverviewTile t in new OverviewTile[] { now, attention, deploy, period, recent })
+                foreach (OverviewTile t in new OverviewTile[] { attention, deploy, period, recent })
                 {
                     if (!t.Visible) continue;
                     int th = t.Measure(w);
                     t.SetBounds(0, y, w, th);
-                    y += th + gap;
+                    y += th + section;
                 }
+                y -= section;
             }
             col.ResumeLayout(true);
-            col.SetBounds(Math.Max(pad, (avail - w) / 2), Dpi.S(20) + AutoScrollPosition.Y, w, y + Dpi.S(20));
+            col.SetBounds(Math.Max(pad, (avail - w) / 2), Dpi.S(24) + AutoScrollPosition.Y, w, y + Dpi.S(32));
             foreach (OverviewTile t in Tiles) t.PerformLayout();
         }
 
-        static int Pair(OverviewTile a, OverviewTile b, int y, int left, int right, int gap)
+        // The search field takes the room the other controls of the toolbar leave, so the toolbar stays one row for as
+        // long as it can. On a narrow window the field shares a row with the filters or gets a row of its own.
+        void FitSearch(int w)
         {
-            int h = Math.Max(a.Measure(left), b.Measure(right));
-            a.SetBounds(0, y, left, h);
-            b.SetBounds(left + gap, y, right, h);
-            return y + h + gap;
+            int inner = w - bar.Padding.Horizontal - Dpi.S(2);
+            int others = 0;
+            foreach (Control c in bar.Controls)
+                if (c != searchField && c.Visible) others += c.Width + c.Margin.Horizontal;
+            int min = Dpi.S(180), max = Dpi.S(360), m = searchField.Margin.Horizontal;
+            int room = inner - others - m;
+            if (room < min) room = inner - bCustomer.Width - bCustomer.Margin.Horizontal - side.Width - side.Margin.Horizontal - m;
+            if (room < min) room = inner - m;
+            searchField.Width = Math.Max(Dpi.S(120), Math.Min(max, room));
         }
 
         public void ApplyTheme(Theme t)
@@ -832,14 +1157,14 @@ namespace TrackVice
             BackColor = t.Bg;
             ForeColor = t.Text;
             col.BackColor = t.Bg;
-            bar.BackColor = t.Bg;
-            head.ApplyTheme(t);
-            foreach (FlatButton b in new FlatButton[] { bCustomer, bSearch, bRefresh, bThisPc }) b.ApplyTheme(t);
+            bar.BackColor = t.Card;
+            headline.ApplyTheme(t);
+            kpi.ApplyTheme(t);
+            bar.Th = t;
+            bCustomer.ApplyTheme(t);
+            foreach (FlatButton b in new FlatButton[] { bSearch, bRefresh, bThisPc }) b.ApplyTheme(t);
             side.ApplyTheme(t);
-            Search.BackColor = t.Field;
-            Search.ForeColor = t.Text;
-            status.ForeColor = t.Text3;
-            status.BackColor = t.Bg;
+            searchField.ApplyTheme(t);
             foreach (OverviewTile x in Tiles) x.ApplyTheme(t);
             Invalidate(true);
         }
