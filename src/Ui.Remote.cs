@@ -531,6 +531,7 @@ namespace TrackVice
                 server.Focus();
                 return;
             }
+            if (!SccmTrustUi.Confirm(this, srv)) { Status("Not connected to " + srv + "."); return; }
             bConnect.Enabled = false;
             Status("Connecting to " + srv + "…");
             int my = gen;

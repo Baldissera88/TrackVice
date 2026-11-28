@@ -97,9 +97,11 @@ namespace TrackVice
         static string Q(string s)
         {
             s = s ?? "";
-            // Keep spreadsheets from running a value as a formula.
-            if (s.Length > 0 && "=+-@".IndexOf(s[0]) >= 0) s = "'" + s;
-            return "\"" + s.Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ") + "\"";
+            // Keep spreadsheets from running a value as a formula. A tab or a line break in front starts one too,
+            // and spaces in front of the sign do not stop every spreadsheet.
+            string t = s.TrimStart();
+            if (s.Length > 0 && (s[0] == '\t' || s[0] == '\r' || s[0] == '\n' || (t.Length > 0 && "=+-@".IndexOf(t[0]) >= 0))) s = "'" + s;
+            return "\"" + s.Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ").Replace("\t", " ") + "\"";
         }
 
         // Serial numbers typed one per line, or pasted from a CSV such as a hardware hash export. A header row
@@ -207,6 +209,14 @@ namespace TrackVice
             graph = g;
         }
 
+        // The link to the next page of a list. It is followed with the sign-in of the admin, so only a link to Microsoft
+        // Graph itself is taken.
+        public static string NextLink(Dictionary<string, object> r)
+        {
+            string url = Http.Str(r, "@odata.nextLink");
+            return url != null && url.StartsWith("https://graph.microsoft.com/", StringComparison.OrdinalIgnoreCase) ? url : null;
+        }
+
         public static string FindUrl(string serial)
         {
             string filter = "contains(serialNumber,'" + serial.Replace("'", "''") + "')";
@@ -251,7 +261,7 @@ namespace TrackVice
                     e.LastContactUtc = IntuneCatalog.Time(x, "lastContactedDateTime");
                     list.Add(e);
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = NextLink(r);
             }
             list.Sort(delegate (AutopilotEntry a, AutopilotEntry b) { return string.Compare(a.Serial, b.Serial, StringComparison.OrdinalIgnoreCase); });
             return list;
@@ -335,7 +345,7 @@ namespace TrackVice
             {
                 Dictionary<string, object> r = graph.Get(url);
                 found.AddRange(Values(r));
-                url = Http.Str(r, "@odata.nextLink");
+                url = NextLink(r);
             }
             List<Dictionary<string, object>> exact = new List<Dictionary<string, object>>();
             List<string> partial = new List<string>();
@@ -621,7 +631,7 @@ namespace TrackVice
                     EspConfig c = ToEsp(x);
                     if (c != null) list.Add(c);
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = NextLink(r);
             }
             foreach (EspConfig c in list)
             {
@@ -635,7 +645,7 @@ namespace TrackVice
                         EspTarget t = ToTarget(ImeJson.Get(a, "target") as Dictionary<string, object>);
                         if (t != null) c.Targets.Add(t);
                     }
-                    next = Http.Str(r, "@odata.nextLink");
+                    next = NextLink(r);
                 }
                 c.AssignmentsRead = true;
             }
@@ -699,7 +709,7 @@ namespace TrackVice
                     string gid = Http.Str(x, "id");
                     if (!string.IsNullOrEmpty(gid)) groups[gid] = Http.Str(x, "displayName") ?? gid;
                 }
-                url = Http.Str(r, "@odata.nextLink");
+                url = NextLink(r);
             }
             return groups;
         }

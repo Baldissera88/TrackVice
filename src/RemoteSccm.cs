@@ -13,15 +13,202 @@ namespace TrackVice
         List<Dictionary<string, object>> Query(string wql);
     }
 
+    // Text for a WQL string in single quotes. WQL escapes with a backslash, so a backslash and a quote are both escaped;
+    // taking the quotes out alone leaves a backslash that escapes the closing quote.
+    public static class Wql
+    {
+        public static string Text(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            StringBuilder b = new StringBuilder(s.Length + 8);
+            foreach (char c in s)
+            {
+                if (c == '\\' || c == '\'' || c == '"') b.Append('\\');
+                // A control character has no place in a name or an ID of the site.
+                if (c < ' ') continue;
+                b.Append(c);
+            }
+            return b.ToString();
+        }
+    }
+
+    // The name of the server that runs the SMS Provider, and a site code. Both go into a WMI path, so only what a host
+    // name, an IP address or a site code can hold is let through.
+    public static class SccmServerName
+    {
+        // The name without spaces around it and without the backslashes of \\server.
+        public static string Normalize(string server)
+        {
+            string s = (server ?? "").Trim().TrimStart('\\').Trim();
+            return s.Length == 0 ? "." : s;
+        }
+
+        // Null when the name can be a server, else one plain sentence.
+        public static string Problem(string server)
+        {
+            string s = Normalize(server);
+            if (s == ".") return null;
+            bool ok = s.Length <= 253;
+            System.Net.IPAddress ip;
+            if (ok && s.IndexOf(':') >= 0)
+                ok = System.Net.IPAddress.TryParse(s, out ip) && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 && s.IndexOf('%') < 0;
+            else if (ok)
+            {
+                foreach (char c in s) if (!(char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == '.')) ok = false;
+                if (s[0] == '.' || s[0] == '-' || s.Contains("..")) ok = false;
+            }
+            return ok ? null : "\"" + Txt.Short(s, 80) + "\" is not the name of a server. Enter the host name or the IP address of the server that runs the SMS Provider, without a path.";
+        }
+
+        // A site code is three letters or digits.
+        public static bool SiteCodeOk(string code)
+        {
+            if (code == null || code.Length != 3) return false;
+            foreach (char c in code) if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) return false;
+            return true;
+        }
+
+        // This PC itself: connecting to it sends no sign-in over the network.
+        public static bool IsLocal(string server)
+        {
+            string s = Normalize(server);
+            return s == "." || s == "127.0.0.1" || s == "::1" || string.Equals(s, "localhost", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(s, Environment.MachineName, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    // The SMS Providers this Windows user has agreed to connect to. Connecting signs in with the Windows account, so a
+    // server name that came with an imported customer file or from shared customers is not connected to until the user
+    // has confirmed it once. Kept with the other settings of the user.
+    public static class SccmTrust
+    {
+        public const string PrefName = "SccmTrusted", ServerPref = "SccmServer";
+        const string RegKey = @"Software\TrackVice";
+        static readonly object gate = new object();
+
+        // Reads and writes a setting of the user. Replaced in tests.
+        public static Func<string, string> Read = RegRead;
+        public static Action<string, string> Write = RegWrite;
+
+        static string RegRead(string name)
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RegKey))
+                {
+                    object v = k == null ? null : k.GetValue(name);
+                    return v == null ? null : Convert.ToString(v, CultureInfo.InvariantCulture);
+                }
+            }
+            catch (Exception) { return null; }
+        }
+
+        static void RegWrite(string name, string value)
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RegKey)) k.SetValue(name, value);
+            }
+            catch (Exception) { }
+        }
+
+        static string Key(string server)
+        {
+            return SccmServerName.Normalize(server).ToLowerInvariant();
+        }
+
+        // The first time, the server this PC already uses is taken as confirmed, so an update does not ask about it.
+        // Called when TrackVice starts, before a file with customers can be imported.
+        public static void Seed()
+        {
+            lock (gate)
+            {
+                if (Read(PrefName) != null) return;
+                string have = Read(ServerPref);
+                bool keep = !string.IsNullOrEmpty(have) && have.Trim().Length > 0 && SccmServerName.Problem(have) == null;
+                Write(PrefName, keep ? Key(have) : "");
+            }
+        }
+
+        static List<string> Load()
+        {
+            List<string> l = new List<string>();
+            foreach (string s in (Read(PrefName) ?? "").Split('|')) if (s.Length > 0) l.Add(s);
+            return l;
+        }
+
+        public static bool IsTrusted(string server)
+        {
+            if (SccmServerName.Problem(server) != null) return false;
+            if (SccmServerName.IsLocal(server)) return true;
+            lock (gate)
+            {
+                Seed();
+                return Load().Contains(Key(server));
+            }
+        }
+
+        // Called when the user has confirmed the server.
+        public static void Add(string server)
+        {
+            if (SccmServerName.Problem(server) != null || SccmServerName.IsLocal(server)) return;
+            lock (gate)
+            {
+                Seed();
+                List<string> l = Load();
+                string k = Key(server);
+                if (l.Contains(k)) return;
+                l.Add(k);
+                // The newest 200 are kept.
+                if (l.Count > 200) l.RemoveRange(0, l.Count - 200);
+                Write(PrefName, string.Join("|", l.ToArray()));
+            }
+        }
+
+        // What connecting to the server means, for the question before the first connection.
+        public static string Question(string server)
+        {
+            return "Connect to " + SccmServerName.Normalize(server) + "?\r\n\r\nTrackVice has not connected to this server from your Windows account before. Connecting signs in to it with your Windows account ("
+                + Environment.UserDomainName + "\\" + Environment.UserName + "), as the Configuration Manager console does. Only connect to an SMS Provider you know: a server name that came with a customer file from someone else can be a server that collects sign-ins.";
+        }
+
+        public static string Refusal(string server)
+        {
+            return "TrackVice has not connected to " + SccmServerName.Normalize(server) + " from your Windows account before, and connecting signs in to it with your Windows account. To confirm the server, open Devices > SCCM / on-premises > Task sequences in SCCM and connect to it there.";
+        }
+    }
+
     public sealed partial class SccmWmi : ISccmQuery
     {
+        // The most rows one query gives, and the longest text of one value, so a site cannot fill the memory.
+        public const int MaxRows = 500000, MaxText = 1 << 20;
+        // The last query stopped at MaxRows.
+        public bool Truncated;
+
+        // A value of a row, with a text that is too long cut off.
+        public static object Clip(object v)
+        {
+            string s = v as string;
+            return s != null && s.Length > MaxText ? s.Substring(0, MaxText) : v;
+        }
+
+        // Throws with a plain sentence when the server or the site code cannot be one, or when the user has not
+        // confirmed the server. Nothing is sent to the server before this.
+        public static void CheckTarget(string server, string siteCode)
+        {
+            string problem = SccmServerName.Problem(server);
+            if (problem != null) throw new InvalidOperationException(problem);
+            if (siteCode != null && !SccmServerName.SiteCodeOk(siteCode)) throw new InvalidOperationException("\"" + Txt.Short(siteCode, 20) + "\" is not a site code. A site code is three letters or digits.");
+            if (!SccmTrust.IsTrusted(server)) throw new InvalidOperationException(SccmTrust.Refusal(server));
+        }
+
         public readonly string Server;
         public string SiteCode;
         ManagementScope scope;
 
         public SccmWmi(string server, string siteCode)
         {
-            Server = string.IsNullOrEmpty(server) ? "." : server.Trim().TrimStart('\\');
+            Server = SccmServerName.Normalize(server);
             SiteCode = string.IsNullOrEmpty(siteCode) ? null : siteCode.Trim().ToUpperInvariant();
         }
 
@@ -38,6 +225,7 @@ namespace TrackVice
         // Connects, and finds the site code from SMS_ProviderLocation when it was not given.
         public void Connect()
         {
+            CheckTarget(Server, SiteCode);
             if (SiteCode == null)
             {
                 ManagementScope root = new ManagementScope(@"\\" + Server + @"\root\SMS", Options());
@@ -52,7 +240,8 @@ namespace TrackVice
                         break;
                     }
                 }
-                if (string.IsNullOrEmpty(SiteCode)) throw new InvalidOperationException(Server + " is not an SMS Provider for a site. Enter the server that runs the SMS Provider, or the site code.");
+                if (string.IsNullOrEmpty(SiteCode)) { SiteCode = null; throw new InvalidOperationException(Server + " is not an SMS Provider for a site. Enter the server that runs the SMS Provider, or the site code."); }
+                if (!SccmServerName.SiteCodeOk(SiteCode)) { SiteCode = null; throw new InvalidOperationException(Server + " gave a site code that is not three letters or digits."); }
             }
             scope = new ManagementScope(@"\\" + Server + @"\root\SMS\site_" + SiteCode, Options());
             scope.Connect();
@@ -65,6 +254,7 @@ namespace TrackVice
             EnumerationOptions opt = new EnumerationOptions();
             opt.Timeout = TimeSpan.FromSeconds(60);
             opt.ReturnImmediately = false;
+            Truncated = false;
             try
             {
                 using (ManagementObjectSearcher s = new ManagementObjectSearcher(scope, new ObjectQuery(wql), opt))
@@ -72,12 +262,13 @@ namespace TrackVice
                 {
                     foreach (ManagementBaseObject o in c)
                     {
+                        if (rows.Count >= MaxRows) { Truncated = true; o.Dispose(); break; }
                         Dictionary<string, object> row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
                         foreach (PropertyData p in o.Properties)
                         {
                             object v = p.Value;
                             if (v != null && p.Type == CimType.DateTime) v = FromDmtf(v as string);
-                            row[p.Name] = v;
+                            row[p.Name] = Clip(v);
                         }
                         rows.Add(row);
                         o.Dispose();
@@ -360,12 +551,24 @@ namespace TrackVice
 
         public IRemoteFeed Open(RemoteDeployment d)
         {
-            string[] k = d.Key.Split('|');
+            string resource, deployment, runTicks;
+            SplitKey(d.Key, out resource, out deployment, out runTicks);
             long ticks = 0;
             DateTime? run = null;
-            if (k.Length > 2 && long.TryParse(k[2], NumberStyles.None, CultureInfo.InvariantCulture, out ticks) && ticks > 0) run = new DateTime(ticks, DateTimeKind.Utc);
+            if (runTicks != null && long.TryParse(runTicks, NumberStyles.None, CultureInfo.InvariantCulture, out ticks) && ticks > 0 && ticks <= DateTime.MaxValue.Ticks) run = new DateTime(ticks, DateTimeKind.Utc);
             else if (d.StartUtc.HasValue) run = d.StartUtc;
-            return new SccmFeed(q, long.Parse(k[0], CultureInfo.InvariantCulture), k.Length > 1 ? k[1] : null, run, d.Device, d.Profile, Dmtf);
+            return new SccmFeed(q, long.Parse(resource, CultureInfo.InvariantCulture), deployment, run, d.Device, d.Profile, Dmtf);
+        }
+
+        // The parts of a key "resource|deployment|ticks". The deployment ID comes from the site, so a | in it does not
+        // move the parts: the first part is the resource and the last one the run.
+        public static void SplitKey(string key, out string resource, out string deployment, out string runTicks)
+        {
+            key = key ?? "";
+            int a = key.IndexOf('|'), z = key.LastIndexOf('|');
+            resource = a < 0 ? key : key.Substring(0, a);
+            deployment = a < 0 ? null : z > a ? key.Substring(a + 1, z - a - 1) : key.Substring(a + 1);
+            runTicks = z > a ? key.Substring(z + 1) : null;
         }
 
         Dictionary<long, string> Names(List<long> ids)
@@ -390,7 +593,7 @@ namespace TrackVice
             for (int i = 0; i < pkgs.Count; i += 40)
             {
                 StringBuilder w = new StringBuilder();
-                for (int k = i; k < Math.Min(pkgs.Count, i + 40); k++) w.Append(w.Length > 0 ? " OR " : "").Append("PackageID = '").Append(pkgs[k].Replace("'", "")).Append("'");
+                for (int k = i; k < Math.Min(pkgs.Count, i + 40); k++) w.Append(w.Length > 0 ? " OR " : "").Append("PackageID = '").Append(Wql.Text(pkgs[k])).Append("'");
                 try
                 {
                     foreach (Dictionary<string, object> r in q.Query("SELECT PackageID, Name FROM SMS_TaskSequencePackage WHERE " + w)) map[Str(r, "PackageID")] = Str(r, "Name");
@@ -521,7 +724,7 @@ namespace TrackVice
         public Batch Read(DateTime nowUtc)
         {
             string wql = "SELECT * FROM SMS_TaskSequenceExecutionStatus WHERE ResourceID = " + resourceId.ToString(CultureInfo.InvariantCulture)
-                + (deployment != null ? " AND AdvertisementID = '" + deployment.Replace("'", "") + "'" : "")
+                + (deployment != null ? " AND AdvertisementID = '" + Wql.Text(deployment) + "'" : "")
                 + (runUtc.HasValue ? " AND ExecutionTime >= '" + dmtf(runUtc.Value - SccmCatalog.Margin) + "'" : "");
             // The whole run is read each time: a device sends the status messages it kept during Windows PE and restarts later,
             // with the time of each step, so reading only what is newer than the last row would miss them.

@@ -46,7 +46,9 @@ namespace TrackVice
             FlatButton copy = SmallButton("Copy", delegate
             {
                 if (code == null) { Safe.Say("Add " + (own ? "your tenant" : "a customer") + " first: Devices > Add customer makes the code."); return; }
-                Menus.Copy(".\\TrackVice.exe /agent-install /customer \"" + code + "\"");
+                string line = AgentCommand.Line(".\\TrackVice.exe /agent-install", code);
+                if (line == null) { Safe.Say("The saved code holds characters a customer code never has, so it was not copied. Make the code again in Devices > Add customer."); return; }
+                Menus.Copy(line);
             });
             Add(new SettingRow(Glyphs2.Code, "In PowerShell as administrator, in the folder with TrackVice.exe",
                 (code != null ? "With the " + (own ? "code" : "customer code") + " of " + who + ". Copy puts the whole command on the clipboard." : "Devices > Add customer makes the " + (own ? "code" : "customer code") + ". It is not made yet.")
@@ -127,7 +129,9 @@ namespace TrackVice
             FlatButton copy = SmallButton("Copy", delegate
             {
                 if (code == null) { Safe.Say("Devices > Intune / cloud > Add customer makes the customer code."); return; }
-                Menus.Copy("TrackVice.exe /agent-start /customer \"" + code + "\"");
+                string line = AgentCommand.Line("TrackVice.exe /agent-start", code);
+                if (line == null) { Safe.Say("The saved code holds characters a customer code never has, so it was not copied. Make the code again in Devices > Add customer."); return; }
+                Menus.Copy(line);
             });
             Add(new SettingRow(Glyphs2.Code, "Run Command Line, with the TrackVice package",
                 code != null ? "With the customer code of " + customer + ". Copy puts the whole command on the clipboard." : "Devices > Intune / cloud > Add customer makes the customer code, also for a site without Intune.", copy));
@@ -146,6 +150,8 @@ namespace TrackVice
             if (demo) return;
             string srv = server.Text.Trim(), sc = site.Text.Trim();
             if (srv == Prefs.Get("SccmServer", "") && sc == Prefs.Get("SccmSite", "")) return;
+            // The server was typed here. Asking now means the lists that connect on their own do not refuse it later.
+            if (srv.Length > 0) SccmTrustUi.Confirm(this, srv);
             Prefs.Set("SccmServer", srv.Length == 0 ? null : srv);
             Prefs.Set("SccmSite", sc.Length == 0 ? null : sc);
             CustomerUi.Remember(delegate (Customer cu) { cu.SccmServer = srv; cu.SccmSite = sc; });
@@ -155,6 +161,20 @@ namespace TrackVice
         {
             base.OnShown(e);
             foreach (TextBox b in new TextBox[] { server, site }) { b.BackColor = theme.Field; b.ForeColor = theme.Text; }
+        }
+    }
+
+    // Asks before the first connection to an SMS Provider, as connecting signs in to it with the Windows account.
+    public static class SccmTrustUi
+    {
+        // True when the server may be connected to: it was confirmed before, or the user confirms it now. A name that
+        // cannot be a server passes, so the connection itself says what is wrong with it.
+        public static bool Confirm(IWin32Window owner, string server)
+        {
+            if (SccmServerName.Problem(server) != null || SccmTrust.IsTrusted(server)) return true;
+            if (MessageBox.Show(owner, SccmTrust.Question(server), "SMS Provider", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK) return false;
+            SccmTrust.Add(server);
+            return true;
         }
     }
 
@@ -211,6 +231,12 @@ namespace TrackVice
 
     public sealed partial class MainForm
     {
+        // The SMS Provider this PC already uses is noted as confirmed when TrackVice starts, before anything is imported.
+        static MainForm()
+        {
+            SccmTrust.Seed();
+        }
+
         // The side the Devices menu shows: intune or sccm.
         string DevicesSide
         {

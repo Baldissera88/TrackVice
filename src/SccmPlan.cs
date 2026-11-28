@@ -71,15 +71,34 @@ namespace TrackVice
         public readonly List<TsNode> All = new List<TsNode>();
 
         // The XML of SMS_TaskSequencePackage.Sequence: a sequence element with group and step elements in it.
+        // The XML comes from the site or from a copy on disk. These limits are far above any real task sequence, and keep
+        // one that is made to be huge or nested without end from using up the memory or the stack.
+        public const int MaxChars = 64 * 1024 * 1024, MaxDepth = 64, MaxNodes = 20000;
+
         public static TsSequence Parse(string xml)
         {
             if (string.IsNullOrEmpty(xml) || xml.Trim().Length == 0) throw new FormatException("The task sequence is empty.");
+            if (xml.Length > MaxChars) throw new FormatException("The task sequence is too large to read.");
             XmlReaderSettings rs = new XmlReaderSettings();
             rs.DtdProcessing = DtdProcessing.Prohibit;
             rs.XmlResolver = null;
+            rs.MaxCharactersInDocument = MaxChars;
             XmlDocument d = new XmlDocument();
+            d.XmlResolver = null;
             try
             {
+                // A first pass counts, before anything walks the tree.
+                using (XmlReader r = XmlReader.Create(new StringReader(xml), rs))
+                {
+                    int nodes = 0;
+                    while (r.Read())
+                    {
+                        if (r.NodeType != XmlNodeType.Element) continue;
+                        if (r.Depth > MaxDepth) throw new FormatException("The task sequence has groups nested more than " + MaxDepth.ToString(CultureInfo.InvariantCulture) + " deep.");
+                        string en = r.LocalName.ToLowerInvariant();
+                        if ((en == "group" || en == "step") && ++nodes > MaxNodes) throw new FormatException("The task sequence has more than " + MaxNodes.ToString(CultureInfo.InvariantCulture) + " groups and steps.");
+                    }
+                }
                 using (XmlReader r = XmlReader.Create(new StringReader(xml), rs)) d.Load(r);
             }
             catch (XmlException ex) { throw new FormatException("The task sequence is not XML that TrackVice can read: " + ex.Message); }

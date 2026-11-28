@@ -102,6 +102,26 @@ namespace TrackVice
         }
     }
 
+    // The command line that starts the agent with a customer code, for the clipboard. It is pasted into PowerShell as
+    // administrator or into a task sequence step, and the code is read from storage, so a code with anything in it
+    // that could end the quotes or start another command is not made into a command.
+    public static class AgentCommand
+    {
+        public static bool SafeCode(string code)
+        {
+            if (string.IsNullOrEmpty(code) || code.Length > 32000) return false;
+            foreach (char c in code)
+                if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == ':' || c == '.' || c == '=' || c == '+' || c == '/')) return false;
+            return true;
+        }
+
+        // Null when the code cannot go on a command line.
+        public static string Line(string start, string code)
+        {
+            return SafeCode(code) ? start + " /customer \"" + code + "\"" : null;
+        }
+    }
+
     // What is set up on this PC, for the empty state of each side.
     public sealed class SideFacts
     {

@@ -26,7 +26,7 @@ namespace TrackVice
         public List<SmsPackage> FindPackages(string name)
         {
             List<SmsPackage> l = new List<SmsPackage>();
-            foreach (Dictionary<string, object> r in w.Query("SELECT PackageID, Name, PkgSourcePath, Version FROM SMS_Package WHERE Name = '" + name.Replace("'", "") + "'"))
+            foreach (Dictionary<string, object> r in w.Query("SELECT PackageID, Name, PkgSourcePath, Version FROM SMS_Package WHERE Name = '" + Wql.Text(name) + "'"))
             {
                 SmsPackage p = new SmsPackage();
                 p.PackageId = SccmCatalog.Str(r, "PackageID");
