@@ -9,6 +9,10 @@ namespace TrackVice
     {
         FlatButton bMore;
         FlatButton[] headerButtons;
+        BrandMark brand;
+        Crumb crumb;
+        FactChips facts;
+        SearchField searchField;
         // The buttons that fold into More, the first to go first. Back, Forward, Overview, Settings and Help stay.
         FlatButton[] foldOrder;
         bool fitting;
@@ -29,10 +33,102 @@ namespace TrackVice
             chips.Layout += delegate { FitChips(); };
             Layout += delegate { FitStack(); };
             Shown += delegate { FitStack(); FitChips(); FitHeader(); };
+            // The subtitle keeps the text, for the window and for reading; the crumb and the chips show it.
             subtitle.AutoSize = false;
             subtitle.AutoEllipsis = true;
             subtitle.Height = Fonts.Small.Height + Dpi.S(4);
+            subtitle.Visible = false;
+            BuildHeaderParts();
             FitHeader();
+        }
+
+        // The mark, the crumb, the chips with the facts, the search field, and quiet buttons.
+        void BuildHeaderParts()
+        {
+            foreach (FlatButton b in headerButtons)
+            {
+                b.Quiet = true;
+                b.Margin = new Padding(Dpi.S(1), 0, 0, 0);
+            }
+            bHome.Margin = new Padding(Dpi.S(1), 0, Dpi.S(8), 0);
+            bTheme.Margin = new Padding(Dpi.S(8), 0, 0, 0);
+            brand = new BrandMark();
+            crumb = new Crumb();
+            facts = new FactChips();
+            searchField = new SearchField();
+            searchField.Click += Safe.Wrap(delegate { OpenPalette(""); });
+            Tip(searchField, "Search devices, actions, pages and settings, and jump to them (Ctrl+K or Ctrl+P)");
+            foreach (Control c in new Control[] { brand, crumb, facts, searchField })
+            {
+                header.Controls.Add(c);
+                themed.Add((IThemed)c);
+            }
+            // The buttons keep to row one, so they never lie over the row below.
+            toolbar.MaximumSize = new Size(0, Dpi.S(44));
+            toolbar.SizeChanged += delegate { PlaceHeader(); };
+            header.Resize += delegate { PlaceHeader(); FitHeader(); };
+            header.Paint += delegate (object o, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(theme != null ? theme.Divider : Color.Gray, 1f)) e.Graphics.DrawLine(p, 0, header.Height - 1, header.Width, header.Height - 1);
+            };
+            BuildPalette();
+            PlaceHeader();
+        }
+
+        // Row one: the mark, the title, and the buttons at the right. Row two: where you are, the facts as chips, and
+        // the search field at the right.
+        void PlaceHeader()
+        {
+            if (brand == null || header.ClientSize.Width <= 0) return;
+            int w = header.ClientSize.Width, edge = Dpi.S(18);
+            brand.Location = new Point(edge, Dpi.S(10));
+            title.Location = new Point(brand.Right + Dpi.S(9), brand.Top + (brand.Height - title.Height) / 2 - Dpi.S(1));
+            toolbar.Location = new Point(Math.Max(0, w - toolbar.Width), 0);
+            int rowTwo = Dpi.S(46), rowH = Dpi.S(28);
+            int sw = Math.Max(Dpi.S(96), Math.Min(SearchField.NaturalWidth, (int)(w * 0.3)));
+            searchField.SetBounds(w - edge - sw, rowTwo, sw, rowH);
+            int room = Math.Max(0, searchField.Left - edge - Dpi.S(16));
+            int cw = Math.Min(crumb.PreferredWidth, room);
+            crumb.SetBounds(edge + Dpi.S(2), rowTwo + (rowH - crumb.Height) / 2, cw, crumb.Height);
+            int fx = crumb.Right + Dpi.S(14);
+            int fw = edge + room - fx;
+            facts.SetBounds(fx, rowTwo + (rowH - facts.Height) / 2, Math.Max(0, fw), facts.Height);
+            facts.Visible = facts.Items.Length > 0 && fw >= Dpi.S(48);
+        }
+
+        // A device is open: its customer or source, its name, and the facts.
+        void ShowHeaderDevice(Session s)
+        {
+            if (crumb == null || engine == null) return;
+            string mode = null;
+            if (engine.Mode == Modes.Demo) mode = "Demo data";
+            else if (engine.Mode == Modes.Intune) mode = "Intune";
+            else if (engine.Mode == Modes.Sccm) mode = "SCCM";
+            else if (engine.Mode == Modes.Agent) mode = AgentVersions.Header(s.AppVersion);
+            else if (engine.Mode == Modes.File) mode = "Saved session";
+            else if (engine.Mode == Modes.Folder) mode = "Log folder";
+            List<string> l = new List<string>();
+            if (watchedCustomer != null && mode != null) l.Add(mode);
+            if (s.Items.Count > 0) l.Add(s.Kind);
+            string profile = s.GetInfo("Task sequence") ?? s.GetInfo("Autopilot profile");
+            if (profile != null) l.Add(profile);
+            if (HeaderUser(s) != null) l.Add(HeaderUser(s));
+            if (!string.IsNullOrEmpty(s.OsVersion)) l.Add(s.OsVersion);
+            DateTime? f = s.FirstUtc;
+            if (f.HasValue) l.Add("started " + Txt.Local(f.Value));
+            crumb.ShowDevice(watchedCustomer ?? mode ?? "This PC", s.Computer);
+            facts.Items = l.ToArray();
+            Tip(facts, subtitle.Text);
+            PlaceHeader();
+        }
+
+        // A page such as Overview is open: its title, and no facts.
+        void ShowHeaderPage(string title)
+        {
+            if (crumb == null) return;
+            crumb.ShowPage(title);
+            facts.Items = new string[0];
+            PlaceHeader();
         }
 
         static int Taken(FlatButton b)
@@ -67,6 +163,26 @@ namespace TrackVice
                 subtitle.Width = Math.Max(Dpi.S(40), header.ClientSize.Width - subtitle.Left - Dpi.S(16));
             }
             finally { fitting = false; }
+            PlaceHeader();
+        }
+
+        // ---------- the status bar ----------
+
+        void BuildStatusBar()
+        {
+            statusBar.Resize += delegate { FitStatus(); };
+            statusBar.Paint += delegate (object o, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(theme != null ? theme.Divider : Color.Gray, 1f)) e.Graphics.DrawLine(p, 0, 0, statusBar.Width, 0);
+            };
+        }
+
+        // The right side takes what it needs, up to 60 % of the bar; what does not fit goes, the least important first.
+        void FitStatus()
+        {
+            int w = statusRight.Fit(Math.Max(Dpi.S(80), (int)(statusBar.ClientSize.Width * 0.6)));
+            if (statusRight.Width != w + Dpi.S(2)) statusRight.Width = w + Dpi.S(2);
+            statusRight.Invalidate();
         }
 
         int chipsHeight = Dpi.S(74);

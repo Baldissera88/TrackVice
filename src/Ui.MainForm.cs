@@ -43,7 +43,7 @@ namespace TrackVice
         readonly Panel content = new Panel();
         readonly Panel statusBar = new Panel();
         readonly Label statusLeft = new Label();
-        readonly Label statusRight = new Label();
+        readonly StatusSegments statusRight = new StatusSegments();
         readonly Control[] views = new Control[5];
         readonly GanttPage gantt = new GanttPage();
         readonly List<Control> plain = new List<Control>();
@@ -159,19 +159,19 @@ namespace TrackVice
         void BuildHeader()
         {
             header.Dock = DockStyle.Top;
-            header.Height = Dpi.S(64);
+            header.Height = Dpi.S(80);
             title.Text = "TrackVice";
             title.Font = Fonts.Title;
             title.AutoSize = true;
-            title.Location = new Point(Dpi.S(20), Dpi.S(8));
+            title.Location = new Point(Dpi.S(54), Dpi.S(10));
             subtitle.AutoSize = true;
             subtitle.Font = Fonts.Small;
             subtitle.Location = new Point(Dpi.S(22), Dpi.S(38));
-            toolbar.Dock = DockStyle.Right;
+            toolbar.Dock = DockStyle.None;
             toolbar.AutoSize = true;
             toolbar.WrapContents = false;
             toolbar.FlowDirection = FlowDirection.LeftToRight;
-            toolbar.Padding = new Padding(0, Dpi.S(6), Dpi.S(12), 0);
+            toolbar.Padding = new Padding(0, Dpi.S(8), Dpi.S(12), 0);
 
             bWatch = Button("Watch", Glyphs.Watch, delegate { ToggleWatch(); });
             bOpen = Button("Open", Glyphs2.Folder, delegate { OpenMenu().Show(bOpen, new Point(0, bOpen.Height)); });
@@ -256,17 +256,17 @@ namespace TrackVice
             content.Padding = new Padding(Dpi.S(16), Dpi.S(10), Dpi.S(16), Dpi.S(8));
 
             statusBar.Dock = DockStyle.Bottom;
-            statusBar.Height = Dpi.S(28);
+            statusBar.Height = Dpi.S(30);
             statusBar.Padding = new Padding(Dpi.S(18), 0, Dpi.S(18), 0);
             statusLeft.Dock = DockStyle.Fill;
+            statusLeft.Font = Fonts.Small;
             statusLeft.TextAlign = ContentAlignment.MiddleLeft;
             statusLeft.AutoEllipsis = true;
             statusRight.Dock = DockStyle.Right;
-            statusRight.AutoSize = true;
-            statusRight.TextAlign = ContentAlignment.MiddleRight;
-            statusRight.Padding = new Padding(0, Dpi.S(6), 0, 0);
+            themed.Add(statusRight);
             statusBar.Controls.Add(statusLeft);
             statusBar.Controls.Add(statusRight);
+            BuildStatusBar();
         }
 
         void BuildViews()
@@ -763,21 +763,21 @@ namespace TrackVice
 
         void UpdateStatusRight()
         {
-            if (engine == null) { statusRight.Text = "TrackVice " + Program.Version; return; }
-            List<string> parts = new List<string>();
-            if (engine.Mode == Modes.Demo) parts.Add("Demo data, " + engine.DemoSpeed.ToString("0", Inv) + "× speed");
-            else if (engine.Mode == Modes.Intune) parts.Add("Intune, read every " + (engine.PollIntervalMs / 1000) + " s");
-            else if (engine.Mode == Modes.Sccm) parts.Add("SCCM status messages, read every " + (engine.PollIntervalMs / 1000) + " s");
-            else if (engine.Mode == Modes.Agent && engine.Silent.HasValue) parts.Add("Agent, NO UPLOAD for " + Txt.DurationShort(engine.Silent.Value));
-            else if (engine.Mode == Modes.Agent) parts.Add(engine.LastUploadUtc.Year > 2000 ? "Agent, uploaded " + Txt.LocalTime(engine.LastUploadUtc) : "Agent");
-            else if (engine.Mode == Modes.File) parts.Add("Saved session");
-            else if (engine.Mode == Modes.Folder) parts.Add("Log folder");
-            if (watching) parts.Add("Watching · updated " + Txt.Ago(lastUpdate, DateTime.UtcNow));
-            else if (engine.Mode == Modes.Live || engine.IsRemote) parts.Add("Paused");
-            if (engine.IsRemote && watchedCustomer != null) parts.Insert(0, "Customer: " + watchedCustomer);
-            if (engine.SourceCount > 0) parts.Add(engine.SourceCount + " source" + (engine.SourceCount == 1 ? "" : "s"));
-            parts.Add("TrackVice " + Program.Version);
-            statusRight.Text = string.Join("  ·  ", parts.ToArray());
+            statusRight.Clear();
+            if (engine == null) { statusRight.Add("TrackVice " + Program.Version, 100, false); FitStatus(); return; }
+            if (engine.IsRemote && watchedCustomer != null) statusRight.Add("Customer: " + watchedCustomer, 20, false);
+            if (engine.Mode == Modes.Demo) statusRight.Add("Demo data, " + engine.DemoSpeed.ToString("0", Inv) + "× speed", 30, false);
+            else if (engine.Mode == Modes.Intune) statusRight.Add("Intune, read every " + (engine.PollIntervalMs / 1000) + " s", 30, false);
+            else if (engine.Mode == Modes.Sccm) statusRight.Add("SCCM status messages, read every " + (engine.PollIntervalMs / 1000) + " s", 30, false);
+            else if (engine.Mode == Modes.Agent && engine.Silent.HasValue) statusRight.Add("Agent, NO UPLOAD for " + Txt.DurationShort(engine.Silent.Value), 85, false);
+            else if (engine.Mode == Modes.Agent) statusRight.Add(engine.LastUploadUtc.Year > 2000 ? "Agent, uploaded " + Txt.LocalTime(engine.LastUploadUtc) : "Agent", 30, false);
+            else if (engine.Mode == Modes.File) statusRight.Add("Saved session", 30, false);
+            else if (engine.Mode == Modes.Folder) statusRight.Add("Log folder", 30, false);
+            if (engine.SourceCount > 0) statusRight.Add(engine.SourceCount + " source" + (engine.SourceCount == 1 ? "" : "s"), 40, false);
+            if (watching) statusRight.Add("Watching · updated " + Txt.Ago(lastUpdate, DateTime.UtcNow), 80, true);
+            else if (engine.Mode == Modes.Live || engine.IsRemote) statusRight.Add("Paused", 80, false);
+            statusRight.Add("TrackVice " + Program.Version, 95, false);
+            FitStatus();
         }
 
         string Elapsed()
@@ -808,6 +808,7 @@ namespace TrackVice
             DateTime? f = s.FirstUtc;
             if (f.HasValue) sub.Add("started " + Txt.Local(f.Value));
             subtitle.Text = string.Join(" · ", sub.ToArray());
+            ShowHeaderDevice(s);
 
             List<Phase> phases = new List<Phase>(s.OrderedPhases);
             int total = 0;
@@ -1669,8 +1670,16 @@ namespace TrackVice
 
         void OpenSettings()
         {
-            using (SettingsDialog d = new SettingsDialog(theme))
+            OpenSettings(null, null);
+        }
+
+        // A settings subject, and a setting on it to show, or the subject Settings was left on.
+        void OpenSettings(string page, string setting)
+        {
+            using (SettingsDialog d = new SettingsDialog(theme, page))
             {
+                SettingDef def = setting != null ? SettingsCatalog.Find(setting) : null;
+                if (def != null) d.ShowPage(def.Page, def.Id);
                 d.ThemeChanged += delegate
                 {
                     theme = Theme.Named(Theme.SavedName());
@@ -1753,6 +1762,7 @@ namespace TrackVice
             Form page = null;
             if (SettingsDialog.IsShotPage(start.Page)) page = SettingsDialog.ForShot(theme, start.Page, start.Select);
             else if (start.Page == "about") page = new AboutDialog(theme);
+            else if (start.Page == "palette") ShotPalette();
             else if (start.Page == NotePage) page = ShotNote();
             else if (Array.IndexOf(WelcomePages, start.Page) >= 0) page = ShotWelcome();
             else if (Array.IndexOf(GetStartedPages, start.Page) >= 0) page = ShotGetStarted();
@@ -1830,6 +1840,8 @@ namespace TrackVice
         {
             try
             {
+                // The palette takes the keys while it is open, so no shortcut works on the window behind it.
+                if (palette != null && palette.IsOpen) return PaletteKey(keyData) || base.ProcessCmdKey(ref msg, keyData);
                 switch (keyData)
                 {
                     case Keys.F5: if (engine != null) { if (engine.Mode == Modes.Live) Begin(Settings.NewLive(), watching); else if (engine.Mode == Modes.Folder) Begin(Engine.ForFolder(engine.S.SourcePath), false); } return true;
@@ -1843,6 +1855,7 @@ namespace TrackVice
                     case Keys.Control | Keys.L: OpenItemLog(list.SelectedItem); return true;
                     case Keys.Control | Keys.M: ToggleCompact(); return true;
                     case Keys.Control | Keys.D: ShowDevicesMenu(); return true;
+                    case Keys.Control | Keys.K: case Keys.Control | Keys.P: TogglePalette(); return true;
                     case Keys.Alt | Keys.Left: case Keys.BrowserBack: NavGo(false); return true;
                     case Keys.Alt | Keys.Right: case Keys.BrowserForward: NavGo(true); return true;
                     case Keys.Alt | Keys.Home: case Keys.BrowserHome: GoHome(true); return true;

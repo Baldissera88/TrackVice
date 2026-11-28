@@ -228,6 +228,8 @@ namespace TrackVice
         // The three looks: Primary is filled with the accent, for the one main action; Outline has a thin border, for
         // buttons that sit alone and must look like buttons; neither is the quiet one, which shows only on hover.
         public bool Outline;
+        // A quiet button, such as in the header: soft text, a pill on hover and an accent underline when it is the active one.
+        public bool Quiet;
         readonly Tween fade;
 
         public FlatButton(string text, string glyph)
@@ -299,6 +301,21 @@ namespace TrackVice
                 Color fill = !Enabled ? T.Divider : down ? Theme.Mix(T.Accent, T.Card, 0.18f) : Theme.Mix(T.Accent, T.AccentHover, t);
                 Shapes.Fill(g, r, rad, fill);
                 fg = Enabled ? T.OnAccent : T.Text3;
+            }
+            else if (Quiet)
+            {
+                if (down && Enabled) Shapes.Fill(g, r, rad, T.Pressed);
+                else if (t > 0.01f) Shapes.Fill(g, r, rad, Color.FromArgb((int)(255 * t), T.Hover));
+                fg = !Enabled ? T.Text3 : Checked ? T.Text : hover ? T.Text : T.Text2;
+                if (Checked)
+                {
+                    using (SolidBrush ub = new SolidBrush(T.Accent))
+                    {
+                        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                        int inset = Dpi.S(Compact ? 10 : 12);
+                        g.FillRectangle(ub, inset, Height - Dpi.S(4), Math.Max(Dpi.S(8), Width - inset * 2), Dpi.S(2));
+                    }
+                }
             }
             else
             {
