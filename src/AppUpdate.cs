@@ -219,9 +219,21 @@ namespace TrackVice
         }
 
         // What the new TrackVice opens: the saved session or folder of a file or folder session, or the watch switch for a live one.
+        // The path is made full, since the new TrackVice starts in another folder and reads a leading "-" as a switch.
         public static string[] ReopenArgs(string mode, string sourcePath, bool watching)
         {
-            if ((mode == Modes.File || mode == Modes.Folder) && !string.IsNullOrEmpty(sourcePath)) return new string[] { sourcePath };
+            if ((mode == Modes.File || mode == Modes.Folder) && !string.IsNullOrEmpty(sourcePath))
+            {
+                string full = sourcePath;
+                bool drive = full.Length >= 2 && full[1] == ':';
+                bool absolute = (drive && full.Length >= 3 && (full[2] == '\\' || full[2] == '/')) || full.StartsWith("\\\\", StringComparison.Ordinal);
+                if (!absolute && (drive || !Path.IsPathRooted(full)))
+                {
+                    try { full = Path.GetFullPath(full); }
+                    catch (Exception) { return null; }
+                }
+                return new string[] { full };
+            }
             if (mode == Modes.Live && watching) return new string[] { ResumeWatchArg };
             return null;
         }
@@ -280,8 +292,16 @@ namespace TrackVice
             if (assets.TryGetValue(ExeName, out a)) r.ExeUrl = a.Url;
             if (assets.TryGetValue(SumsName, out a)) r.SumsUrl = a.Url;
             Match body = RxBody.Match(json);
-            if (body.Success) r.Notes = NotesText(JsonString(body.Groups[1].Value));
+            if (body.Success)
+            {
+                string notes = NotesText(JsonString(body.Groups[1].Value));
+                if (notes.Length > MaxNotes) notes = notes.Substring(0, MaxNotes).TrimEnd() + "\u2026";
+                r.Notes = notes;
+            }
         }
+
+        // The most of the release notes the question before an install shows.
+        public const int MaxNotes = 6000;
 
         public static bool IsNewer(string latest, string current)
         {
@@ -365,6 +385,15 @@ namespace TrackVice
                 if (string.Equals(name, file, StringComparison.OrdinalIgnoreCase)) return line.Substring(0, 64).ToLowerInvariant();
             }
             return null;
+        }
+
+        // SHA256SUMS.txt lists a few files in a few hundred bytes. A larger one is not read.
+        public const long MaxSums = 64 * 1024;
+
+        public static string ReadSums(string path)
+        {
+            if (new FileInfo(path).Length > MaxSums) throw new InvalidOperationException(SumsName + " in the release is larger than expected, so nothing was installed.");
+            return File.ReadAllText(path);
         }
 
         static bool IsHex(string s)
@@ -456,6 +485,14 @@ namespace TrackVice
         // Downloads SHA256SUMS.txt and the MSI or exe to a new folder and checks the hash. Returns the checked file.
         public static string Prepare(AppUpdateInfo r, Action<int> progress)
         {
+            string hash;
+            return Prepare(r, progress, out hash);
+        }
+
+        // The same, and gives the hash the file was checked against, for the helper to check it again before it installs.
+        public static string Prepare(AppUpdateInfo r, Action<int> progress, out string hash)
+        {
+            hash = null;
             string blocked = Blocked;
             if (blocked != null) throw new InvalidOperationException(blocked);
             bool msi = IsInstalled;
@@ -466,7 +503,7 @@ namespace TrackVice
             string sumsPath = Path.Combine(dir, SumsName);
             string file = Path.Combine(dir, name);
             Download(r.SumsUrl, sumsPath, null);
-            string sums = File.ReadAllText(sumsPath);
+            string sums = ReadSums(sumsPath);
             if (ExpectedHash(sums, name) == null) throw new InvalidOperationException(SumsName + " in the release does not list " + name + ".");
             Download(url, file, progress);
             if (!Matches(sums, name, file))
@@ -474,32 +511,73 @@ namespace TrackVice
                 try { File.Delete(file); } catch (Exception) { }
                 throw new InvalidOperationException("The downloaded " + name + " does not match its checksum, so it was not installed. Try again later, or download it from the release page.");
             }
+            hash = ExpectedHash(sums, name);
             return file;
         }
 
-        // The arguments for the helper: --apply-update msi|exe "<file>" "<target>" <pid> ["<path to open>"].
+        // The arguments for the helper: --apply-update msi|exe[:<sha256>] "<file>" "<target>" <pid> ["<path to open>"].
+        // The helper is a copy of this same exe, so both ends always agree on this form. Each value is quoted so that it
+        // comes back as the one argument it was.
         public static string HelperArgs(string file, string target, int pid, string[] reopen)
+        {
+            return HelperArgs(file, null, target, pid, reopen);
+        }
+
+        public static string HelperArgs(string file, string hash, string target, int pid, string[] reopen)
         {
             bool msi = file.EndsWith(".msi", StringComparison.OrdinalIgnoreCase);
             StringBuilder a = new StringBuilder();
             a.Append("--apply-update ").Append(msi ? "msi" : "exe");
-            a.Append(" \"").Append(file).Append('"');
-            a.Append(" \"").Append(target).Append('"');
+            if (hash != null && hash.Length == 64 && IsHex(hash)) a.Append(':').Append(hash.ToLowerInvariant());
+            a.Append(' ').Append(LogViceLink.Quote(file));
+            a.Append(' ').Append(LogViceLink.Quote(target));
             a.Append(' ').Append(pid.ToString(CultureInfo.InvariantCulture));
             if (reopen != null)
                 foreach (string p in reopen)
-                    if (!string.IsNullOrEmpty(p)) a.Append(" \"").Append(p.TrimEnd('\\')).Append('"');
+                    if (!string.IsNullOrEmpty(p)) a.Append(' ').Append(LogViceLink.Quote(TrimFolder(p)));
             return a.ToString();
         }
 
+        // A folder without its last backslash, but a drive root stays "C:\", which "C:" would not mean.
+        static string TrimFolder(string p)
+        {
+            string t = p.TrimEnd('\\');
+            return t.Length == 0 || t.EndsWith(":", StringComparison.Ordinal) ? p : t;
+        }
+
+        // Opens the file so that it cannot be changed while it is used, after checking it still has the hash it was
+        // checked against when it was downloaded. The folder is the user's, so anything running as the user could
+        // otherwise swap it before Windows asks for administrator rights to install it.
+        public static FileStream OpenChecked(string file, string hash)
+        {
+            if (hash == null || hash.Length != 64 || !IsHex(hash)) throw new InvalidOperationException("The update has no checksum to check it against, so it was not installed.");
+            FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+            try
+            {
+                string got;
+                using (System.Security.Cryptography.SHA256 h = System.Security.Cryptography.SHA256.Create())
+                    got = BitConverter.ToString(h.ComputeHash(fs)).Replace("-", "");
+                if (!string.Equals(got, hash, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("The downloaded " + Path.GetFileName(file) + " was changed after it was checked, so it was not installed.");
+                fs.Position = 0;
+                return fs;
+            }
+            catch
+            {
+                fs.Dispose();
+                throw;
+            }
+        }
+
         // Starts a copy of this exe from the work folder as the helper. It closes TrackVice, installs and starts it again.
-        public static void Launch(string file, string[] reopen)
+        // hash is the one Prepare checked the file against; the helper checks it again before it installs.
+        public static void Launch(string file, string hash, string[] reopen)
         {
             bool msi = file.EndsWith(".msi", StringComparison.OrdinalIgnoreCase);
             string dir = Path.GetDirectoryName(file);
             string helper = Path.Combine(dir, "TrackVice-updater.exe");
             File.Copy(Program.Location, helper, true);
-            System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(helper, HelperArgs(file, Program.Location, System.Diagnostics.Process.GetCurrentProcess().Id, reopen));
+            System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(helper, HelperArgs(file, hash, Program.Location, System.Diagnostics.Process.GetCurrentProcess().Id, reopen));
             psi.UseShellExecute = false;
             psi.WorkingDirectory = dir;
             try
@@ -509,9 +587,11 @@ namespace TrackVice
             catch (Exception)
             {
                 if (!msi) throw;
+                // Without the helper nothing holds the file while msiexec runs, so it is at least checked again first.
+                using (FileStream held = OpenChecked(file, hash)) { }
                 System.Diagnostics.ProcessStartInfo inst = new System.Diagnostics.ProcessStartInfo(
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "msiexec.exe"),
-                    "/i \"" + file + "\" /passive /norestart");
+                    "/i " + LogViceLink.Quote(file) + " /passive /norestart");
                 inst.UseShellExecute = true;
                 inst.Verb = "runas";
                 System.Diagnostics.Process.Start(inst);
@@ -549,7 +629,7 @@ namespace TrackVice
     public sealed class UpdateJob
     {
         readonly bool msi;
-        readonly string file, target;
+        readonly string file, target, hash;
         readonly int pid;
         readonly string[] reopen;
         public readonly string Version;
@@ -557,7 +637,11 @@ namespace TrackVice
 
         public UpdateJob(string[] args)
         {
-            msi = args[1] == "msi";
+            // "msi" or "exe", then ":" and the hash the file was checked against.
+            string kind = args[1] ?? "";
+            int colon = kind.IndexOf(':');
+            if (colon >= 0) { hash = kind.Substring(colon + 1); kind = kind.Substring(0, colon); }
+            msi = kind == "msi";
             file = args[2];
             target = args[3];
             int.TryParse(args[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out pid);
@@ -603,7 +687,7 @@ namespace TrackVice
             try
             {
                 StringBuilder a = new StringBuilder();
-                foreach (string p in reopen) a.Append(" \"").Append(p).Append('"');
+                foreach (string p in reopen) if (!string.IsNullOrEmpty(p)) a.Append(' ').Append(LogViceLink.Quote(p));
                 System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(target, a.ToString().Trim());
                 start.UseShellExecute = false;
                 start.WorkingDirectory = Path.GetDirectoryName(target);
@@ -654,9 +738,11 @@ namespace TrackVice
             {
                 System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "msiexec.exe"),
-                    "/i \"" + file + "\" /passive /norestart /l*v \"" + log + "\"");
+                    "/i " + LogViceLink.Quote(file) + " /passive /norestart /l*v " + LogViceLink.Quote(log));
                 psi.UseShellExecute = true;
                 psi.Verb = "runas";
+                // Held open for reading only until msiexec has finished, so the checked MSI is the one installed.
+                using (FileStream held = AppUpdate.OpenChecked(file, hash))
                 using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
                 {
                     p.WaitForExit();
@@ -676,6 +762,7 @@ namespace TrackVice
         string ReplaceExe()
         {
             Exception last = null;
+            using (FileStream held = AppUpdate.OpenChecked(file, hash))
             for (int i = 0; i < 20; i++)
             {
                 try

@@ -51,6 +51,7 @@ namespace TrackVice.Tests
                 KeepCopy(root);
                 HashMismatch(root);
                 Install(root);
+                MsiHeld(root);
                 Deploying(root);
                 Cancelled(root);
                 Blocked(root);
@@ -243,6 +244,32 @@ namespace TrackVice.Tests
             try { LogViceGet.Get(Release(true), Ctx(true), Work(root), prefs, null, null); }
             catch (LogViceException ex) { err = ex.Message; }
             T.Check(err != null && err.Contains("administrator rights"), "a refused elevation is said plainly");
+        }
+
+        // The MSI cannot be swapped between its check and the end of msiexec.
+        static void MsiHeld(string root)
+        {
+            Web(root, true, true);
+            bool swapped = false;
+            string seen = null;
+            LogViceGet.RunMsi = delegate (string f)
+            {
+                try
+                {
+                    using (FileStream w = new FileStream(f, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+                    {
+                        byte[] b = Encoding.ASCII.GetBytes("swapped");
+                        w.Write(b, 0, b.Length);
+                    }
+                    swapped = true;
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                seen = File.ReadAllText(f);
+                return 0;
+            };
+            LogViceGet.Get(Release(true), Ctx(true), Work(root), new MemoryUpdatePrefs(), null, null);
+            T.Check(!swapped && seen == "MSI LogVice", "the checked MSI is held while it is installed");
         }
 
         static void Deploying(string root)

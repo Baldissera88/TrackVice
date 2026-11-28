@@ -52,59 +52,123 @@ namespace TrackVice
             return found;
         }
 
+        // The largest reply read as text: the release lists are far smaller.
+        public const long MaxText = 16L * 1024 * 1024;
+        public const int MaxRedirects = 5;
+
+        // Only https to GitHub's own hosts, on the default port and without a user name: the API, the release pages and
+        // the storage the release files are redirected to.
+        public static bool AllowedUrl(string url)
+        {
+            Uri u;
+            if (string.IsNullOrEmpty(url) || !Uri.TryCreate(url, UriKind.Absolute, out u)) return false;
+            if (u.Scheme != Uri.UriSchemeHttps || !u.IsDefaultPort || !string.IsNullOrEmpty(u.UserInfo)) return false;
+            string h = u.Host.ToLowerInvariant();
+            return h == "github.com" || h == "api.github.com" || h.EndsWith(".githubusercontent.com", StringComparison.Ordinal);
+        }
+
+        // Where a redirect from url leads, checked like the first address. Throws when it leads anywhere else.
+        public static string NextUrl(string url, string location)
+        {
+            if (string.IsNullOrEmpty(location)) throw new WebException("GitHub sent a redirect without an address.");
+            Uri next;
+            if (!Uri.TryCreate(new Uri(url), location.Trim(), out next)) throw new WebException("GitHub sent a redirect TrackVice cannot read.");
+            string s = next.AbsoluteUri;
+            if (!AllowedUrl(s)) throw new WebException("A download from GitHub was sent to " + next.Scheme + "://" + next.Host + ", which TrackVice does not trust, so it stopped.");
+            return s;
+        }
+
         public static HttpWebRequest Request(string url, int timeout)
         {
+            if (!AllowedUrl(url)) throw new WebException("TrackVice downloads only over https from GitHub.");
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
             HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
             req.UserAgent = "TrackVice/" + Program.Version;
             req.Timeout = timeout;
             req.ReadWriteTimeout = timeout;
-            req.AllowAutoRedirect = true;
+            // Redirects are followed by Open, so that each address is checked before it is asked.
+            req.AllowAutoRedirect = false;
             IWebProxy proxy = WebRequest.GetSystemWebProxy();
             if (proxy != null) proxy.Credentials = CredentialCache.DefaultNetworkCredentials;
             req.Proxy = proxy;
             return req;
         }
 
+        // Asks url and follows at most MaxRedirects redirects, each to an allowed address only.
+        static WebResponse Open(string url, int timeout, string accept)
+        {
+            for (int hop = 0; hop <= MaxRedirects; hop++)
+            {
+                HttpWebRequest req = Request(url, timeout);
+                if (accept != null) req.Accept = accept;
+                HttpWebResponse resp = (HttpWebResponse)req.GetResponse();
+                int code = (int)resp.StatusCode;
+                if (code < 300 || code > 399) return resp;
+                string location = resp.Headers["Location"];
+                resp.Close();
+                url = NextUrl(url, location);
+            }
+            throw new WebException("GitHub sent too many redirects.");
+        }
+
         public static string FetchText(string url)
         {
-            HttpWebRequest req = Request(url, 10000);
-            req.Accept = "application/vnd.github+json";
-            using (WebResponse resp = req.GetResponse())
-            using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
-                return sr.ReadToEnd();
+            using (WebResponse resp = Open(url, 10000, "application/vnd.github+json"))
+            using (Stream s = resp.GetResponseStream())
+                return ReadText(s, MaxText);
+        }
+
+        // Reads UTF-8 text up to max bytes; a longer reply is refused rather than held in memory.
+        public static string ReadText(Stream s, long max)
+        {
+            using (MemoryStream ms = new MemoryStream())
+            {
+                byte[] buf = new byte[81920];
+                int n;
+                while ((n = s.Read(buf, 0, buf.Length)) > 0)
+                {
+                    if (ms.Length + n > max) throw new IOException("The reply from GitHub is larger than expected.");
+                    ms.Write(buf, 0, n);
+                }
+                return new UTF8Encoding(false).GetString(ms.GetBuffer(), 0, (int)ms.Length);
+            }
         }
 
         // Writes the file to a new path. progress gets the bytes so far and the whole size, or 0 when not known.
         // cancelled is asked between reads; the part file is removed when it says yes.
         public static void Download(string url, string path, Action<long, long> progress, Func<bool> cancelled)
         {
-            HttpWebRequest req = Request(url, 60000);
             bool ok = false;
+            bool created = false;
             try
             {
-                using (WebResponse resp = req.GetResponse())
+                using (WebResponse resp = Open(url, 60000, null))
                 using (Stream src = resp.GetResponseStream())
-                using (FileStream dst = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
-                    long length = resp.ContentLength > 0 ? resp.ContentLength : 0;
-                    byte[] buf = new byte[81920];
-                    int n;
-                    long total = 0;
-                    while ((n = src.Read(buf, 0, buf.Length)) > 0)
+                    if (resp.ContentLength > MaxDownload) throw new IOException("The download is larger than expected.");
+                    using (FileStream dst = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     {
-                        if (cancelled != null && cancelled()) throw new OperationCanceledException("The download was cancelled.");
-                        dst.Write(buf, 0, n);
-                        total += n;
-                        if (total > MaxDownload) throw new IOException("The download is larger than expected.");
-                        if (progress != null) progress(total, length);
+                        created = true;
+                        long length = resp.ContentLength > 0 ? resp.ContentLength : 0;
+                        byte[] buf = new byte[81920];
+                        int n;
+                        long total = 0;
+                        while ((n = src.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            if (cancelled != null && cancelled()) throw new OperationCanceledException("The download was cancelled.");
+                            dst.Write(buf, 0, n);
+                            total += n;
+                            if (total > MaxDownload) throw new IOException("The download is larger than expected.");
+                            if (progress != null) progress(total, length);
+                        }
                     }
                 }
                 ok = true;
             }
             finally
             {
-                if (!ok) try { File.Delete(path); } catch (Exception) { }
+                // Only a file this download made is removed, never one that was there before.
+                if (!ok && created) try { File.Delete(path); } catch (Exception) { }
             }
         }
     }

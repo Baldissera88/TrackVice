@@ -204,12 +204,39 @@ namespace TrackVice
             }
         }
 
-        // A new folder for this session under the temporary folder.
+        // A new folder for this session under the temporary folder. As SYSTEM in a task sequence that is C:\Windows\Temp,
+        // where every user may add files to new folders, and LogVice.exe would then start as SYSTEM from it. So the folder
+        // gets its own access list: only SYSTEM, the administrators and this user, nothing inherited.
         public static string NewTempFolder()
         {
-            string dir = Path.Combine(Path.GetTempPath(), "TrackVice-LogVice-" + Guid.NewGuid().ToString("N").Substring(0, 8));
-            Directory.CreateDirectory(dir);
+            string dir = Path.Combine(Path.GetTempPath(), "TrackVice-LogVice-" + Guid.NewGuid().ToString("N"));
+            CreatePrivateFolder(dir);
             return dir;
+        }
+
+        // The access list of such a folder, for the user with the SID given.
+        public static string PrivateFolderSddl(string userSid)
+        {
+            string sddl = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
+            if (!string.IsNullOrEmpty(userSid) && userSid != "S-1-5-18" && System.Text.RegularExpressions.Regex.IsMatch(userSid, "^S-1-[0-9-]+$"))
+                sddl += "(A;OICI;FA;;;" + userSid + ")";
+            return sddl;
+        }
+
+        // Makes a new folder that nobody else made first, with the access list above on Windows.
+        public static void CreatePrivateFolder(string dir)
+        {
+            if (Directory.Exists(dir) || File.Exists(dir)) throw new IOException("The folder " + dir + " is already there, so it was not used.");
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+            {
+                Directory.CreateDirectory(dir);
+                return;
+            }
+            string sid;
+            using (System.Security.Principal.WindowsIdentity id = System.Security.Principal.WindowsIdentity.GetCurrent()) sid = id.User.Value;
+            System.Security.AccessControl.DirectorySecurity ds = new System.Security.AccessControl.DirectorySecurity();
+            ds.SetSecurityDescriptorSddlForm(PrivateFolderSddl(sid));
+            Directory.CreateDirectory(dir, ds);
         }
 
         // Downloads, checks and puts LogVice where the way says. work is an empty folder for the download.
@@ -228,7 +255,7 @@ namespace TrackVice
             string sumsPath = Path.Combine(work, AppUpdate.SumsName);
             string file = Path.Combine(work, asset.Name);
             Web.Save(r.Sums.Url, sumsPath, null, cancelled);
-            string sums = File.ReadAllText(sumsPath);
+            string sums = AppUpdate.ReadSums(sumsPath);
             if (AppUpdate.ExpectedHash(sums, asset.Name) == null)
                 throw new LogViceException(AppUpdate.SumsName + " in the LogVice release does not list " + asset.Name + ", so it cannot be checked. Nothing was installed.");
             Web.Save(asset.Url, file, progress, cancelled);
@@ -243,7 +270,9 @@ namespace TrackVice
             switch (w)
             {
                 case LogViceWay.Install:
-                    int code = RunMsi(file);
+                    // Held open for reading while Windows asks for administrator rights and installs, so the MSI cannot be swapped.
+                    int code;
+                    using (FileStream held = AppUpdate.OpenChecked(file, AppUpdate.ExpectedHash(sums, asset.Name))) code = RunMsi(file);
                     if (code == 1223) throw new LogViceException("LogVice was not installed, because administrator rights were not given.");
                     if (code == 1618) throw new LogViceException("Another installation is running. Try again when it has finished.");
                     if (code != 0 && code != 3010 && code != 1641) throw new LogViceException("The LogVice installation ended with code " + code + ".");
