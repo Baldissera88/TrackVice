@@ -69,6 +69,7 @@ namespace TrackVice
         readonly TextBox tlSearch = new TextBox();
         readonly FlatButton bProblems = new FlatButton("Errors and warnings", null);
         readonly FlatButton bThisItem = new FlatButton("Selected item only", null);
+        FlatButton bClearFilters;
         bool problemsOnly, thisItemOnly;
         int timelineCount = -1;
 
@@ -273,17 +274,18 @@ namespace TrackVice
             // Progress
             Panel bar = FilterBar();
             FlowLayoutPanel fl = (FlowLayoutPanel)bar.Controls[0];
-            search.Width = Dpi.S(320);
-            search.BorderStyle = BorderStyle.FixedSingle;
             search.Font = Fonts.Ui;
-            search.Margin = new Padding(0, Dpi.S(6), Dpi.S(10), 0);
-            Cue(search, "Search items, IDs and command lines (Ctrl+F)");
             searchTimer.Interval = 200;
             searchTimer.Tick += Safe.Wrap(delegate { searchTimer.Stop(); ApplyFilter(); });
             search.TextChanged += delegate { searchTimer.Stop(); searchTimer.Start(); };
-            fl.Controls.Add(search);
-            FlatButton clear = Small("Clear filters", delegate { search.Text = ""; SetChip(null); });
-            fl.Controls.Add(clear);
+            SearchField searchField = new SearchField(search);
+            searchField.Width = Dpi.S(344);
+            searchField.Placeholder = "Search items, IDs and command lines";
+            searchField.Margin = new Padding(0, Dpi.S(2), Dpi.S(8), 0);
+            themed.Add(searchField);
+            fl.Controls.Add(searchField);
+            bClearFilters = Small("Clear filters", delegate { search.Text = ""; SetChip(null); });
+            fl.Controls.Add(bClearFilters);
             list.SelectionChanged += Safe.Wrap(delegate { ShowSelection(true); });
             list.SpinTick += delegate { rail.Tick(list.Spin); };
             list.MenuExtras = delegate (ContextMenuStrip m, Item it)
@@ -828,6 +830,7 @@ namespace TrackVice
             foreach (Finding x in s.Findings) if (x.Severity >= 1) warn++;
             cFindings.Count = warn;
             cItems.Selected = chipFilter == null && search.Text.Length == 0 && s.Items.Count > 0;
+            bClearFilters.Enabled = chipFilter != null || search.Text.Length > 0;
             cActive.Selected = chipFilter == "active";
             cWaiting.Selected = chipFilter == "waiting";
             cFailed.Selected = chipFilter == "failed";
