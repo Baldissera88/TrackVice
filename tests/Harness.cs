@@ -57,6 +57,7 @@ namespace TrackVice.Tests
             AutopilotTests.Run();
             MergeTests.Run();
             WallTests.Run();
+            WallTimeLeftTests.Run();
             AgentUpdateTests.Run();
             ReadinessTests.Run();
             ReferenceTests.Run();
