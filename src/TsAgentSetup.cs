@@ -234,6 +234,22 @@ namespace TrackVice
             return FileSys.ExeName + " /agent-start /customer \"" + code + "\"";
         }
 
+        // The command line runs as SYSTEM on every device of the task sequence, so only the characters of a customer code
+        // go into it: a quote or a space would end the value and start another argument.
+        public static bool SafeCode(string code)
+        {
+            if (code == null || code.Length <= CustomerCode.Prefix.Length || code.Length > 16384 || !code.StartsWith(CustomerCode.Prefix, StringComparison.Ordinal)) return false;
+            for (int i = CustomerCode.Prefix.Length; i < code.Length; i++)
+            {
+                char c = code[i];
+                bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '+' || c == '/' || c == '=';
+                if (!ok) return false;
+            }
+            return true;
+        }
+
+        public const string BadCode = "This customer code has characters a customer code never has, so it is not put in a command line. Copy it again from TrackVice > Settings > Customers > Customer code.";
+
         // The package holds an older TrackVice.exe than the one that runs.
         public static bool IsOlder(string inPackage, string running)
         {
@@ -426,6 +442,9 @@ namespace TrackVice
             string f = (folder ?? "").Trim();
             if (f.Length == 0) return "Enter the source folder first: a share the site server can read, such as \\\\cm01.contoso.com\\Sources\\TrackVice.";
             if (!f.StartsWith("\\\\", StringComparison.Ordinal)) return "The source folder must be a network share that starts with \\\\, so the site server can reach it.";
+            // \\?\ and \\.\ name a path on this PC, not a share: a package on the site must not point the copy at a local folder.
+            if (f.StartsWith("\\\\?", StringComparison.Ordinal) || f.StartsWith("\\\\.\\", StringComparison.Ordinal) || f.IndexOf('"') >= 0)
+                return "The source folder must be a network share, \\\\server\\share\\folder. " + f + " is not one.";
             return null;
         }
 
@@ -513,6 +532,7 @@ namespace TrackVice
         public TsResult AddSteps(string taskSequenceId, string taskSequenceName, string packageId, string code)
         {
             if (string.IsNullOrEmpty(code)) return new TsResult(false, "Add customer makes the customer code the steps need.");
+            if (!TsAgentPackage.SafeCode(code)) return new TsResult(false, TsAgentPackage.BadCode);
             if (string.IsNullOrEmpty(packageId)) return new TsResult(false, "Make the package first: the steps run TrackVice.exe from it.");
             string xml, step = "read the task sequence";
             TsAgentPlan plan;

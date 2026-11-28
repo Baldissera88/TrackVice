@@ -22,6 +22,8 @@ namespace TrackVice
     public static class ShareStorage
     {
         public const string AgentFolder = "agent";
+        // The folders the devices upload to: AgentData.Prefix and LogBundle.Prefix without the slash.
+        public const string SessionsFolder = "sessions", LogsFolder = "logs";
         public const string ExeName = "TrackVice.exe";
         public const string Example = @"\\server\TrackVice\Contoso";
 
@@ -130,16 +132,31 @@ namespace TrackVice
         public static List<string> Icacls(string path)
         {
             string p = Normalize(path);
+            // The lines are pasted into a prompt as administrator: a path that is not a share or folder path is not written into them.
+            if (KindOf(p) == SharePathKind.Invalid || p.IndexOf('"') >= 0 || p.IndexOf('%') >= 0 || p.IndexOf('\r') >= 0 || p.IndexOf('\n') >= 0)
+                throw new ArgumentException("This is not the path of a share or folder: " + p);
             string agent = AgentDir(p);
             List<string> l = new List<string>();
-            l.Add("if not exist \"" + agent + "\" mkdir \"" + agent + "\"");
+            // The folders every device uses are made here, by an administrator. A folder the first device made would be owned by
+            // that device, and an owner can give itself the right to read and change what the other devices sent.
+            foreach (string made in new string[] { agent, p + "\\" + SessionsFolder, p + "\\" + LogsFolder })
+                l.Add("if not exist \"" + made + "\" mkdir \"" + made + "\"");
             l.Add("icacls \"" + p + "\" /inheritance:r /grant \"NT AUTHORITY\\SYSTEM:(OI)(CI)F\" /grant \"BUILTIN\\Administrators:(OI)(CI)F\"");
-            // Create files and folders and write: the devices add sessions and logs, and cannot list or read what others sent. CREATOR OWNER lets a device replace its own files.
-            l.Add("icacls \"" + p + "\" /grant \"Domain Computers:(OI)(CI)(X,RA,WD,AD)\" /grant \"CREATOR OWNER:(OI)(CI)(IO)M\"");
-            // The agent folder is where devices read TrackVice.exe and the signed update from: read only.
-            l.Add("icacls \"" + agent + "\" /inheritance:d");
-            l.Add("icacls \"" + agent + "\" /remove:g \"Domain Computers\" \"CREATOR OWNER\"");
-            l.Add("icacls \"" + agent + "\" /grant \"Domain Computers:(OI)(CI)RX\"");
+            // Create files and folders: the devices add sessions and logs, and cannot list or read what others sent. The right is on
+            // the folders only, not on the files in them, so a device cannot write over the file of another device.
+            // CREATOR OWNER lets a device replace its own files.
+            l.Add("icacls \"" + p + "\" /grant:r \"Domain Computers:(CI)(X,RA,WD,AD)\" /grant:r \"CREATOR OWNER:(OI)(CI)(IO)M\"");
+            // Owned by administrators and with only the rights of the share folder, also when a device made the folder before.
+            foreach (string shared in new string[] { p + "\\" + SessionsFolder, p + "\\" + LogsFolder })
+            {
+                l.Add("icacls \"" + shared + "\" /setowner \"BUILTIN\\Administrators\"");
+                l.Add("icacls \"" + shared + "\" /reset");
+            }
+            // The agent folder is where devices read TrackVice.exe and the signed update from: read only. Its owner and rights are
+            // set from nothing, so a folder or file a device put there before these lines ran gives that device no right to change it.
+            l.Add("icacls \"" + agent + "\" /setowner \"BUILTIN\\Administrators\" /T /C");
+            l.Add("icacls \"" + agent + "\" /reset /T /C");
+            l.Add("icacls \"" + agent + "\" /inheritance:r /grant:r \"NT AUTHORITY\\SYSTEM:(OI)(CI)F\" /grant:r \"BUILTIN\\Administrators:(OI)(CI)F\" /grant:r \"Domain Computers:(OI)(CI)RX\"");
             return l;
         }
 
@@ -157,8 +174,10 @@ namespace TrackVice
         // The step of an SCCM task sequence: starts the agent in the background and returns at once.
         public static string TaskSequenceCommand(string share, string alert)
         {
-            StringBuilder b = new StringBuilder(ExeName + " /agent-start /upload \"" + Normalize(share) + "\"");
-            if (!string.IsNullOrWhiteSpace(alert)) b.Append(" /alert \"").Append(alert.Trim()).Append("\"");
+            // The step runs as SYSTEM on every device. A quote in a value would end it and start another argument, so none gets in:
+            // a path has none, and in a link it is written as %22, which is the same address.
+            StringBuilder b = new StringBuilder(ExeName + " /agent-start /upload \"" + Normalize(share).Replace("\"", "") + "\"");
+            if (!string.IsNullOrWhiteSpace(alert)) b.Append(" /alert \"").Append(alert.Trim().Replace("\"", "%22")).Append("\"");
             return b.ToString();
         }
 

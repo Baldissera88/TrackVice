@@ -130,7 +130,7 @@ namespace TrackVice.Tests
                 int idem = s.IndexOf("is already $state. Nothing to do.");
                 int first = s.IndexOf("Invoke-WithRetry -HostName $");
                 T.Check(idem > 0 && first > idem, n + "the installed check comes before the first download");
-                T.Check(s.Contains("Join-Path (Join-Path $programFiles 'TrackVice Agent') 'TrackVice.exe'") && s.Contains("Get-ScheduledTask -TaskName 'TrackVice Agent'"), n + "checks the exe and the task of the agent");
+                T.Check(s.Contains("Join-Path (Join-Path $programFiles 'TrackVice Agent') 'TrackVice.exe'") && s.Contains("Get-ScheduledTask -TaskPath '\\' -TaskName 'TrackVice Agent'"), n + "checks the exe and the task of the agent");
                 T.Check(s.Contains("$useInstalled = $true") && s.Contains("$exe = $agentExe"), n + "registers the task again from the installed exe");
                 T.Check(s.Contains("[Net.Dns]::GetHostAddresses($HostName)") && s.Contains("[int]$Seconds = 180"), n + "waits for the name of the host");
                 T.Check(s.Contains("for ($attempt = 1; $attempt -le 5; $attempt++)") && s.Contains("$delays = 5, 15, 30, 60"), n + "downloads up to 5 times with a backoff");

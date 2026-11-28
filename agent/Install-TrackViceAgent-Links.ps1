@@ -87,7 +87,8 @@ function Invoke-WithRetry {
     }
 }
 
-$agentTask = Get-ScheduledTask -TaskName 'TrackVice Agent' -ErrorAction SilentlyContinue
+# Only the task the agent registers counts: in the root folder and run as SYSTEM. A standard user can make a task of the same name.
+$agentTask = Get-ScheduledTask -TaskPath '\' -TaskName 'TrackVice Agent' -ErrorAction SilentlyContinue | Where-Object { $_.Principal.UserId -in 'SYSTEM', 'S-1-5-18', 'NT AUTHORITY\SYSTEM' }
 $agentRegistered = $agentTask -and $agentTask.State -ne 'Disabled'
 $useInstalled = $false
 if (Test-Path -Path $agentExe) {

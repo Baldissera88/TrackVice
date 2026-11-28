@@ -287,6 +287,7 @@ namespace TrackVice
             FlatButton copy = Kept(SmallButton("Copy", delegate
             {
                 if (code == null) { note.Say("Devices > Intune / cloud > Add customer makes the customer code.", true); return; }
+                if (!demo && !TsAgentPackage.SafeCode(code)) { note.Say(TsAgentPackage.BadCode, true); return; }
                 note.Say(Menus.Copy(TsAgentPackage.CommandLine(code)) ? "Copied the command line." : "The command line could not be copied.", false);
             }));
             l.Add(Row(Glyphs2.Code, "Run Command Line, with the TrackVice package",
