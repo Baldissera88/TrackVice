@@ -81,7 +81,8 @@ namespace TrackVice
             {
                 // Nothing asked from this window: what the device reports last, such as a request made on another PC.
                 List<DiagnosticsEntry> l = Entries();
-                if (l.Count > 0) requestId = l[l.Count - 1].Id;
+                // The session is read from the storage: an id that is not one of a request is not followed.
+                if (l.Count > 0 && DiagnosticsRequest.IsRequestId(l[l.Count - 1].Id)) requestId = l[l.Count - 1].Id;
             }
             Build();
             if (requestId != null) tick.Start();
@@ -456,11 +457,13 @@ namespace TrackVice
             // The name of the bundle is made here from the session and the request, never taken from what the device reports.
             h.Download = delegate (string id)
             {
+                if (!DiagnosticsRequest.IsRequestId(id)) return null;
                 return DeviceLogs.Download(new AgentCatalog(feed.Store), DiagnosticsRequest.BundleKey(sessionId, id), computer, DeviceLogs.Root, DateTime.UtcNow);
             };
             h.GetZip = delegate (string id)
             {
-                return new AgentCatalog(feed.Store).GetLogs(DiagnosticsRequest.BundleKey(sessionId, id));
+                if (!DiagnosticsRequest.IsRequestId(id)) return null;
+                return DeviceLogs.GetZip(new AgentCatalog(feed.Store), DiagnosticsRequest.BundleKey(sessionId, id));
             };
             h.OpenInLogVice = delegate (DeviceLogCopy c)
             {

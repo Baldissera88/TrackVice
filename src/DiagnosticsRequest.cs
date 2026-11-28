@@ -401,23 +401,36 @@ namespace TrackVice
             return b.ToString();
         }
 
+        // The longest id, state, blob name and note that are read. The agent writes shorter ones.
+        public const int MaxId = 64, MaxState = 16, MaxBlob = 200, MaxNote = 400;
+        // More text than this is not what an agent writes, and is not read.
+        public const int MaxText = 64 * 1024;
+
+        static string Cut(string s, int max)
+        {
+            return s.Length > max ? s.Substring(0, max) : s;
+        }
+
+        // The viewer reads this from a session in the storage, where anyone with the upload link can write. So only the
+        // newest Keep entries are read, and every field is cut to the longest the agent writes.
         public static List<DiagnosticsEntry> Decode(string text)
         {
             List<DiagnosticsEntry> l = new List<DiagnosticsEntry>();
-            if (string.IsNullOrEmpty(text)) return l;
+            if (string.IsNullOrEmpty(text) || text.Length > MaxText) return l;
             foreach (string line in text.Split('\n'))
             {
                 string[] p = line.Split(new char[] { '|' }, 5);
-                if (p.Length < 5 || p[0].Length == 0) continue;
+                if (p.Length < 5 || p[0].Length == 0 || p[0].Length > MaxId) continue;
                 DiagnosticsEntry e = new DiagnosticsEntry();
                 e.Id = p[0];
-                e.State = p[1];
+                e.State = Cut(p[1], MaxState);
                 DateTime t = AgentVersions.Time(p[2]) ?? DateTime.MinValue;
                 e.Utc = t;
-                e.Blob = p[3];
-                e.Note = p[4];
+                e.Blob = Cut(p[3], MaxBlob);
+                e.Note = Cut(p[4].TrimEnd('\r'), MaxNote);
                 l.Add(e);
             }
+            if (l.Count > Keep) l.RemoveRange(0, l.Count - Keep);
             return l;
         }
 

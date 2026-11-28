@@ -34,8 +34,34 @@ namespace TrackVice
         {
             string id = LogBundle.NameFor(sessionBlob).Substring(LogBundle.Prefix.Length);
             id = id.Substring(0, id.Length - 4);
-            string c = Clean(computer);
-            return (c.Length > 0 ? c : "device") + "-" + Clean(id);
+            string c = Cut(Clean(computer), MaxComputerChars);
+            return (c.Length > 0 ? c : "device") + "-" + Cut(Clean(id), MaxIdChars);
+        }
+
+        // The name of the computer and the name of the blob come from the storage. Both are cut, so the folder has a
+        // path Windows can use whatever they are.
+        public const int MaxComputerChars = 40, MaxIdChars = 120;
+
+        static string Cut(string s, int max)
+        {
+            return s.Length > max ? s.Substring(0, max) : s;
+        }
+
+        // A bundle in the storage that is larger than the largest the agent uploads is not one of the agent, and is not downloaded.
+        static void CheckSize(long bytes)
+        {
+            if (bytes > LogBundle.MaxBytes) throw new StoreException("The bundle in the storage is " + (bytes / (1024 * 1024)) + " MB. The agent uploads at most " + (LogBundle.MaxBytes / (1024 * 1024)) + " MB, so it was not downloaded.");
+        }
+
+        // The zip as it is in the storage, or null when the device has not uploaded one.
+        public static byte[] GetZip(AgentCatalog catalog, string sessionBlob)
+        {
+            StoreEntry e = catalog.FindLogs(sessionBlob);
+            if (e == null) return null;
+            CheckSize(e.Size);
+            byte[] zip = catalog.Store.Get(e.Name);
+            CheckSize(zip == null ? 0 : zip.LongLength);
+            return zip;
         }
 
         static string Clean(string s)
@@ -50,7 +76,9 @@ namespace TrackVice
         {
             StoreEntry e = catalog.FindLogs(sessionBlob);
             if (e == null) return null;
+            CheckSize(e.Size);
             byte[] zip = catalog.Store.Get(e.Name);
+            CheckSize(zip == null ? 0 : zip.LongLength);
             Directory.CreateDirectory(root);
             Remove(root, nowUtc);
             string folder = Path.Combine(root, FolderName(computer, sessionBlob));
@@ -83,6 +111,8 @@ namespace TrackVice
             return c;
         }
 
+        public const long MaxIndexBytes = 4L * 1024 * 1024;
+
         // Ties each device path to its unpacked file: from the bundle's index, or for an older bundle without one,
         // by naming the session's logs the way the bundle did ("name", "name (2)", ...).
         static void MapFiles(DeviceLogCopy c, Dictionary<string, string> files)
@@ -90,6 +120,8 @@ namespace TrackVice
             string index;
             if (files.TryGetValue(LogBundle.IndexName, out index))
             {
+                // The index of the agent is a line for each log. One that is far larger is not read into memory.
+                if (new FileInfo(index).Length > MaxIndexBytes) return;
                 foreach (string line in File.ReadAllLines(index))
                 {
                     int tab = line.IndexOf('\t');
