@@ -109,6 +109,7 @@ namespace TrackVice.Tests
             DeploymentEstimateTests.Run();
             ExpectedAppsTests.Run();
             DetailTextTests.Run();
+            PreflightTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

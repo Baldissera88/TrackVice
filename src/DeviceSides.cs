@@ -144,12 +144,12 @@ namespace TrackVice
     public static class DeviceMenu
     {
         public const string AddCustomer = "addcustomer", Customers = "customers", Intune = "intune", Agents = "agents",
-            Readiness = "readiness", Names = "names", NewCustomer = "newcustomer",
+            Readiness = "readiness", Preflight = "preflight", Names = "names", NewCustomer = "newcustomer",
             Sccm = "sccm", SmsProvider = "smsprovider", TsAgent = "tsagent", TsAgents = "tsagents",
             Stats = "stats", Wall = "wall", Compare = "compare", Reference = "reference",
             Watch = "watch",
             DemoIntune = "demo-intune", DemoAgents = "demo-agents", DemoSccm = "demo-sccm", DemoStats = "demo-stats",
-            DemoWall = "demo-wall", DemoCompare = "demo-compare", DemoReadiness = "demo-readiness",
+            DemoWall = "demo-wall", DemoCompare = "demo-compare", DemoReadiness = "demo-readiness", DemoPreflight = "demo-preflight",
             DemoNewCustomer = "demo-newcustomer", DemoAddCustomer = "demo-addcustomer";
 
         // Every entry the Devices menu had before it was split, so a test can check that none went missing.
@@ -175,6 +175,7 @@ namespace TrackVice
                 l.Add(new DeviceMenuEntry(Intune, "Autopilot in Intune…"));
                 l.Add(new DeviceMenuEntry(Agents, "Devices with the TrackVice agent…"));
                 l.Add(new DeviceMenuEntry(Readiness, "Check devices before enrollment…"));
+                l.Add(new DeviceMenuEntry(Preflight, "Pre-flight check…"));
                 l.Add(new DeviceMenuEntry(Names, "Names from Intune…"));
                 l.Add(DeviceMenuEntry.Line());
                 l.Add(new DeviceMenuEntry(AddCustomer, "Add customer…"));
@@ -198,6 +199,7 @@ namespace TrackVice
                 l.Add(new DeviceMenuEntry(DemoIntune, "Demo: Autopilot in Intune"));
                 l.Add(new DeviceMenuEntry(DemoAgents, "Demo: devices with the agent"));
                 l.Add(new DeviceMenuEntry(DemoReadiness, "Demo: check before enrollment"));
+                l.Add(new DeviceMenuEntry(DemoPreflight, "Demo: pre-flight check"));
                 l.Add(new DeviceMenuEntry(DemoNewCustomer, "Demo: new customer"));
                 l.Add(new DeviceMenuEntry(DemoAddCustomer, "Demo: add customer"));
             }
