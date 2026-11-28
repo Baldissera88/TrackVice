@@ -15,43 +15,84 @@ namespace TrackVice
     public static class Secrets
     {
         const string Names = @"\w*passw(?:or)?d\w*|\w*passwd|\w*pwd|\w*secret\w*|\w*token|\w*api_?key|access_?key|account_?key|shared_?access_?key|license_?key|product_?key|pidkey|serial_?key|client_?secret|sig";
+        // Every pattern gives up after this. The text comes from logs and uploads, so it can be shaped to be slow.
+        static readonly TimeSpan Limit = TimeSpan.FromSeconds(2);
+        const RegexOptions Ci = RegexOptions.Compiled | RegexOptions.IgnoreCase;
+        // A quoted value whose closing quote was cut off, as in a shortened command line: the rest of the line.
+        const string Unclosed = @"|""[^""\r\n]{1,8192}(?=[\r\n]|$)|'[^'\r\n]{1,8192}(?=[\r\n]|$)";
         // name=value, name: value, "name": "value", with the value bare or quoted.
-        static readonly Regex RxPair = new Regex(@"(?<n>\b(?:" + Names + @"))(?<s>""?\s*[=:]\s*)(?<v>""[^""]*""|'[^']*'|[^\s""'&;,]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxPair = new Regex(@"(?<n>\b(?:" + Names + @"))(?<s>""?\s*[=:]\s*)(?<v>""[^""]{0,8192}""|'[^']{0,8192}'" + Unclosed + @"|[^\s""'&;,]+)", Ci, Limit);
         // -Password value, --token value, /password value.
-        static readonly Regex RxSwitch = new Regex(@"(?<n>(?:(?<![\w-])--?|(?<![\w/])/)(?:" + Names + @"))(?<s>\s+)(?<v>""[^""]*""|'[^']*'|[^\s""'\-/][^\s]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxSwitch = new Regex(@"(?<n>(?:(?<![\w-])--?|(?<![\w/])/)(?:" + Names + @"))(?<s>\s+)(?<v>""[^""]{0,8192}""|'[^']{0,8192}'" + Unclosed + @"|[^\s""'\-/][^\s]*)", Ci, Limit);
         // Authorization: Bearer eyJ..., Basic dXNlcjpwYXNz.
-        static readonly Regex RxBearer = new Regex(@"(?<n>\b(?i:Bearer|Basic))(?<s>\s+)(?<v>(?=[A-Za-z0-9\-._~+/]*[0-9+/.])[A-Za-z0-9\-._~+/]{12,}=*)", RegexOptions.Compiled);
-        // https://user:password@host
-        static readonly Regex RxUserInfo = new Regex(@"(?<n>\b[a-z][a-z0-9+.\-]*://[^\s/:@]+)(?<s>:)(?<v>[^\s/@]+)(?=@)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        // ConvertTo-SecureString "text" -AsPlainText, and net user name password.
-        static readonly Regex RxSecure = new Regex(@"(?<n>ConvertTo-SecureString(?:\s+-String)?)(?<s>\s+)(?<v>""[^""]*""|'[^']*'|[^\s""'\-$][^\s]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        static readonly Regex RxNetUser = new Regex(@"(?<n>\bnet(?:1|\.exe)?\s+user\s+(?:""[^""]+""|\S+))(?<s>\s+)(?<v>""[^""]*""|[^\s/""*][^\s]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxBearer = new Regex(@"(?<n>\b(?i:Bearer|Basic))(?<s>\s+)(?<v>(?=[A-Za-z0-9\-._~+/]*[0-9+/.])[A-Za-z0-9\-._~+/]{12,}=*)", RegexOptions.Compiled, Limit);
+        // https://user:password@host. The parts have a length limit: without one, a long line of "a.a.a." took minutes.
+        static readonly Regex RxUserInfo = new Regex(@"(?<n>\b[a-z][a-z0-9+.\-]{0,31}://[^\s/:@]{1,256})(?<s>:)(?<v>[^\s/@]{1,256})(?=@)", Ci, Limit);
+        // ConvertTo-SecureString "text" -AsPlainText, also with -AsPlainText -Force before the text, and net user name password.
+        static readonly Regex RxSecure = new Regex(@"(?<n>ConvertTo-SecureString(?:\s+-(?:AsPlainText|Force)(?::\$?true)?)*(?:\s+-String)?)(?<s>\s+)(?<v>""[^""]{0,8192}""|'[^']{0,8192}'|[^\s""'\-$][^\s]*)", Ci, Limit);
+        // "text" | ConvertTo-SecureString -AsPlainText.
+        static readonly Regex RxSecurePipe = new Regex(@"(?<v>""[^""\r\n]{1,1024}""|'[^'\r\n]{1,1024}')(?<s>\s*\|\s*)(?<n>ConvertTo-SecureString\b)", Ci, Limit);
+        static readonly Regex RxNetUser = new Regex(@"(?<n>\bnet(?:1|\.exe)?\s+user\s+(?:""[^""]{1,1024}""|\S+))(?<s>\s+)(?<v>""[^""]{0,8192}""|[^\s/""*][^\s]*)", Ci, Limit);
+        // net use [drive:] \\server\share password /user:name. The password is the bare word after the share.
+        static readonly Regex RxNetUse = new Regex(@"(?<n>\bnet(?:1|\.exe)?\s+use\s+(?:[A-Za-z]:\s+|\*\s+)?(?:""\\\\[^""]{1,1024}""|\\\\\S+)(?:\s+/\S+)*)(?<s>\s+)(?<v>""[^""]{0,8192}""|[^\s/""*][^\s]*)", Ci, Limit);
+        // schtasks /RP password, psexec -p password, cmdkey /pass:password.
+        static readonly Regex RxTaskPass = new Regex(@"(?<n>(?<=\bschtasks(?:\.exe)?""?\s[^\r\n]{0,4096})(?<=\s)/R?P)(?<s>\s+)(?<v>""[^""]{0,8192}""|[^\s/""*][^\s]*)", Ci, Limit);
+        static readonly Regex RxPsexecPass = new Regex(@"(?<n>(?<=\bpsexec(?:64)?(?:\.exe)?""?\s[^\r\n]{0,4096})(?<=\s)-p)(?<s>\s+)(?<v>""[^""]{0,8192}""|[^\s\-""][^\s]*)", Ci, Limit);
+        static readonly Regex RxCmdkeyPass = new Regex(@"(?<n>(?<=\bcmdkey(?:\.exe)?""?\s[^\r\n]{0,4096})(?<=\s)/pass)(?<s>:)(?<v>""[^""]{0,8192}""|[^\s""]+)", Ci, Limit);
+        // powershell -EncodedCommand <Base64>, and every short form PowerShell takes for it.
+        static readonly Regex RxEncoded = new Regex(@"(?<n>(?<=\s)[-/](?:e|ec|en|enc|enco|encod|encode|encoded|encodedc|encodedco|encodedcom|encodedcomm|encodedcomma|encodedcomman|encodedcommand))(?<s>\s+)(?<v>[A-Za-z0-9+/]{16,}={0,2})(?![\w+/=])", Ci, Limit);
+        // <Password>text</Password>, and <AdministratorPassword><Value>text</Value> or <ProductKey><Key>text</Key> as an unattend file has it.
+        static readonly Regex RxXml = new Regex(@"(?<n><(?<t>[\w.:-]{0,40}(?:passw(?:or)?d|pwd|secret|token|api_?key|access_?key|account_?key|license_?key|product_?key|pidkey)[\w.-]{0,40})>(?:\s*<(?:Value|Key)>)?)(?<s>)(?<v>[^<]{1,4096})(?=<)", Ci, Limit);
         // Settings about passwords and keys, such as PasswordExpirationDays, are not secrets themselves.
-        static readonly Regex RxSetting = new Regex(@"(?:Enabled|Disabled|Length|Complexity|History|Age|Expiration|Expiry|Expires|ExpirationDays|Required|Policy|Count|Type|Mode|Changed|Prompt|Hint|Lifetime|Url|Uri|Path|File|Name|Id)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        static readonly Regex RxPlain = new Regex(@"^(?:\$\w[\w:]*|%\w+%|\$\{[^}]+\}|true|false|\$true|\$false|\$null|null|none|yes|no|\*+|<[^>]*>)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxSetting = new Regex(@"(?:Enabled|Disabled|Length|Complexity|History|Age|Expiration|Expiry|Expires|ExpirationDays|Required|Policy|Count|Type|Mode|Changed|Prompt|Hint|Lifetime|Url|Uri|Path|File|Name|Id)$", Ci, Limit);
+        static readonly Regex RxPlain = new Regex(@"^(?:\$\w[\w:]*|%\w+%|\$\{[^}]+\}|true|false|\$true|\$false|\$null|null|none|yes|no|\*+|<[^>]*>)$", Ci, Limit);
         public const string Hidden = "***";
+        // What a text too complex to check in time becomes: it may hold a secret, so none of it is kept.
+        public const string Unchecked = "*** (hidden: too long or complex to check for passwords)";
 
         static string Hide(Match m)
         {
             string n = m.Groups["n"].Value, v = m.Groups["v"].Value;
             string bare = v.Trim('"', '\'');
-            if (bare.Length == 0 || bare == Hidden || RxPlain.IsMatch(bare)) return m.Value;
-            string word = n.TrimStart('-', '/');
+            // Only white space, such as between an element and the one inside it, is nothing to hide.
+            if (bare.Trim().Length == 0 || bare == Hidden || RxPlain.IsMatch(bare)) return m.Value;
+            string word = m.Groups["t"].Success ? m.Groups["t"].Value : n.TrimStart('-', '/');
             if (RxSetting.IsMatch(word)) return m.Value;
             string q = v.Length > 1 && (v[0] == '"' || v[0] == '\'') && v[v.Length - 1] == v[0] ? v.Substring(0, 1) : "";
             return n + m.Groups["s"].Value + q + Hidden + q;
+        }
+
+        // The same for "text" | ConvertTo-SecureString, where the text comes first.
+        static string HideBefore(Match m)
+        {
+            string v = m.Groups["v"].Value;
+            string bare = v.Substring(1, v.Length - 2);
+            if (bare.Length == 0 || bare == Hidden || RxPlain.IsMatch(bare)) return m.Value;
+            return v.Substring(0, 1) + Hidden + v.Substring(0, 1) + m.Groups["s"].Value + m.Groups["n"].Value;
         }
 
         public static string Mask(string s)
         {
             if (string.IsNullOrEmpty(s) || s.Length < 6) return s;
             MatchEvaluator h = Hide;
-            string r = RxPair.Replace(s, h);
-            r = RxSwitch.Replace(r, h);
-            r = RxBearer.Replace(r, h);
-            r = RxUserInfo.Replace(r, h);
-            r = RxSecure.Replace(r, h);
-            r = RxNetUser.Replace(r, h);
+            string r;
+            try
+            {
+                r = RxPair.Replace(s, h);
+                r = RxSwitch.Replace(r, h);
+                r = RxBearer.Replace(r, h);
+                r = RxUserInfo.Replace(r, h);
+                r = RxSecure.Replace(r, h);
+                r = RxSecurePipe.Replace(r, HideBefore);
+                r = RxNetUser.Replace(r, h);
+                r = RxNetUse.Replace(r, h);
+                r = RxTaskPass.Replace(r, h);
+                r = RxPsexecPass.Replace(r, h);
+                r = RxCmdkeyPass.Replace(r, h);
+                r = RxEncoded.Replace(r, h);
+                r = RxXml.Replace(r, h);
+            }
+            catch (RegexMatchTimeoutException) { return Unchecked; }
             return r == s ? s : r;
         }
 
@@ -104,6 +145,11 @@ namespace TrackVice
             {
                 string m = Mask(f.Message);
                 if (m != f.Message) { f.Message = m; n++; }
+                // Titles carry the names of items, which come from the logs.
+                string t = Mask(f.Title);
+                if (t != f.Title) { f.Title = t; n++; }
+                string h = Mask(f.Hint);
+                if (h != f.Hint) { f.Hint = h; n++; }
                 n += MaskEvidence(f.Evidence);
             }
             return n;
@@ -336,7 +382,7 @@ namespace TrackVice
         {
             s = s ?? "";
             // Keep spreadsheets from running a value as a formula.
-            if (s.Length > 0 && "=+-@".IndexOf(s[0]) >= 0) s = "'" + s;
+            if (s.Length > 0 && "=+-@\t\r".IndexOf(s[0]) >= 0) s = "'" + s;
             return "\"" + s.Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ") + "\"";
         }
     }

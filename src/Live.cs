@@ -52,6 +52,8 @@ namespace TrackVice
         string lastInfo;
         // Where smsts.log is looked for. Tests set it to folders of their own.
         public Func<List<string>> SmstsSource;
+        // Which smsts.log files are believed. Some of its places can be created by a standard user, and the agent runs as SYSTEM.
+        public Func<FileStream, bool> SmstsTrust = LogTrust.AdminOwned;
 
         public LiveCollector(DateTime sinceUtc)
         {
@@ -131,13 +133,14 @@ namespace TrackVice
                     foreach (FileInfo f in old)
                     {
                         known.Add(f.FullName);
-                        foreach (LogLine l in LogTail.ReadAll(f.FullName, null)) Feed(smsts, l, b);
+                        foreach (LogLine l in LogTail.ReadAll(f.FullName, null, SmstsTrust)) Feed(smsts, l, b);
                         b.Sources.Add(f.FullName);
                     }
                 }
             }
             catch (Exception) { }
-            Add(path, smsts, b);
+            Feed added = Add(path, smsts, b);
+            if (added != null) added.Tail.Trusted = SmstsTrust;
         }
 
         void AddWithHistory(string path, Batch b)
@@ -169,18 +172,19 @@ namespace TrackVice
             Add(path, parser, b);
         }
 
-        void Add(string path, LogParser parser, Batch b)
+        Feed Add(string path, LogParser parser, Batch b)
         {
-            if (known.Contains(path)) return;
+            if (known.Contains(path)) return null;
             bool exists;
             try { exists = File.Exists(path); } catch (Exception) { exists = false; }
-            if (!exists) return;
+            if (!exists) return null;
             known.Add(path);
             Feed f = new Feed();
             f.Tail = new LogTail(path);
             f.Parser = parser;
             feeds.Add(f);
             b.Sources.Add(path);
+            return f;
         }
 
         // When the device changed time zone, such as from the Pacific time of the image to the zone of its region.
@@ -191,7 +195,9 @@ namespace TrackVice
             // Read with TimeZoneInfo.Local, as LogTail does without a zone.
             if (l.LocalTime && l.Utc.HasValue && Zones.Count > 0) l.Utc = Zones.Fix(l.Utc.Value, TimeZoneInfo.Local);
             int before = b.Obs.Count;
-            p.Read(l, b.Obs);
+            // A line the parser cannot handle is skipped. Thrown out of here it would lose the rest of the read: the other
+            // lines, the registry, WMI and the event logs.
+            if (!LogParser.Safe(p, l, b.Obs)) return;
             // Lines from before the window still move the parser's state, but are not shown.
             for (int i = b.Obs.Count - 1; i >= before; i--)
                 if (b.Obs[i].TimeUtc != DateTime.MinValue && b.Obs[i].TimeUtc < SinceUtc && b.Obs[i].SessionInfo == null) b.Obs.RemoveAt(i);
@@ -630,7 +636,7 @@ namespace TrackVice
                 }
                 try
                 {
-                    foreach (LogLine l in LogTail.ReadAll(f.FullName, zone)) p.Read(l, b.Obs);
+                    foreach (LogLine l in LogTail.ReadAll(f.FullName, zone)) LogParser.Safe(p, l, b.Obs);
                     b.Sources.Add(f.FullName);
                 }
                 catch (Exception ex) { b.Notes.Add("Could not read " + f.FullName + ": " + ex.Message); }

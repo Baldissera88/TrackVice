@@ -112,6 +112,7 @@ namespace TrackVice.Tests
             PreflightTests.Run();
             CustomerReportTests.Run();
             DiagnosticsTests.Run();
+            LogSafetyTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }

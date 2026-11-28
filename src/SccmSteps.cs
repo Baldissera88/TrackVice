@@ -152,13 +152,21 @@ namespace TrackVice
         {
             name = null;
             id = null;
-            Match m = AppRx.Match((SccmCatalog.Str(r, "ActionOutput") ?? "").Trim());
-            if (!m.Success) m = NameRx.Match(SccmCatalog.Str(r, "LastStatusMsgName") ?? "");
+            // The texts come from the device, and the patterns try every position: the name and ID are at their start.
+            Match m = AppRx.Match(Head((SccmCatalog.Str(r, "ActionOutput") ?? "").Trim()));
+            if (!m.Success) m = NameRx.Match(Head(SccmCatalog.Str(r, "LastStatusMsgName") ?? ""));
             if (!m.Success) return false;
             id = m.Groups["id"].Value;
             name = m.Groups["n"].Value.Trim();
             if (name.Length == 0) name = id;
             return true;
+        }
+
+        const int MaxHead = 4096;
+
+        static string Head(string s)
+        {
+            return s.Length > MaxHead ? s.Substring(0, MaxHead) : s;
         }
 
         public static string Key(string id)
