@@ -235,6 +235,7 @@ namespace TrackVice
             p.FilterChanged += Safe.Wrap(delegate { RenderOverview(); });
             p.ThisPc += Safe.Wrap(delegate { Begin(Settings.NewLive(), true); });
             p.AllRecent += Safe.Wrap(delegate { OpenRecentList(""); });
+            p.ReportClicked += Safe.Wrap(delegate { OverviewReport(); });
         }
 
         void OpenAttention(AttentionTile t)

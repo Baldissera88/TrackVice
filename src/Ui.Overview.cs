@@ -521,7 +521,7 @@ namespace TrackVice
         public event Action<AttentionTile> AttentionClicked;
         public event Action<string> SearchFor;
         public event Action<string> SetupClicked;
-        public event EventHandler RefreshClicked, FilterChanged, ThisPc, AllRecent;
+        public event EventHandler RefreshClicked, FilterChanged, ThisPc, AllRecent, ReportClicked;
 
         Theme theme = Theme.Light();
         public readonly OverviewFilter Filter = new OverviewFilter();
@@ -537,6 +537,7 @@ namespace TrackVice
         readonly FlatButton bRefresh = new FlatButton("Refresh", Glyphs2.Sync);
         readonly FlatButton bThisPc = new FlatButton("Follow this PC", Glyphs2.Device);
         string subText = "", statusText = "";
+        readonly FlatButton bReport = new FlatButton("Report\u2026", Glyphs.Export);
         readonly OverviewTile now = new OverviewTile("Now");
         readonly OverviewTile attention = new OverviewTile("Needs attention");
         readonly OverviewTile deploy = new OverviewTile("Deployments");
@@ -559,12 +560,12 @@ namespace TrackVice
             attention.Mode = TileMode.Cards;
             period.SplitGroups = true;
             kpi.Visible = false;
-            foreach (FlatButton b in new FlatButton[] { bSearch, bRefresh, bThisPc }) { b.Compact = true; b.AutoWidth(); }
+            foreach (FlatButton b in new FlatButton[] { bSearch, bRefresh, bThisPc, bReport }) { b.Compact = true; b.AutoWidth(); }
             bCustomer.MinWidth = Dpi.S(160);
             bCustomer.Fit();
             searchField = new SearchField(Search);
             searchField.Width = Dpi.S(300);
-            Control[] items = { bCustomer, side, searchField, bSearch, bRefresh, bThisPc };
+            Control[] items = { bCustomer, side, searchField, bSearch, bRefresh, bThisPc, bReport };
             foreach (Control c in items)
             {
                 c.Margin = new Padding(0, 0, Dpi.S(8), Dpi.S(8));
@@ -584,6 +585,7 @@ namespace TrackVice
             bSearch.Click += Safe.Wrap(delegate { if (SearchFor != null) SearchFor(Search.Text.Trim()); });
             bRefresh.Click += Safe.Wrap(delegate { if (RefreshClicked != null) RefreshClicked(this, EventArgs.Empty); });
             bThisPc.Click += Safe.Wrap(delegate { if (ThisPc != null) ThisPc(this, EventArgs.Empty); });
+            bReport.Click += Safe.Wrap(delegate { if (ReportClicked != null) ReportClicked(this, EventArgs.Empty); });
             now.RowClicked += delegate (TileRow r) { Safe.Run(delegate { Device(r.Tag as OverviewDevice); }); };
             now.FooterClicked += Safe.Wrap(delegate { if (data != null) List("now", "Deploying now", Devices(NowDevices())); });
             attention.RowClicked += delegate (TileRow r) { Safe.Run(delegate { if (AttentionClicked != null && r.Tag is AttentionTile) AttentionClicked((AttentionTile)r.Tag); }); };
@@ -1162,7 +1164,7 @@ namespace TrackVice
             kpi.ApplyTheme(t);
             bar.Th = t;
             bCustomer.ApplyTheme(t);
-            foreach (FlatButton b in new FlatButton[] { bSearch, bRefresh, bThisPc }) b.ApplyTheme(t);
+            foreach (FlatButton b in new FlatButton[] { bSearch, bRefresh, bThisPc, bReport }) b.ApplyTheme(t);
             side.ApplyTheme(t);
             searchField.ApplyTheme(t);
             foreach (OverviewTile x in Tiles) x.ApplyTheme(t);

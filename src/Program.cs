@@ -141,6 +141,7 @@ namespace TrackVice
                 else MessageBox.Show(e.Exception.Message, "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Error);
             };
 
+            if (args.Length == 2 && string.Equals(args[0], "--report-demo", StringComparison.OrdinalIgnoreCase)) return CustomerReportDemo.Write(args[1]);
             StartOptions o = new StartOptions();
             for (int i = 0; i < args.Length; i++)
             {
