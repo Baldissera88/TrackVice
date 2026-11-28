@@ -89,6 +89,7 @@ namespace TrackVice.Tests
             DeviceTimeTests.Run();
             ServerEventTests.Run();
             LogViceGetTests.Run();
+            UpdateSafetyTests.Run();
             AgentVersionTests.Run();
             SetupNeedsTests.Run();
             AppRegistrationTests.Run();

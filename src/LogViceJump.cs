@@ -76,7 +76,7 @@ namespace TrackVice
                 {
                     if (string.IsNullOrEmpty(t)) continue;
                     if (args.Length > 0) args.Append(' ');
-                    args.Append(Quote(t));
+                    args.Append(Quote(Target(t)));
                     if (t.StartsWith("evt:", StringComparison.Ordinal)) channel = true;
                     else files++;
                 }
@@ -94,6 +94,13 @@ namespace TrackVice
             string theme = ThemeOption(jump.Theme);
             if (theme != null) Add(args, "--theme", theme);
             return args.ToString();
+        }
+
+        // A path that starts with "-", such as one read from a saved session, is given as ".\-..." so that LogVice
+        // reads it as the same file and never as one of its options. Quoting alone does not stop that.
+        public static string Target(string t)
+        {
+            return t.StartsWith("-", StringComparison.Ordinal) ? ".\\" + t : t;
         }
 
         static void Add(StringBuilder args, string option, string value)

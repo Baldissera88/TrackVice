@@ -557,8 +557,8 @@ namespace TrackVice
             string[] reopen = engine == null ? null : AppUpdate.ReopenArgs(engine.Mode, engine.S.SourcePath, resume);
             Thread th = new Thread(delegate ()
             {
-                string file = null, err = null;
-                try { file = AppUpdate.Prepare(r, delegate (int pct) { UpdateInvoke(delegate { if (updateNote != null) updateNote.Say("Downloading TrackVice " + r.Latest + "… " + pct + " %", false); }); }); }
+                string file = null, err = null, hash = null;
+                try { file = AppUpdate.Prepare(r, delegate (int pct) { UpdateInvoke(delegate { if (updateNote != null) updateNote.Say("Downloading TrackVice " + r.Latest + "… " + pct + " %", false); }); }, out hash); }
                 catch (Exception ex) { err = ex.Message; }
                 UpdateInvoke(delegate
                 {
@@ -568,7 +568,7 @@ namespace TrackVice
                         try
                         {
                             if (updateNote != null) updateNote.Say("Installing TrackVice " + r.Latest + "…", false);
-                            AppUpdate.Launch(file, reopen);
+                            AppUpdate.Launch(file, hash, reopen);
                             AppUpdate.HandedOff = true;
                             Hide();
                             Close();
