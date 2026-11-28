@@ -1,3 +1,6 @@
+// Every P/Invoke of TrackVice names a Windows DLL, so each is loaded from System32 only, never from the folder of the exe.
+[assembly: System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+
 namespace TrackVice
 {
     using System;
@@ -18,6 +21,21 @@ namespace TrackVice
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        static extern bool SetDllDirectory(string path);
+
+        [DllImport("kernel32.dll")]
+        static extern bool SetDefaultDllDirectories(uint flags);
+
+        // A portable TrackVice.exe often runs from Downloads. DLLs that Windows or .NET load by name later must not come
+        // from that folder or from the current folder: the current folder leaves the search, and where Windows knows
+        // how (8 and later, 7 with KB2533623), only System32 is searched.
+        static void SafeDllSearch()
+        {
+            try { SetDllDirectory(""); } catch (Exception) { }
+            try { SetDefaultDllDirectories(0x00000800); } catch (Exception) { }
+        }
 
         public static string Version
         {
@@ -108,6 +126,7 @@ namespace TrackVice
         [STAThread]
         public static int Main(string[] args)
         {
+            SafeDllSearch();
             args = args ?? new string[0];
             if (args.Length > 0 && args[0] == "--apply-update") return UpdatesUi.Apply(args);
             if (args.Length > 0 && (args[0].StartsWith("/") || (args[0].StartsWith("-") && !args[0].StartsWith("--"))))
@@ -119,7 +138,7 @@ namespace TrackVice
             AppDomain.CurrentDomain.UnhandledException += delegate (object sender, UnhandledExceptionEventArgs e)
             {
                 Exception ex = e.ExceptionObject as Exception;
-                MessageBox.Show(ex != null ? ex.ToString() : "Unknown error", "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(LaunchGuard.Details(ex), "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Error);
             };
             try { SetProcessDPIAware(); } catch (Exception) { }
             try
@@ -138,7 +157,7 @@ namespace TrackVice
             Application.ThreadException += delegate (object sender, System.Threading.ThreadExceptionEventArgs e)
             {
                 if (Safe.Reporter != null) Safe.Report(e.Exception);
-                else MessageBox.Show(e.Exception.Message, "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                else MessageBox.Show(LaunchGuard.Message(e.Exception), "TrackVice", MessageBoxButtons.OK, MessageBoxIcon.Error);
             };
 
             if (args.Length == 2 && string.Equals(args[0], "--report-demo", StringComparison.OrdinalIgnoreCase)) return CustomerReportDemo.Write(args[1]);
@@ -305,7 +324,7 @@ namespace TrackVice
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine("TrackVice: " + ex.Message);
+                Console.Error.WriteLine("TrackVice: " + LaunchGuard.Message(ex));
                 return 1;
             }
         }

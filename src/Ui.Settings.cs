@@ -931,7 +931,8 @@ namespace TrackVice
             FlatButton bFolder = SmallButton("Open folder", delegate
             {
                 if (!Directory.Exists(LocalFolder)) { Safe.Say("Nothing is kept in " + LocalFolder + " yet."); return; }
-                try { Process.Start("explorer.exe", "\"" + LocalFolder + "\""); } catch (Exception) { }
+                string show = LaunchGuard.ExplorerArgument(LocalFolder);
+                try { if (show != null) Process.Start(LaunchGuard.ExplorerPath, show); } catch (Exception) { }
             });
             FlatButton bIntune = SmallButton("Intune / cloud", delegate { ShowPage(SettingsCatalog.Intune, "signin"); });
             SettingRow kept = null;

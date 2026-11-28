@@ -930,7 +930,7 @@ namespace TrackVice
         {
             detailView = new DetailView();
             detailView.Dock = DockStyle.Fill;
-            detailView.CopyRequested += delegate (string s) { Safe.Run(delegate { Menus.Copy(s); Status("Copied to the clipboard."); }); };
+            detailView.CopyRequested += delegate (string s) { Safe.Run(delegate { Menus.Copy(LaunchGuard.Hide(s)); Status("Copied to the clipboard."); }); };
             detailView.OpenLogRequested += delegate { Safe.Run(delegate { OpenItemLog(list.SelectedItem); }); };
             detailView.SelectRequested += delegate (string key) { Safe.Run(delegate { list.SelectKey(key, true); }); };
             themed.Add(detailView);
