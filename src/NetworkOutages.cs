@@ -29,7 +29,8 @@ namespace TrackVice
         public readonly List<NetOutage> List = new List<NetOutage>();
         // Outages closer than this are one.
         public static readonly TimeSpan MergeWithin = TimeSpan.FromSeconds(30);
-        const int Max = 200;
+        // The most the agent keeps, and the most the viewer reads from an upload.
+        public const int Max = 200;
 
         DateTime? failFrom;
         string failReason;
@@ -179,8 +180,10 @@ namespace TrackVice
         public static NetOutage Find(IList<NetOutage> outages, DateTime failedUtc)
         {
             if (outages == null) return null;
+            // In ticks, so a time at either end of the calendar in an uploaded session does not overflow.
+            long at = failedUtc.Ticks, near = Near.Ticks;
             foreach (NetOutage o in outages)
-                if (failedUtc >= o.FromUtc - Near && failedUtc <= o.ToUtc + Near) return o;
+                if (o != null && at + near >= o.FromUtc.Ticks && at - near <= o.ToUtc.Ticks) return o;
             return null;
         }
 
@@ -211,6 +214,9 @@ namespace TrackVice
             if (s == null) return;
             s.Events.RemoveAll(delegate (TEvent e) { return e.Source == EventSource; });
             if (s.Outages == null) return;
+            // An uploaded session is read as it is: more outages than an agent keeps are not from an agent.
+            s.Outages.RemoveAll(delegate (NetOutage o) { return o == null; });
+            if (s.Outages.Count > OutageRecorder.Max) s.Outages.RemoveRange(0, s.Outages.Count - OutageRecorder.Max);
             foreach (NetOutage o in s.Outages)
             {
                 TEvent e = new TEvent();

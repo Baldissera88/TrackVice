@@ -6,7 +6,9 @@ namespace TrackVice
     using System.Globalization;
     using System.IO;
     using System.Net.NetworkInformation;
+    using System.Security.AccessControl;
     using System.Security.Cryptography;
+    using System.Security.Principal;
     using System.Text;
     using System.Threading;
     using Microsoft.Win32;
@@ -267,9 +269,14 @@ namespace TrackVice
             return b.ToString();
         }
 
-        static string Quote(string s)
+        // One argument in quotes. Backslashes before the closing quote are doubled, so a folder such as \\server\share\ does not
+        // escape the quote and take the next arguments into its value.
+        public static string Quote(string s)
         {
-            return "\"" + (s ?? "").Trim().Replace("\"", "") + "\"";
+            string v = (s ?? "").Trim().Replace("\"", "");
+            int tail = 0;
+            while (tail < v.Length && v[v.Length - 1 - tail] == '\\') tail++;
+            return "\"" + v + new string('\\', tail) + "\"";
         }
     }
 
@@ -285,12 +292,16 @@ namespace TrackVice
             exe = exePath;
         }
 
+        // Only a mutex of SYSTEM or the administrators is the agent. Any user can make one by that name first.
         public bool Running()
         {
             Mutex m;
-            if (!Mutex.TryOpenExisting(MutexName, out m)) return false;
-            m.Dispose();
-            return true;
+            try
+            {
+                if (!Mutex.TryOpenExisting(MutexName, MutexRights.Synchronize | MutexRights.ReadPermissions, out m)) return false;
+            }
+            catch (UnauthorizedAccessException) { return false; }
+            using (m) return AgentGuard.Trusted(m);
         }
 
         public void Launch(string args)
@@ -306,8 +317,7 @@ namespace TrackVice
         {
             try
             {
-                Directory.CreateDirectory(TsAgent.LocalFolder);
-                File.WriteAllText(TsAgent.StopFile, "stop");
+                if (AgentFolder.Secure(TsAgent.LocalFolder, new WinFolderAcl(), null)) File.WriteAllText(TsAgent.StopFile, "stop");
             }
             catch (Exception) { }
             EventWaitHandle ev;
@@ -334,6 +344,8 @@ namespace TrackVice
     public static class TsAgent
     {
         public static int QuietMinutes = 30;
+        // Set once Run made LocalFolder SYSTEM's own. Until then, and when it could not, nothing is written there.
+        static bool folderReady;
 
         public static string LocalFolder
         {
@@ -385,7 +397,7 @@ namespace TrackVice
         {
             try
             {
-                Directory.CreateDirectory(LocalFolder);
+                if (!folderReady) return;
                 string path = Path.Combine(LocalFolder, "agent.log");
                 if (File.Exists(path) && new FileInfo(path).Length > 256 * 1024) File.Delete(path);
                 File.AppendAllText(path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + " " + text + Environment.NewLine);
@@ -396,22 +408,39 @@ namespace TrackVice
         static bool StopAsked(EventWaitHandle ev)
         {
             try { if (ev != null && ev.WaitOne(0)) return true; } catch (Exception) { }
-            try { return File.Exists(StopFile); } catch (Exception) { return false; }
+            try { return folderReady && File.Exists(StopFile); } catch (Exception) { return false; }
+        }
+
+        // The state folders the agent may write to as SYSTEM: each made SYSTEM's own first. One that cannot be is left out.
+        static List<string> Secured(List<string> folders, HashSet<string> done)
+        {
+            List<string> l = new List<string>();
+            foreach (string f in folders)
+            {
+                if (done.Contains(f) || AgentFolder.Secure(f, new WinFolderAcl(), Log))
+                {
+                    done.Add(f);
+                    l.Add(f);
+                }
+            }
+            return l;
         }
 
         public static int Run(AgentOptions o)
         {
             bool created;
-            using (Mutex one = new Mutex(true, WinAgentHost.MutexName, out created))
+            using (Mutex one = AgentGuard.Single(WinAgentHost.MutexName, out created))
             {
                 if (!created)
                 {
                     Console.WriteLine("The TrackVice agent is already running.");
                     return 0;
                 }
-                EventWaitHandle stop = null;
-                try { stop = new EventWaitHandle(false, EventResetMode.ManualReset, WinAgentHost.StopName); } catch (Exception ex) { Log("No stop event: " + ex.Message); }
-                try { File.Delete(StopFile); } catch (Exception) { }
+                // Windows\Temp lets every user add files and folders. The agent writes and deletes in its folder as SYSTEM.
+                folderReady = AgentFolder.Secure(LocalFolder, new WinFolderAcl(), null);
+                if (one == null) Log("Another program holds the name of the agent's mutex. It is not the agent's: going on without it.");
+                EventWaitHandle stop = AgentGuard.StopEvent(WinAgentHost.StopName, Log);
+                try { if (folderReady) File.Delete(StopFile); } catch (Exception) { }
                 try { return Loop(o, stop); }
                 finally { if (stop != null) stop.Dispose(); }
             }
@@ -421,7 +450,8 @@ namespace TrackVice
         {
             bool pe = InWinPE;
             ISessionStore store = Stores.Open(o.Upload);
-            List<string> folders = StateFolders();
+            HashSet<string> secured = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            List<string> folders = Secured(StateFolders(), secured);
             TsState state = TsState.Load(folders);
             string sid = TsId.Derive(o.Id, new WmiDeviceId()) ?? state.Id ?? Guid.NewGuid().ToString("N");
             state.Id = sid;
@@ -438,7 +468,7 @@ namespace TrackVice
             {
                 string url = o.Alert.Trim();
                 // Sent alerts are remembered in the agent's folder, so a restart in Windows does not send them again.
-                alerts = new AgentAlerts(AgentAlerts.StatePath(LocalFolder), sid, started.AddHours(-2), delegate (Alert x) { AlertSender.Send(url, x); }, Log);
+                alerts = new AgentAlerts(folderReady ? AgentAlerts.StatePath(LocalFolder) : null, sid, started.AddHours(-2), delegate (Alert x) { AlertSender.Send(url, x); }, Log);
                 alerts.Mask = o.Mask;
             }
             string shownError = null;
@@ -454,7 +484,7 @@ namespace TrackVice
                     string name = Environment.MachineName;
                     if (++cycles % 15 == 0 && pe)
                     {
-                        List<string> f = StateFolders();
+                        List<string> f = Secured(StateFolders(), secured);
                         if (f.Count != folders.Count) { folders = f; state.Save(folders); }
                     }
                     if (state.Remember(name)) state.Save(folders);
@@ -486,6 +516,156 @@ namespace TrackVice
                 }
             }
             return a.LastError == null ? 0 : 1;
+        }
+    }
+
+    // ---------- what a standard user on the device must not be able to do to the agent ----------
+
+    public static class AgentGuard
+    {
+        // SYSTEM or the administrators. A standard user cannot make either the owner of what they create.
+        public static bool TrustedOwner(IdentityReference owner)
+        {
+            SecurityIdentifier sid = owner as SecurityIdentifier;
+            return sid != null && (sid.IsWellKnown(WellKnownSidType.LocalSystemSid) || sid.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid));
+        }
+
+        public static bool Trusted(Mutex m)
+        {
+            try { return TrustedOwner(m.GetAccessControl().GetOwner(typeof(SecurityIdentifier))); }
+            catch (Exception) { return false; }
+        }
+
+        static bool Trusted(EventWaitHandle e)
+        {
+            try { return TrustedOwner(e.GetAccessControl().GetOwner(typeof(SecurityIdentifier))); }
+            catch (Exception) { return false; }
+        }
+
+        // The agent's single-instance mutex. alone is false only when a real agent holds it. A mutex by that name that a user
+        // made first is not the agent's: then the result is null and alone is true, so a user cannot keep the agent from starting.
+        public static Mutex Single(string name, out bool alone)
+        {
+            Mutex m = null;
+            try
+            {
+                m = new Mutex(true, name, out alone);
+                if (alone || Trusted(m)) return m;
+            }
+            catch (UnauthorizedAccessException) { }
+            if (m != null) m.Dispose();
+            alone = true;
+            return null;
+        }
+
+        // The event /agent-stop sets. One a user made first is not used, so a user cannot stop the agent; the stop file in the
+        // agent's own folder still works.
+        public static EventWaitHandle StopEvent(string name, Action<string> log)
+        {
+            try
+            {
+                bool made;
+                EventWaitHandle e = new EventWaitHandle(false, EventResetMode.ManualReset, name, out made);
+                if (made || Trusted(e)) return e;
+                e.Dispose();
+                if (log != null) log("Another program made the stop event of the agent. It is not used.");
+            }
+            catch (Exception ex) { if (log != null) log("No stop event: " + ex.Message); }
+            return null;
+        }
+    }
+
+    // Who owns a file or folder, and making a folder SYSTEM's and the administrators' alone. Tests fake it.
+    public interface IFolderAcl
+    {
+        bool Trusted(string path);
+        void Restrict(string folder);
+    }
+
+    public sealed class WinFolderAcl : IFolderAcl
+    {
+        public bool Trusted(string path)
+        {
+            FileSystemSecurity sec = Directory.Exists(path) ? (FileSystemSecurity)Directory.GetAccessControl(path, AccessControlSections.Owner) : File.GetAccessControl(path, AccessControlSections.Owner);
+            return AgentGuard.TrustedOwner(sec.GetOwner(typeof(SecurityIdentifier)));
+        }
+
+        public void Restrict(string folder)
+        {
+            DirectorySecurity sec = new DirectorySecurity();
+            sec.SetAccessRuleProtection(true, false);
+            foreach (WellKnownSidType w in new WellKnownSidType[] { WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinAdministratorsSid })
+                sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(w, null), FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            Directory.SetAccessControl(folder, sec);
+        }
+    }
+
+    // A folder the agent writes to and deletes in as SYSTEM, in a place where users can add files and folders (Windows\Temp).
+    public static class AgentFolder
+    {
+        public static bool IsLink(string path)
+        {
+            try { return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0; }
+            catch (FileNotFoundException) { return false; }
+            catch (DirectoryNotFoundException) { return false; }
+        }
+
+        static bool There(string path)
+        {
+            return File.Exists(path) || Directory.Exists(path) || IsLink(path);
+        }
+
+        // Removes a file or folder without following a link: a link is removed itself, never what it points at.
+        public static void Remove(string path)
+        {
+            FileAttributes a = File.GetAttributes(path);
+            bool dir = (a & FileAttributes.Directory) != 0;
+            if ((a & FileAttributes.ReparsePoint) != 0)
+            {
+                if (dir) Directory.Delete(path);
+                else File.Delete(path);
+                return;
+            }
+            if (!dir)
+            {
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
+                return;
+            }
+            foreach (string e in Directory.GetFileSystemEntries(path)) Remove(e);
+            Directory.Delete(path);
+        }
+
+        // Makes the folder, or keeps it when SYSTEM or the administrators made it, and leaves only SYSTEM and the
+        // administrators access to it. A folder a user made or a link is removed first, and so is anything in it a user made
+        // or that is a link, so that nothing the agent writes or deletes there can be pointed elsewhere. False when the
+        // folder cannot be made safe: then the agent writes nothing there.
+        public static bool Secure(string folder, IFolderAcl acl, Action<string> log)
+        {
+            try
+            {
+                if (There(folder) && (IsLink(folder) || !Directory.Exists(folder) || !acl.Trusted(folder)))
+                {
+                    Remove(folder);
+                    if (log != null) log("Removed " + folder + ": it was not made by the agent.");
+                }
+                Directory.CreateDirectory(folder);
+                if (IsLink(folder)) return false;
+                acl.Restrict(folder);
+                foreach (string e in Directory.GetFileSystemEntries(folder))
+                    if (IsLink(e) || !acl.Trusted(e))
+                    {
+                        Remove(e);
+                        if (log != null) log("Removed " + Path.GetFileName(e) + " from the agent's folder: it was not made by the agent.");
+                    }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (log != null) log("The folder " + folder + " cannot be used: " + ex.Message);
+                return false;
+            }
         }
     }
 }

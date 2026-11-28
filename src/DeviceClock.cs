@@ -133,11 +133,14 @@ namespace TrackVice
             return l;
         }
 
+        // The most a clock can be off and still be a measurement: an uploaded session that says more is not believed.
+        public const long MaxOffsetSeconds = 100L * 366 * 24 * 3600;
+
         public static TimeSpan? OffsetOf(Session s)
         {
             long n;
             string v = s.GetInfo(OffsetInfo);
-            return v != null && long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out n) ? TimeSpan.FromSeconds(n) : (TimeSpan?)null;
+            return v != null && long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out n) && n >= -MaxOffsetSeconds && n <= MaxOffsetSeconds ? TimeSpan.FromSeconds(n) : (TimeSpan?)null;
         }
 
         public static void Apply(Session s, List<Finding> list, DateTime nowUtc)

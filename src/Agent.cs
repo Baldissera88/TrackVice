@@ -44,6 +44,51 @@ namespace TrackVice
 
     public static class Stores
     {
+        // The most that is read into memory from a store in one piece: above the largest thing TrackVice itself writes.
+        public const long MaxDownload = 256L * 1024 * 1024;
+        // A .meta file holds a few short values.
+        public const long MaxMeta = 64 * 1024;
+
+        // A name inside a store is parts of letters and the like with / between them. It never leaves the store:
+        // no "..", no drive, no share, no backslash, no stream name, nothing below a space.
+        public static bool SafeName(string name)
+        {
+            if (string.IsNullOrEmpty(name) || name.Length > 1024) return false;
+            foreach (char c in name)
+                if (c < ' ' || c == '\\' || c == ':' || c == 127) return false;
+            foreach (string part in name.Split('/'))
+                if (part.Length == 0 || part == "." || part == ".." || part.Trim().Length == 0) return false;
+            return true;
+        }
+
+        public static void CheckName(string name)
+        {
+            if (!SafeName(name)) throw new StoreException("That is not a name TrackVice reads or writes in a store.");
+        }
+
+        // Reads a stream to its end, and refuses one that holds more than max bytes.
+        public static byte[] ReadCapped(Stream s, long max, string tooLarge)
+        {
+            using (MemoryStream ms = new MemoryStream())
+            {
+                byte[] buf = new byte[81920];
+                int r;
+                long total = 0;
+                while ((r = s.Read(buf, 0, buf.Length)) > 0)
+                {
+                    total += r;
+                    if (total > max) throw new StoreException(tooLarge);
+                    ms.Write(buf, 0, r);
+                }
+                return ms.ToArray();
+            }
+        }
+
+        public static string TooLarge(string what, long max)
+        {
+            return what + " is larger than " + (max / (1024 * 1024)) + " MB. It was not read.";
+        }
+
         public static bool IsUrl(string location)
         {
             return location != null && location.Trim().StartsWith("https://", StringComparison.OrdinalIgnoreCase);
@@ -76,13 +121,44 @@ namespace TrackVice
 
         string PathOf(string name)
         {
-            return Path.Combine(root, name.Replace('/', Path.DirectorySeparatorChar));
+            Stores.CheckName(name);
+            string path = Path.Combine(root, name.Replace('/', Path.DirectorySeparatorChar));
+            // The name was checked part by part. This also holds when the folder itself is given in an odd way.
+            string full = Path.GetFullPath(path), top = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!full.StartsWith(top + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new StoreException("That is not a name TrackVice reads or writes in a store.");
+            return path;
+        }
+
+        static byte[] ReadFile(string path)
+        {
+            if (new FileInfo(path).Length > Stores.MaxDownload) throw new StoreException(Stores.TooLarge(Path.GetFileName(path), Stores.MaxDownload));
+            using (FileStream f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                return Stores.ReadCapped(f, Stores.MaxDownload, Stores.TooLarge(Path.GetFileName(path), Stores.MaxDownload));
+        }
+
+        // A share: links on it are followed by the file server, not by this computer.
+        static bool IsShare(string folder)
+        {
+            string f = (folder ?? "").Replace('/', '\\');
+            return f.StartsWith(@"\\", StringComparison.Ordinal) && !f.StartsWith(@"\\?\", StringComparison.Ordinal) && !f.StartsWith(@"\\.\", StringComparison.Ordinal)
+                || f.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // The agent writes here as SYSTEM. A folder on this computer may be one users can write to: a link in it, to a folder or a
+        // file, would send what the agent writes or deletes somewhere else. So nothing below the store's folder may be a link.
+        void CheckNoLinks(string path)
+        {
+            if (IsShare(root)) return;
+            string top = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            for (string cur = Path.GetFullPath(path); cur != null && cur.Length > top.Length; cur = Path.GetDirectoryName(cur))
+                if (AgentFolder.IsLink(cur)) throw new StoreException(cur + " is a link. TrackVice does not write through links in the upload folder.");
         }
 
         public void Put(string name, byte[] data, Dictionary<string, string> meta)
         {
             string path = PathOf(name);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+            foreach (string p in new string[] { path, path + ".tmp", path + ".meta", path + ".meta.tmp" }) CheckNoLinks(p);
             StringBuilder sb = new StringBuilder();
             if (meta != null)
                 foreach (KeyValuePair<string, string> kv in meta) sb.Append(kv.Key).Append('=').Append(Uri.EscapeDataString(kv.Value ?? "")).Append('\n');
@@ -94,6 +170,8 @@ namespace TrackVice
         static void Replace(string path, byte[] data)
         {
             string tmp = path + ".tmp";
+            // A file left there is written anew, not through: it may be a link to another file.
+            if (File.Exists(tmp)) File.Delete(tmp);
             File.WriteAllBytes(tmp, data);
             if (File.Exists(path))
             {
@@ -119,14 +197,17 @@ namespace TrackVice
                     FileInfo fi = new FileInfo(f);
                     e.ModifiedUtc = fi.LastWriteTimeUtc;
                     e.Size = fi.Length;
-                    if (File.Exists(f + ".meta"))
+                    if (File.Exists(f + ".meta") && new FileInfo(f + ".meta").Length <= Stores.MaxMeta)
                         foreach (string line in File.ReadAllLines(f + ".meta"))
                         {
                             int eq = line.IndexOf('=');
-                            if (eq > 0) e.Meta[line.Substring(0, eq)] = Uri.UnescapeDataString(line.Substring(eq + 1));
+                            if (eq <= 0) continue;
+                            try { e.Meta[line.Substring(0, eq)] = Uri.UnescapeDataString(line.Substring(eq + 1)); }
+                            catch (UriFormatException) { e.Meta[line.Substring(0, eq)] = line.Substring(eq + 1); }
                         }
                 }
                 catch (IOException) { continue; }
+                catch (UnauthorizedAccessException) { continue; }
                 l.Add(e);
             }
             return l;
@@ -137,14 +218,14 @@ namespace TrackVice
         {
             if (!Directory.Exists(root)) throw new StoreException("The folder " + root + " was not found.");
             string path = PathOf(name);
-            return File.Exists(path) ? File.ReadAllBytes(path) : null;
+            return File.Exists(path) ? ReadFile(path) : null;
         }
 
         public byte[] Get(string name)
         {
             string path = PathOf(name);
             if (!File.Exists(path)) throw new StoreMissingException("That session is no longer in " + root + ".");
-            return File.ReadAllBytes(path);
+            return ReadFile(path);
         }
     }
 
@@ -157,6 +238,9 @@ namespace TrackVice
         // The Date header of the last upload's answer and when it was sent and answered, for DeviceClock.
         public string LastDate;
         public DateTime LastSentUtc, LastReceivedUtc;
+
+        // The most blobs one listing returns to the viewer.
+        public const int MaxListed = 250000;
 
         public AzureStore(string url)
         {
@@ -176,9 +260,19 @@ namespace TrackVice
             get { return container; }
         }
 
+        // The address of a blob. Every part of the name is escaped, so a name with ? or # or % in it stays a name:
+        // it cannot cut the token off, add to it, or point at another blob.
+        public string UrlOf(string name)
+        {
+            Stores.CheckName(name);
+            StringBuilder b = new StringBuilder(container);
+            foreach (string part in name.Split('/')) b.Append('/').Append(Uri.EscapeDataString(part));
+            return b.Append('?').Append(sas).ToString();
+        }
+
         public void Put(string name, byte[] data, Dictionary<string, string> meta)
         {
-            HttpWebRequest req = Http.Request(container + "/" + name + "?" + sas);
+            HttpWebRequest req = Http.Request(UrlOf(name));
             req.Method = "PUT";
             req.Headers["x-ms-blob-type"] = "BlockBlob";
             req.ContentType = "application/octet-stream";
@@ -206,6 +300,7 @@ namespace TrackVice
             string marker = null;
             for (int page = 0; page < 50; page++)
             {
+                if (l.Count >= MaxListed) break;
                 string url = container + "?restype=container&comp=list&include=metadata&prefix=" + Uri.EscapeDataString(prefix)
                     + (marker != null ? "&marker=" + Uri.EscapeDataString(marker) : "") + "&" + sas;
                 string xml = Encoding.UTF8.GetString(Fetch(url, "list"));
@@ -217,7 +312,7 @@ namespace TrackVice
 
         public byte[] Get(string name)
         {
-            return Fetch(container + "/" + name + "?" + sas, "read");
+            return Fetch(UrlOf(name), "read");
         }
 
         byte[] Fetch(string url, string what)
@@ -228,13 +323,14 @@ namespace TrackVice
             {
                 using (WebResponse resp = req.GetResponse())
                 using (Stream s = resp.GetResponseStream())
-                using (MemoryStream ms = new MemoryStream())
                 {
-                    s.CopyTo(ms);
-                    return ms.ToArray();
+                    string tooLarge = Stores.TooLarge("The answer of the storage account", Stores.MaxDownload);
+                    if (resp.ContentLength > Stores.MaxDownload) throw new StoreException(tooLarge);
+                    return Stores.ReadCapped(s, Stores.MaxDownload, tooLarge);
                 }
             }
             catch (WebException ex) { throw Explain(ex, what); }
+            catch (IOException ex) { throw new StoreException("Could not reach " + new Uri(container).Host + ": " + ex.Message); }
         }
 
         // The answer of List Blobs, with the metadata of every blob.
@@ -244,8 +340,14 @@ namespace TrackVice
             marker = null;
             XmlDocument doc = new XmlDocument();
             doc.XmlResolver = null;
+            // The answer of List Blobs has no document type. One that has is refused, so entities are never expanded or fetched.
+            XmlReaderSettings set = new XmlReaderSettings();
+            set.DtdProcessing = DtdProcessing.Prohibit;
+            set.XmlResolver = null;
             // The answer starts with a byte order mark.
-            doc.LoadXml(xml.TrimStart('﻿'));
+            using (StringReader text = new StringReader(xml.TrimStart('﻿')))
+            using (XmlReader reader = XmlReader.Create(text, set))
+                doc.Load(reader);
             foreach (XmlNode b in doc.SelectNodes("/EnumerationResults/Blobs/Blob"))
             {
                 StoreEntry e = new StoreEntry();
@@ -295,6 +397,10 @@ namespace TrackVice
     public static class AgentData
     {
         public const string Prefix = "sessions/";
+        // A session is a few megabytes of JSON. A small upload that unpacks to far more is not a session.
+        public const long MaxSessionBytes = 128L * 1024 * 1024;
+        // The longest value of the summary the list shows.
+        public const int MaxSummaryText = 300;
 
         public static string BlobName(string id)
         {
@@ -317,11 +423,7 @@ namespace TrackVice
             {
                 using (MemoryStream ms = new MemoryStream(data))
                 using (GZipStream gz = new GZipStream(ms, CompressionMode.Decompress))
-                using (MemoryStream o = new MemoryStream())
-                {
-                    gz.CopyTo(o);
-                    return Session.FromJson(Encoding.UTF8.GetString(o.ToArray()));
-                }
+                    return Session.FromJson(Encoding.UTF8.GetString(Stores.ReadCapped(gz, MaxSessionBytes, Stores.TooLarge("The session, unpacked,", MaxSessionBytes))));
             }
             catch (Exception ex)
             {
@@ -343,17 +445,44 @@ namespace TrackVice
             return null;
         }
 
+        // Counts are never below zero, whatever the upload says.
         static int Int(StoreEntry e, string key)
         {
             string v;
             int n;
-            return e.Meta.TryGetValue(key, out v) && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out n) ? n : 0;
+            return e.Meta.TryGetValue(key, out v) && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out n) && n > 0 ? n : 0;
         }
 
         static string Str(StoreEntry e, string key)
         {
             string v;
-            return e.Meta.TryGetValue(key, out v) && v.Length > 0 ? v : null;
+            if (!e.Meta.TryGetValue(key, out v) || v == null) return null;
+            v = ListText(v);
+            return v.Length > 0 ? v : null;
+        }
+
+        // A value of the summary as the list shows it. Anyone who has the upload link can write the summary, so it is
+        // one line of plain text of a sensible length: no control characters, and none that turn the reading direction
+        // or hide text.
+        public static string ListText(string v)
+        {
+            if (v == null) return null;
+            StringBuilder b = new StringBuilder(Math.Min(v.Length, MaxSummaryText));
+            foreach (char c in v)
+            {
+                if (b.Length >= MaxSummaryText) break;
+                bool odd = c < ' ' || (c >= 127 && c < 160) || c == '\u2028' || c == '\u2029' || (c >= '\u200B' && c <= '\u200F') || (c >= '\u202A' && c <= '\u202E') || (c >= '\u2066' && c <= '\u2069') || c == '\uFEFF';
+                b.Append(odd ? ' ' : c);
+            }
+            return b.ToString().Trim();
+        }
+
+        // The summary as it leaves the device: with the secrets hidden like the session itself.
+        public static Dictionary<string, string> MaskedSummary(Dictionary<string, string> m)
+        {
+            Dictionary<string, string> r = new Dictionary<string, string>();
+            foreach (KeyValuePair<string, string> kv in m) r[kv.Key] = Secrets.Mask(kv.Value);
+            return r;
         }
 
         // What changes when the session changes, to upload only then.
@@ -401,7 +530,8 @@ namespace TrackVice
         {
             RemoteDeployment d = new RemoteDeployment();
             d.Key = e.Name;
-            d.Device = Str(e, "computer") ?? Path.GetFileName(e.Name);
+            // The name comes from the store: it is cut at the last / by hand, as Path.GetFileName refuses some characters.
+            d.Device = Str(e, "computer") ?? ListText(e.Name.Substring(e.Name.LastIndexOf('/') + 1));
             d.Profile = Str(e, "profile");
             d.User = Str(e, "kind");
             d.Detail = Str(e, "tenant");
@@ -487,7 +617,8 @@ namespace TrackVice
             List<RemoteDeployment> l = new List<RemoteDeployment>();
             foreach (StoreEntry e in store.List(AgentData.Prefix))
             {
-                if (!e.Name.EndsWith(".json.gz", StringComparison.OrdinalIgnoreCase)) continue;
+                // A blob with a name TrackVice never writes, put there by anyone with the upload link, is not listed.
+                if (e.Name == null || !Stores.SafeName(e.Name) || !e.Name.EndsWith(".json.gz", StringComparison.OrdinalIgnoreCase)) continue;
                 RemoteDeployment d = AgentData.ToDeployment(e, now);
                 if (d.LastUtc >= sinceUtc) l.Add(d);
             }
@@ -685,7 +816,8 @@ namespace TrackVice
             {
                 s.SavedUtc = nowUtc;
                 s.Outages = Outages.Snapshot();
-                store.Put(AgentData.BlobName(id), AgentData.Pack(o.Mask ? Secrets.MaskedCopy(s) : s), AgentData.Summary(s, nowUtc, idle));
+                Dictionary<string, string> summary = AgentData.Summary(s, nowUtc, idle);
+                store.Put(AgentData.BlobName(id), AgentData.Pack(o.Mask ? Secrets.MaskedCopy(s) : s), o.Mask ? AgentData.MaskedSummary(summary) : summary);
                 lastUpload = nowUtc;
                 Uploads++;
                 LastError = null;
@@ -750,13 +882,14 @@ namespace TrackVice
                 return 1;
             }
             bool created;
-            using (Mutex one = new Mutex(true, @"Global\TrackViceAgent", out created))
+            using (Mutex one = AgentGuard.Single(WinAgentHost.MutexName, out created))
             {
                 if (!created)
                 {
                     Console.WriteLine("The TrackVice agent is already running.");
                     return 0;
                 }
+                if (one == null) Log("Another program holds the name of the agent's mutex. It is not the agent's: going on without it.");
                 ISessionStore store = Stores.Open(upload);
                 bool installed = o.Upload == null;
                 string sid = installed ? Reg("SessionId") : null;
