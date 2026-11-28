@@ -112,6 +112,7 @@ namespace TrackVice
             bTicket = SupportButton("Copy for ticket", Glyphs.Copy, delegate { CopyTicket(); });
             bNote = SupportButton("Add a note", NoteGlyph, delegate { EditNote(); });
             bIntune = SupportButton("Open in Intune", Glyphs.Export, delegate { OpenInIntune(); });
+            BuildDiagnosticsButton();
             Tip(bTicket, "Copy a short summary of this device for a support ticket: device, user, state, what failed and why, what it waits for, start and time taken. Secrets are masked.");
             Tip(bIntune, "Open the device's page in the Intune admin center");
             chips.Controls.Add(supportBox);
@@ -131,9 +132,10 @@ namespace TrackVice
         }
 
         // On their own row under the chips the buttons stand side by side. Beside the chips they fill the height of the
-        // cards in two rows: Copy for ticket and Open in Intune, then the note as wide as both. Open in Intune only shows
-        // for a device that Intune knows (Visible says false for all of them while the window is not shown yet).
-        bool supportRow, supportIntune;
+        // cards in two rows: Copy for ticket and Open in Intune, then the note and Collect diagnostics. Open in Intune only
+        // shows for a device that Intune knows, Collect diagnostics only for a device with the agent (Visible says false
+        // for all of them while the window is not shown yet, so the flags keep what should show).
+        bool supportRow, supportIntune, supportDiag;
 
         void LayoutSupport() { LayoutSupport(supportRow); }
 
@@ -143,25 +145,30 @@ namespace TrackVice
             bTicket.AutoWidth();
             bNote.AutoWidth();
             bIntune.AutoWidth();
+            bDiagnostics.AutoWidth();
             int gap = Dpi.S(8);
             if (row)
             {
                 int h = Dpi.S(32), x = 0;
-                foreach (FlatButton b in new FlatButton[] { bTicket, bIntune, bNote })
+                foreach (FlatButton b in new FlatButton[] { bTicket, bIntune, bDiagnostics, bNote })
                 {
                     if (b == bIntune && !supportIntune) continue;
+                    if (b == bDiagnostics && !supportDiag) continue;
                     b.SetBounds(x, 0, b.Width, h);
                     x += b.Width + gap;
                 }
                 supportBox.Size = new Size(Math.Max(1, x - gap), h);
                 return;
             }
+            // Two rows as high as the cards: Copy for ticket and Open in Intune, then the note and Collect diagnostics.
             int bh = (Hero.CardHeight - gap) / 2;
             int top = bTicket.Width + (supportIntune ? gap + bIntune.Width : 0);
-            int w = Math.Max(top, bNote.Width);
+            int bottom = bNote.Width + (supportDiag ? gap + bDiagnostics.Width : 0);
+            int w = Math.Max(top, bottom);
             bTicket.SetBounds(0, 0, supportIntune ? w - gap - bIntune.Width : w, bh);
             bIntune.SetBounds(w - bIntune.Width, 0, bIntune.Width, bh);
-            bNote.SetBounds(0, Hero.CardHeight - bh, w, bh);
+            bNote.SetBounds(0, Hero.CardHeight - bh, supportDiag ? w - gap - bDiagnostics.Width : w, bh);
+            bDiagnostics.SetBounds(w - bDiagnostics.Width, Hero.CardHeight - bh, bDiagnostics.Width, bh);
             supportBox.Size = new Size(w, Hero.CardHeight);
         }
 
@@ -178,6 +185,8 @@ namespace TrackVice
             bool intune = PortalLinks.Intune(s.GetInfo(DeviceFacts.IntuneId)) != null;
             supportIntune = intune;
             bIntune.Visible = intune;
+            supportDiag = DiagnosticsButtonShown();
+            bDiagnostics.Visible = supportDiag;
             LayoutSupport();
             chips.PerformLayout();
             RefreshEstimate();

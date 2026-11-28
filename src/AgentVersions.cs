@@ -26,7 +26,7 @@ namespace TrackVice
 
         public static bool IsKey(string key)
         {
-            return key == InstalledKey || key == UpdatedKey || key == StateKey || key == CheckedKey;
+            return key == InstalledKey || key == UpdatedKey || key == StateKey || key == CheckedKey || key == DiagnosticsStatus.InfoKey;
         }
 
         static string Iso(DateTime t)

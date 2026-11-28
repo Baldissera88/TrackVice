@@ -52,41 +52,6 @@ namespace TrackVice
     // How the rows of a tile are drawn: as a list in a card, as device cards in a grid, or as one card per item.
     public enum TileMode { List, Grid, Cards }
 
-    // Whether Windows shows animations: "Show animations in Windows" and the effects of the system. Read again now and then.
-    public static class Motion
-    {
-        static bool on = true;
-        static DateTime read = DateTime.MinValue;
-
-        [DllImport("user32.dll", SetLastError = false)]
-        static extern bool SystemParametersInfo(int action, int param, ref bool value, int winIni);
-
-        const int SpiGetClientAreaAnimation = 0x1042;
-
-        public static bool On
-        {
-            get
-            {
-                if ((DateTime.UtcNow - read).TotalSeconds < 30) return on;
-                read = DateTime.UtcNow;
-                bool v = true;
-                try { v = SystemInformation.UIEffectsEnabled; }
-                catch (Exception) { v = true; }
-                if (v)
-                {
-                    try
-                    {
-                        bool anim = true;
-                        if (SystemParametersInfo(SpiGetClientAreaAnimation, 0, ref anim, 0)) v = anim;
-                    }
-                    catch (Exception) { }
-                }
-                on = v;
-                return on;
-            }
-        }
-    }
-
     // Fades the hover look of one item in, short and ease-out, so the page feels calm. Off when Windows shows no
     // animations: the hover look is then there at once.
     public sealed class HoverFade
@@ -118,7 +83,7 @@ namespace TrackVice
             if (Equals(k, key)) return;
             key = k;
             start = DateTime.UtcNow;
-            if (k != null && Motion.On) timer.Start();
+            if (k != null && Fx.On) timer.Start();
             else timer.Stop();
         }
 
@@ -134,7 +99,7 @@ namespace TrackVice
         {
             get
             {
-                if (!Motion.On) return 1;
+                if (!Fx.On) return 1;
                 return Math.Max(0, Math.Min(1, (DateTime.UtcNow - start).TotalMilliseconds / Ms));
             }
         }
@@ -676,13 +641,13 @@ namespace TrackVice
     }
 
     // A rounded search field around a text box without its own border, with a focus ring in the accent colour.
-    public sealed class SearchField : Panel, IThemed
+    public sealed class OverviewSearch : Panel, IThemed
     {
         public readonly TextBox Box;
         Theme th = Theme.Light();
         bool hot;
 
-        public SearchField(TextBox box)
+        public OverviewSearch(TextBox box)
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             Box = box;

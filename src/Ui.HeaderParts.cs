@@ -166,9 +166,9 @@ namespace TrackVice
     }
 
     // The field in the header that opens the command palette.
-    public sealed class SearchField : FlatControl
+    public sealed class HeaderSearch : FlatControl
     {
-        public SearchField()
+        public HeaderSearch()
         {
             Height = Dpi.S(28);
             Cursor = Cursors.Hand;

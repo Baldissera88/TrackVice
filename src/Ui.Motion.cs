@@ -34,31 +34,11 @@ namespace TrackVice
 
         static readonly List<Run> runs = new List<Run>();
         static Timer timer;
-        static bool noSpi;
-
-        const int SPI_GETCLIENTAREAANIMATION = 0x1042;
-
-        [DllImport("user32.dll", SetLastError = true)]
-        static extern bool SystemParametersInfo(int action, int param, ref bool value, int winIni);
-
-        // False when the user turned animations off in Windows (Settings > Accessibility > Visual effects).
-        // Callers can also use it to skip decoration such as spinners.
+        // False when the user turned animations off in Windows (Settings > Accessibility > Visual effects) or works over
+        // Remote Desktop; the one check is Fx.On. Callers can also use it to skip decoration such as spinners.
         public static bool Enabled
         {
-            get
-            {
-                if (!noSpi)
-                {
-                    try
-                    {
-                        bool on = true;
-                        if (SystemParametersInfo(SPI_GETCLIENTAREAANIMATION, 0, ref on, 0)) return on;
-                    }
-                    catch (Exception) { noSpi = true; }
-                }
-                try { return SystemInformation.UIEffectsEnabled; }
-                catch (Exception) { return true; }
-            }
+            get { return Fx.On; }
         }
 
         // Animates a value from..to over ms milliseconds. key may be null.

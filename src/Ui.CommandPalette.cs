@@ -305,11 +305,11 @@ namespace TrackVice
             }
             Shapes.Fill(g, c, Dpi.S(12), T.Card);
             Shapes.Stroke(g, c, Dpi.S(12), T.Stroke, 1f);
-            SearchField.Magnifier(g, new PointF(card.X + Dpi.S(27), card.Y + InputH / 2f - Dpi.S(1)), Dpi.S(6.5f), box.Text.Length > 0 ? T.Accent : T.Text3);
+            HeaderSearch.Magnifier(g, new PointF(card.X + Dpi.S(27), card.Y + InputH / 2f - Dpi.S(1)), Dpi.S(6.5f), box.Text.Length > 0 ? T.Accent : T.Text3);
             using (Pen p = new Pen(T.Divider, 1f)) g.DrawLine(p, card.X + 1, card.Y + InputH, card.Right - 2, card.Y + InputH);
             TextFormatFlags one = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis;
             if (box.Text.Length == 0)
-                TextRenderer.DrawText(g, SearchField.Label, box.Font, new Rectangle(box.Right + Dpi.S(1), box.Top, card.Right - box.Right - Dpi.S(18), box.Height), T.Text3, TextFormatFlags.Left | one);
+                TextRenderer.DrawText(g, HeaderSearch.Label, box.Font, new Rectangle(box.Right + Dpi.S(1), box.Top, card.Right - box.Right - Dpi.S(18), box.Height), T.Text3, TextFormatFlags.Left | one);
             for (int i = 0; i < lines.Count; i++)
             {
                 Line l = lines[i];

@@ -532,7 +532,7 @@ namespace TrackVice
         readonly DropButton bCustomer = new DropButton("All customers");
         readonly Segmented side = SideFilterUi.Make(DeviceSides.Both);
         public readonly TextBox Search = new TextBox();
-        readonly SearchField searchField;
+        readonly OverviewSearch searchField;
         readonly FlatButton bSearch = new FlatButton("Search", null);
         readonly FlatButton bRefresh = new FlatButton("Refresh", Glyphs2.Sync);
         readonly FlatButton bThisPc = new FlatButton("Follow this PC", Glyphs2.Device);
@@ -563,7 +563,7 @@ namespace TrackVice
             foreach (FlatButton b in new FlatButton[] { bSearch, bRefresh, bThisPc, bReport }) { b.Compact = true; b.AutoWidth(); }
             bCustomer.MinWidth = Dpi.S(160);
             bCustomer.Fit();
-            searchField = new SearchField(Search);
+            searchField = new OverviewSearch(Search);
             searchField.Width = Dpi.S(300);
             Control[] items = { bCustomer, side, searchField, bSearch, bRefresh, bThisPc, bReport };
             foreach (Control c in items)

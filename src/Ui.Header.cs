@@ -12,7 +12,7 @@ namespace TrackVice
         BrandMark brand;
         Crumb crumb;
         FactChips facts;
-        SearchField searchField;
+        HeaderSearch searchField;
         // The buttons that fold into More, the first to go first. Back, Forward, Overview, Settings and Help stay.
         FlatButton[] foldOrder;
         bool fitting;
@@ -55,7 +55,7 @@ namespace TrackVice
             brand = new BrandMark();
             crumb = new Crumb();
             facts = new FactChips();
-            searchField = new SearchField();
+            searchField = new HeaderSearch();
             searchField.Click += Safe.Wrap(delegate { OpenPalette(""); });
             Tip(searchField, "Search devices, actions, pages and settings, and jump to them (Ctrl+K or Ctrl+P)");
             foreach (Control c in new Control[] { brand, crumb, facts, searchField })
@@ -85,7 +85,7 @@ namespace TrackVice
             title.Location = new Point(brand.Right + Dpi.S(9), brand.Top + (brand.Height - title.Height) / 2 - Dpi.S(1));
             toolbar.Location = new Point(Math.Max(0, w - toolbar.Width), 0);
             int rowTwo = Dpi.S(46), rowH = Dpi.S(28);
-            int sw = Math.Max(Dpi.S(96), Math.Min(SearchField.NaturalWidth, (int)(w * 0.3)));
+            int sw = Math.Max(Dpi.S(96), Math.Min(HeaderSearch.NaturalWidth, (int)(w * 0.3)));
             searchField.SetBounds(w - edge - sw, rowTwo, sw, rowH);
             int room = Math.Max(0, searchField.Left - edge - Dpi.S(16));
             int cw = Math.Min(crumb.PreferredWidth, room);

@@ -79,6 +79,7 @@ Setups made before customer codes, with a storage account and links per customer
 - [Alerts in Teams](#alerts-in-teams)
 - [Masking of secrets](#masking-of-secrets)
 - [Logs from the device](#logs-from-the-device)
+- [Collect diagnostics](#collect-diagnostics)
 - [Statistics and Compare](#statistics-and-compare)
 - [SCCM task sequences](#sccm-task-sequences)
 - [Alternative: a Win32 app](#alternative-a-win32-app)
@@ -656,6 +657,32 @@ Besides its session, the agent uploads the device's logs as one zip, `logs/<id>.
 On your PC, watch the device from the list, then choose **LogVice > Logs from the device**. TrackVice downloads the zip, unpacks it under `%LOCALAPPDATA%\TrackVice\Logs\<device>-<id>` and opens the folder. **Open in LogVice** on an item or an event then opens the device's copy of that log. A new download replaces the older copy of that device, and copies older than 30 days are removed.
 
 The demo devices under **Devices > Demos > Devices with the agent** have logs too, made up like the rest.
+
+## Collect diagnostics
+
+When the logs are not enough, ask a device for more. Watch the device from the list and choose **Collect diagnostics** beside Copy for ticket (it is also under **LogVice**). TrackVice shows what is collected and where the request is written. The agent then collects:
+
+| What | In the zip as |
+|---|---|
+| Everything in [Logs from the device](#logs-from-the-device): the session and the logs it read | `session.json` and the log files |
+| `MdmDiagnosticsTool.exe -area "Autopilot;DeviceEnrollment;DeviceProvisioning;TPM" -cab ...` | `MDMDiagnostics.cab` |
+| `dsregcmd /status` | `dsregcmd-status.txt` |
+| The registry keys `Win32Apps` and `SideCarPolicies` under `HKLM\SOFTWARE\Microsoft\IntuneManagementExtension` | `ime-registry.txt` |
+| What was left out or skipped, and why | `diagnostics-notes.txt` |
+
+The window follows the request: **Requested**, **Received by the agent**, **Collecting on the device**, **Uploaded**. The agent reads requests every minute while the device deploys and every 10 minutes after, so that is how long Received can take. You can close the window; the progress is in the session the agent uploads. When it is uploaded, **Open in LogVice** downloads and opens the text files, and **Save zip** saves the zip as the device uploaded it.
+
+How it works, and why it is safe:
+
+- Nothing connects to the device. TrackVice writes a small file, `agent/requests/<id>.json`, to the place the agents read their updates from (see [Update locations](#update-locations)), and the agent reads it with the link it checks for updates with. So this PC needs the same access as **Publish agent update**; when something is missing the window says what.
+- The request is signed with the update key of this PC, the same key that signs `agent/latest.json`. The agent checks it with the update key it was installed with. A request that is not signed, is signed with another key or was changed is ignored and written once to `agent.log`. Someone who can write to the container but does not have the key cannot make a device do anything.
+- A request is for one device (its session id), is valid for 2 hours, and is followed once: the agent keeps the ids of the requests it followed in `diagnostics.txt` in its folder, also over a restart. A request that is put back later, or copied to another device, is ignored. If the agent cannot save the id, it does not follow the request.
+- The request holds no commands. It only says which of the four parts above to collect, and the agent runs exactly the programs in the table, from the Windows system folder, with these arguments. MdmDiagnosticsTool gets 120 seconds; if it is missing, fails or takes longer, it is skipped with a note.
+- Secrets are masked in the session and in the two text files, as described in [Masking of secrets](#masking-of-secrets). The log files and the cab are uploaded as they are on the device, as in the log zip. `/no-mask` turns the masking off here too.
+- The zip goes up with the agent's upload link as `logs/<id>-diagnostics-<request id>.zip`, and is at most 60 MB like the logs. If it would be larger, the cab is left out first, then the log files, and the notes say so.
+- An agent only follows a request while it runs: until the hours after the deployment are over (see [The settings in the code](#the-settings-in-the-code)).
+
+Agents older than the TrackVice you run ignore requests. The window then says "This agent is 2.0.11; Collect diagnostics needs 2.1.0 or later" with the real versions; publish the agent update and try again when the device has it.
 
 ## Statistics and Compare
 
