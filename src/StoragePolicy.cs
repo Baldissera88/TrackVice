@@ -73,10 +73,20 @@ namespace TrackVice
     {
         // At most five policies on a container.
         public const int Max = 5;
+        public const int MaxXml = 65536;
+
+        // A request signed with the account key goes only to the blob address of the account, for a container name.
+        static string Base(OwnStorage own, string container)
+        {
+            StorageTrust.RequireEndpoint(own);
+            string problem = BlobContainers.Problem(container);
+            if (problem != null) throw new SetupException(problem);
+            return own.BlobEndpoint.TrimEnd('/') + "/" + container;
+        }
 
         static string Url(OwnStorage own, string container)
         {
-            return own.BlobEndpoint.TrimEnd('/') + "/" + container + "?restype=container&comp=acl";
+            return Base(own, container) + "?restype=container&comp=acl";
         }
 
         public static string Xml(List<AccessPolicy> list)
@@ -98,9 +108,15 @@ namespace TrackVice
             List<AccessPolicy> l = new List<AccessPolicy>();
             string t = (xml ?? "").Trim().TrimStart('﻿');
             if (t.Length == 0) return l;
+            // A container has at most five policies, so a long answer is not one. A document type is refused, so no
+            // entity is expanded or fetched.
+            if (t.Length > MaxXml) throw new XmlException("The access policies are too long.");
             XmlDocument d = new XmlDocument();
             d.XmlResolver = null;
-            d.LoadXml(t);
+            XmlReaderSettings set = new XmlReaderSettings();
+            set.DtdProcessing = DtdProcessing.Prohibit;
+            set.XmlResolver = null;
+            using (XmlReader r = XmlReader.Create(new System.IO.StringReader(t), set)) d.Load(r);
             foreach (XmlNode n in d.SelectNodes("/SignedIdentifiers/SignedIdentifier"))
             {
                 AccessPolicy p = new AccessPolicy();
@@ -161,7 +177,7 @@ namespace TrackVice
         {
             WebCall c = new WebCall();
             c.Method = "DELETE";
-            c.Url = own.BlobEndpoint.TrimEnd('/') + "/" + container + "?restype=container";
+            c.Url = Base(own, container) + "?restype=container";
             SharedKey.Sign(c, own.Account, own.Key, nowUtc);
             WebReply r = web.Send(c);
             if (r.Status == 202 || r.Status == 200) return true;

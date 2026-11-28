@@ -183,7 +183,8 @@ namespace TrackVice
         {
             if (string.IsNullOrEmpty(link)) return null;
             Uri u;
-            if (!Uri.TryCreate(link, UriKind.Absolute, out u) || u.Scheme != Uri.UriSchemeHttps || !string.Equals(u.Host, target.Host, StringComparison.OrdinalIgnoreCase))
+            if (!Uri.TryCreate(link, UriKind.Absolute, out u) || u.Scheme != Uri.UriSchemeHttps || !string.Equals(u.Host, target.Host, StringComparison.OrdinalIgnoreCase)
+                || !u.IsDefaultPort || u.UserInfo.Length > 0 || !link.StartsWith(target.BaseUrl + "/", StringComparison.OrdinalIgnoreCase))
                 throw new VaultException("The vault gave a link to another address, so the list was stopped.", 0);
             return link;
         }
@@ -198,6 +199,8 @@ namespace TrackVice
             string name = "";
             string[] parts = id.Split('/');
             for (int i = 0; i + 1 < parts.Length; i++) if (parts[i] == "secrets") { name = parts[i + 1]; break; }
+            // The name goes into the address of the next call and into messages, so it must be a secret name.
+            if (!VaultCustomers.IsSecretName(name)) return null;
             s.Name = name;
             s.ContentType = Http.Str(o, "contentType") ?? "";
             s.Value = Http.Str(o, "value") ?? "";
@@ -213,7 +216,11 @@ namespace TrackVice
             WebReply r = http.Send("GET", SecretUrl(name), token(), null);
             if (r.Status == 404) return null;
             if (r.Status < 200 || r.Status > 299) throw Fail(r, "read the secret " + name);
-            return Read(r.Json);
+            VaultSecret s = Read(r.Json);
+            // An answer that is not this secret must not look like "no such secret": Save would then write over it without asking.
+            if (s == null || !string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
+                throw new VaultException("The vault gave an answer for the secret " + name + " that could not be read.", 0);
+            return s;
         }
 
         // Adds the secret, or adds a new version of it. Returns the time the vault gives it.
@@ -299,19 +306,21 @@ namespace TrackVice
             DeviceCode d = new DeviceCode();
             d.Code = Http.Str(r, "device_code");
             d.UserCode = Http.Str(r, "user_code");
-            d.VerificationUri = Http.Str(r, "verification_uri") ?? "https://microsoft.com/devicelogin";
+            // The page is opened in the browser, so it must be a web page and nothing else that Windows can start.
+            d.VerificationUri = WebLinks.HttpsOr(Http.Str(r, "verification_uri"), WebLinks.DeviceLogin);
             long? i = ImeJson.Long(ImeJson.Get(r, "interval"));
             long? e = ImeJson.Long(ImeJson.Get(r, "expires_in"));
-            if (i.HasValue && i.Value >= 0) d.Interval = (int)i.Value;
-            if (e.HasValue && e.Value > 0) d.ExpiresIn = (int)e.Value;
+            if (i.HasValue && i.Value >= 0) d.Interval = (int)Math.Min(i.Value, WebLinks.MaxInterval);
+            if (e.HasValue && e.Value > 0) d.ExpiresIn = (int)Math.Min(e.Value, WebLinks.MaxExpires);
             if (string.IsNullOrEmpty(d.Code) || string.IsNullOrEmpty(d.UserCode)) throw new SetupException("The sign-in service did not return a code.");
             return d;
         }
 
         public void Wait(DeviceCode d, WaitHandle cancel)
         {
-            DateTime until = DateTime.UtcNow.AddSeconds(d.ExpiresIn);
-            int interval = d.Interval;
+            DateTime until = DateTime.UtcNow.AddSeconds(Math.Max(1, Math.Min(d.ExpiresIn, WebLinks.MaxExpires)));
+            // A wait that the answer made huge or negative would never end or would throw.
+            int interval = Math.Max(0, Math.Min(d.Interval, WebLinks.MaxInterval));
             while (DateTime.UtcNow < until)
             {
                 if (cancel.WaitOne(TimeSpan.FromSeconds(interval))) throw new OperationCanceledException();
@@ -320,7 +329,7 @@ namespace TrackVice
                 if (Take(r)) return;
                 string err = Http.Str(r, "error");
                 if (err == "authorization_pending") continue;
-                if (err == "slow_down") { interval += 5; continue; }
+                if (err == "slow_down") { interval = Math.Min(interval + 5, WebLinks.MaxInterval); continue; }
                 if (err == "expired_token") throw new SetupException("The code expired. Start again.");
                 if (err == "authorization_declined" || err == "access_denied") throw new SetupException("The sign-in was declined.");
                 throw new SetupException(Explain(r));
@@ -350,8 +359,8 @@ namespace TrackVice
                 if (changed != null) { try { changed(rt); } catch (Exception) { } }
             }
             long? e = ImeJson.Long(ImeJson.Get(r, "expires_in"));
-            expires = DateTime.UtcNow.AddSeconds((e ?? 3600) - 120);
-            if (Account == null) Account = WebSignIn.AccountOf(t);
+            expires = DateTime.UtcNow.AddSeconds(Math.Max(0, Math.Min(e ?? 3600, 86400)) - 120);
+            if (Account == null) Account = WebLinks.Plain(WebSignIn.AccountOf(t), 120);
             return true;
         }
 
@@ -364,6 +373,41 @@ namespace TrackVice
                 "grant_type=refresh_token&client_id=" + Uri.EscapeDataString(ClientId) + "&refresh_token=" + Uri.EscapeDataString(refresh) + "&scope=" + Uri.EscapeDataString(Scopes));
             if (!Take(r)) throw new SetupException("The sign-in has expired. Sign in again. " + Explain(r));
             return access;
+        }
+    }
+
+    // ---------- what a sign-in answer may make TrackVice do ----------
+
+    public static class WebLinks
+    {
+        public const string DeviceLogin = "https://microsoft.com/devicelogin";
+        public const int MaxInterval = 60, MaxExpires = 3600;
+
+        // True for an absolute https address without a user name, which is all that is ever opened in the browser.
+        public static bool IsHttps(string url)
+        {
+            Uri u;
+            if (string.IsNullOrEmpty(url) || url.Length > 2048 || !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (char ch in url) if (ch <= ' ' || ch == '"' || ch == '\\' || ch > '~') return false;
+            return Uri.TryCreate(url, UriKind.Absolute, out u) && u.Scheme == Uri.UriSchemeHttps && u.UserInfo.Length == 0 && u.Host.Length > 0;
+        }
+
+        public static string HttpsOr(string url, string otherwise)
+        {
+            return IsHttps(url) ? url : otherwise;
+        }
+
+        // One line of text without control characters, for a name that comes from outside.
+        public static string Plain(string s, int max)
+        {
+            if (s == null) return null;
+            StringBuilder b = new StringBuilder();
+            foreach (char ch in s)
+            {
+                if (b.Length >= max) break;
+                if (!char.IsControl(ch)) b.Append(ch);
+            }
+            return b.ToString();
         }
     }
 

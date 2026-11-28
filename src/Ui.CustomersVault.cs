@@ -242,7 +242,7 @@ namespace TrackVice
                 Post(delegate
                 {
                     bool copied = Menus.Copy(d.UserCode);
-                    if (!demo) { try { Process.Start(d.VerificationUri); } catch (Exception) { Menus.Copy(d.VerificationUri); } }
+                    if (!demo && WebLinks.IsHttps(d.VerificationUri)) { try { Process.Start(d.VerificationUri); } catch (Exception) { Menus.Copy(d.VerificationUri); } }
                     Say("Open " + d.VerificationUri + " and enter the code " + d.UserCode + (copied ? ". The code is copied." : ".") + " TrackVice waits for the sign-in.", false);
                 });
                 s.Wait(d, cancel);
@@ -357,7 +357,7 @@ namespace TrackVice
             {
                 List<VaultSecret> got = (List<VaultSecret>)o;
                 Customer before = book.Current == null ? null : book.Current.Copy();
-                VaultGetResult r = VaultCustomers.Merge(book, got, secrets);
+                VaultGetResult r = VaultCustomers.Merge(book, got, secrets, demo ? null : AddCustomerUi.PublicKey(YourStorageUi.Keys));
                 if (live)
                 {
                     book.Save();
@@ -366,7 +366,8 @@ namespace TrackVice
                 settings.Set("VaultSynced", VaultCustomers.WriteTime(started));
                 string text = got.Count == 0
                     ? "The vault has no customers yet."
-                    : "Got from the vault: " + r.Added + " new, " + r.Updated + " updated." + (r.Skipped > 0 ? " " + r.Skipped + " could not be read." : "");
+                    : "Got from the vault: " + r.Added + " new, " + r.Updated + " updated." + (r.Skipped > 0 ? " " + r.Skipped + " could not be read." : "")
+                        + (r.CodesNotKept > 0 ? " " + r.CodesNotKept + " customer code" + (r.CodesNotKept == 1 ? " was" : "s were") + " not kept: they do not hold the update key of this PC. Get my setup from the vault first, then get the customers again." : "");
                 status = Describe();
                 Build();
                 refresh();

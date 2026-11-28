@@ -53,6 +53,7 @@ namespace TrackVice.Tests
             CustomerTests.Run();
             VaultCustomerTests.Run();
             VaultSetupTests.Run();
+            VaultStorageTrustTests.Run();
             TsAgentTests.Run();
             IntuneLookupTests.Run();
             AutopilotTests.Run();
