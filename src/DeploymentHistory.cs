@@ -85,6 +85,11 @@ namespace TrackVice
         public static readonly TimeSpan MaxOff = TimeSpan.FromHours(1);
         public static readonly TimeSpan MinTotal = TimeSpan.FromMinutes(2), MaxTotal = TimeSpan.FromHours(24);
         const int MaxRestartSeconds = 900;
+        // The profile of a deployment comes from what a device uploaded, so a device could make up a new one for every
+        // upload. At most this many profiles are kept, each run with at most MaxValues phases and items, and a file larger
+        // than MaxFileBytes is not read: the history and history.json stay small whatever the uploads say.
+        public const int MaxKeys = 500, MaxValues = 1000, MaxRestarts = 100;
+        public const long MaxFileBytes = 32L * 1024 * 1024;
 
         readonly object gate = new object();
         readonly Dictionary<string, List<HistoryRun>> byKey = new Dictionary<string, List<HistoryRun>>(StringComparer.OrdinalIgnoreCase);
@@ -255,15 +260,59 @@ namespace TrackVice
 
         // ---------- keeping them ----------
 
+        static bool Seconds(double v, double max)
+        {
+            return !double.IsNaN(v) && !double.IsInfinity(v) && v > 0 && v <= max;
+        }
+
+        // A run as it can be counted with: names of a sane length, and times that are numbers within a day. False for a run
+        // that is no use, such as one read from a history.json someone edited.
+        static bool Sane(HistoryRun r)
+        {
+            if (r == null || string.IsNullOrEmpty(r.Id) || string.IsNullOrEmpty(r.Kind) || !Seconds(r.Total, MaxTotal.TotalSeconds)) return false;
+            r.Id = Txt.Clean(r.Id, Session.MaxKey, false);
+            r.Customer = Txt.Clean(r.Customer, Session.MaxName, false);
+            r.Kind = Txt.Clean(r.Kind, Session.MaxName, false);
+            r.Profile = Txt.Clean(r.Profile, Session.MaxName, false);
+            r.EndUtc = Txt.Sane(r.EndUtc);
+            if (r.Restarts < 0 || r.Restarts > MaxRestarts) r.Restarts = Math.Max(0, Math.Min(MaxRestarts, r.Restarts));
+            if (!Seconds(r.RestartSeconds, MaxRestartSeconds)) r.RestartSeconds = 0;
+            if (r.Phases == null) r.Phases = new List<HistoryValue>();
+            if (r.Items == null) r.Items = new List<HistoryValue>();
+            foreach (List<HistoryValue> l in new List<HistoryValue>[] { r.Phases, r.Items })
+            {
+                l.RemoveAll(delegate (HistoryValue v) { return v == null || string.IsNullOrEmpty(v.Key) || !Seconds(v.Seconds, MaxTotal.TotalSeconds); });
+                if (l.Count > MaxValues) l.RemoveRange(MaxValues, l.Count - MaxValues);
+                foreach (HistoryValue v in l) v.Key = Txt.Clean(v.Key, Session.MaxKey, false);
+            }
+            return true;
+        }
+
         // Adds a deployment, or replaces the one with the same id. Keeps the newest MaxPerKey of its key. True when changed.
         public bool Add(HistoryRun r)
         {
-            if (r == null || string.IsNullOrEmpty(r.Id) || r.Total <= 0 || string.IsNullOrEmpty(r.Kind)) return false;
+            if (!Sane(r)) return false;
             string key = KeyOf(r.Customer, r.Kind, r.Profile);
             lock (gate)
             {
                 List<HistoryRun> l;
-                if (!byKey.TryGetValue(key, out l)) byKey[key] = l = new List<HistoryRun>();
+                if (!byKey.TryGetValue(key, out l))
+                {
+                    // A new profile beyond MaxKeys pushes out the one seen longest ago, unless this run is older still.
+                    if (byKey.Count >= MaxKeys)
+                    {
+                        string oldest = null;
+                        DateTime when = DateTime.MaxValue;
+                        foreach (KeyValuePair<string, List<HistoryRun>> k in byKey)
+                        {
+                            DateTime t = k.Value.Count > 0 ? k.Value[0].EndUtc : DateTime.MinValue;
+                            if (oldest == null || t < when) { oldest = k.Key; when = t; }
+                        }
+                        if (oldest == null || r.EndUtc <= when) return false;
+                        byKey.Remove(oldest);
+                    }
+                    byKey[key] = l = new List<HistoryRun>();
+                }
                 foreach (HistoryRun x in l)
                     if (x.Id == r.Id) return false;
                 l.Add(r);
@@ -453,13 +502,7 @@ namespace TrackVice
                 foreach (HistoryKeyDoc k in d.Keys)
                 {
                     if (k == null || k.Runs == null) continue;
-                    foreach (HistoryRun r in k.Runs)
-                    {
-                        if (r == null) continue;
-                        if (r.Phases == null) r.Phases = new List<HistoryValue>();
-                        if (r.Items == null) r.Items = new List<HistoryValue>();
-                        h.Add(r);
-                    }
+                    foreach (HistoryRun r in k.Runs) h.Add(r);
                 }
             }
             catch (Exception) { return new DeploymentHistory(); }
@@ -472,7 +515,7 @@ namespace TrackVice
         {
             try
             {
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return new DeploymentHistory();
+                if (string.IsNullOrEmpty(path) || !File.Exists(path) || new FileInfo(path).Length > MaxFileBytes) return new DeploymentHistory();
                 return FromJson(File.ReadAllText(path, Encoding.UTF8));
             }
             catch (Exception) { return new DeploymentHistory(); }

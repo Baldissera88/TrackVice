@@ -421,9 +421,7 @@ namespace TrackVice
         {
             try
             {
-                using (MemoryStream ms = new MemoryStream(data))
-                using (GZipStream gz = new GZipStream(ms, CompressionMode.Decompress))
-                    return Session.FromJson(Encoding.UTF8.GetString(Stores.ReadCapped(gz, MaxSessionBytes, Stores.TooLarge("The session, unpacked,", MaxSessionBytes))));
+                return Session.FromGzip(data);
             }
             catch (Exception ex)
             {
@@ -580,7 +578,7 @@ namespace TrackVice
                 d.StateText = "No upload for " + Txt.DurationShort(nowUtc - d.LastUtc) + " · " + d.StateText;
             }
             if (!States.IsActive(d.State) && d.State != State.Unknown) d.EndUtc = d.LastUtc;
-            return d;
+            return d.Clean();
         }
     }
 

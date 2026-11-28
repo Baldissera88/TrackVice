@@ -759,12 +759,23 @@ namespace TrackVice
             finally { ExpectedApps.Attach(this, hold); }
         }
 
+        // The most a session may be as JSON, also after it is unpacked: a file or an upload larger than this is refused
+        // before it is read into memory.
+        public static int MaxJsonBytes = 64 * 1024 * 1024;
+        // The most objects one session may hold, so a small file of empty entries cannot fill the memory.
+        public const int MaxObjects = 10 * 1000 * 1000;
+
+        static string TooLarge()
+        {
+            return "The session is larger than " + (MaxJsonBytes / (1024 * 1024)).ToString(CultureInfo.InvariantCulture) + " MB.";
+        }
+
         public static Session Load(string path)
         {
             using (FileStream fs = File.OpenRead(path))
             {
-                Session s = (Session)Serializer().ReadObject(fs);
-                s.Fix();
+                if (fs.Length > MaxJsonBytes) throw new InvalidDataException(TooLarge());
+                Session s = Read(fs);
                 s.Mode = "File";
                 s.SourcePath = path;
                 return s;
@@ -773,12 +784,54 @@ namespace TrackVice
 
         public static Session FromJson(string json)
         {
+            if (json == null) throw new ArgumentNullException("json");
+            if (json.Length > MaxJsonBytes || Encoding.UTF8.GetByteCount(json) > MaxJsonBytes) throw new InvalidDataException(TooLarge());
             using (MemoryStream ms = new MemoryStream(Encoding.UTF8.GetBytes(json)))
             {
-                Session s = (Session)Serializer().ReadObject(ms);
-                s.Fix();
-                return s;
+                return Read(ms);
             }
+        }
+
+        // A session as devices upload it: gzip of the JSON. It is unpacked no further than MaxJsonBytes, so a small
+        // upload that unpacks to gigabytes is refused instead of read.
+        public static Session FromGzip(byte[] data)
+        {
+            if (data == null) throw new ArgumentNullException("data");
+            if (data.Length > MaxJsonBytes) throw new InvalidDataException(TooLarge());
+            using (MemoryStream ms = new MemoryStream(data))
+            using (System.IO.Compression.GZipStream gz = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionMode.Decompress))
+            using (MemoryStream o = new MemoryStream())
+            {
+                byte[] buf = new byte[81920];
+                int n;
+                while ((n = gz.Read(buf, 0, buf.Length)) > 0)
+                {
+                    if (o.Length + n > MaxJsonBytes) throw new InvalidDataException(TooLarge());
+                    o.Write(buf, 0, n);
+                }
+                o.Position = 0;
+                return Read(o);
+            }
+        }
+
+        // A session is a few levels deep. Text nested deeper than this is refused instead of read, so it cannot run the
+        // reader out of stack.
+        public const int MaxDepth = 64;
+
+        static Session Read(Stream json)
+        {
+            System.Xml.XmlDictionaryReaderQuotas q = new System.Xml.XmlDictionaryReaderQuotas();
+            q.MaxDepth = MaxDepth;
+            q.MaxStringContentLength = MaxJsonBytes;
+            q.MaxArrayLength = MaxJsonBytes;
+            q.MaxBytesPerRead = MaxJsonBytes;
+            q.MaxNameTableCharCount = MaxJsonBytes;
+            Session s;
+            using (System.Xml.XmlDictionaryReader r = JsonReaderWriterFactory.CreateJsonReader(json, q))
+                s = (Session)Serializer().ReadObject(r);
+            if (s == null) throw new InvalidDataException("The text holds no session.");
+            s.Fix();
+            return s;
         }
 
         public string ToJson()
@@ -795,6 +848,20 @@ namespace TrackVice
             finally { ExpectedApps.Attach(this, hold); }
         }
 
+        // The longest name, key and text a session read from a file or from storage keeps. Longer ones are cut.
+        public const int MaxName = 512, MaxKey = 2048, MaxText = 32768;
+        // The most entries of each kind a session read keeps. A real deployment has a few hundred items and some thousand
+        // events; far more only makes the window slow, so the rest is left out.
+        public const int MaxItems = 10000, MaxEvents = 500000, MaxEntries = 20000, MaxNames = 100000, MaxPerItem = 1000;
+
+        // Keeps the first max entries, or with newest the last ones.
+        static void Cap<TE>(List<TE> l, int max, bool newest)
+        {
+            if (l.Count <= max) return;
+            if (newest) l.RemoveRange(0, l.Count - max);
+            else l.RemoveRange(max, l.Count - max);
+        }
+
         void Fix()
         {
             if (Info == null) Info = new List<Pair>();
@@ -806,12 +873,121 @@ namespace TrackVice
             if (Names == null) Names = new List<Pair>();
             if (Aliases == null) Aliases = new List<Pair>();
             if (Outages == null) Outages = new List<NetOutage>();
+            Sanitize();
+            Rebuild();
+        }
+
+        // A session that is read comes from another device, or from whoever can write where devices upload. Entries that
+        // are missing, names with characters that change how text reads, absurd lengths and times at the end of the
+        // calendar are taken out here, once, so the rest of TrackVice can show and count a session as it is.
+        void Sanitize()
+        {
+            AppVersion = Txt.Clean(AppVersion, 64, false);
+            Computer = Txt.Clean(Computer, MaxName, false);
+            User = Txt.Clean(User, MaxName, false);
+            OsVersion = Txt.Clean(OsVersion, MaxName, false);
+            Mode = Txt.Clean(Mode, 64, false);
+            SourcePath = Txt.Clean(SourcePath, MaxKey, false);
+            SinceUtc = Txt.Sane(SinceUtc);
+            SavedUtc = Txt.Sane(SavedUtc);
+            ClockUtc = Txt.Sane(ClockUtc);
+            Cap(Info, MaxEntries, false);
+            Cap(Names, MaxNames, false);
+            Cap(Aliases, MaxNames, false);
+            CleanPairs(Info, false);
+            CleanPairs(Names, true);
+            CleanPairs(Aliases, true);
+            Phases.RemoveAll(delegate (Phase p) { return p == null || string.IsNullOrEmpty(p.Key); });
+            Cap(Phases, MaxEntries, false);
+            foreach (Phase p in Phases)
+            {
+                p.Key = Txt.Clean(p.Key, MaxKey, false);
+                p.Name = Txt.Clean(p.Name, MaxName, false);
+            }
+            Items.RemoveAll(delegate (Item i) { return i == null || string.IsNullOrEmpty(i.Key); });
+            Cap(Items, MaxItems, false);
             foreach (Item i in Items)
             {
+                i.Key = Txt.Clean(i.Key, MaxKey, false);
+                i.Name = Txt.Clean(i.Name, MaxName, false);
+                i.Kind = Txt.Clean(i.Kind, MaxName, false);
+                i.Origin = Txt.Clean(i.Origin, MaxName, false);
+                i.PhaseKey = Txt.Clean(i.PhaseKey, MaxKey, false);
+                i.StateName = Txt.Clean(i.StateName, 64, false);
+                if (i.Percent.HasValue) i.Percent = Math.Max(0, Math.Min(100, i.Percent.Value));
+                i.StateUtc = Txt.Sane(i.StateUtc);
+                i.FirstUtc = Txt.Sane(i.FirstUtc);
+                i.LastUtc = Txt.Sane(i.LastUtc);
+                i.StartUtc = Txt.Sane(i.StartUtc);
+                i.EndUtc = Txt.Sane(i.EndUtc);
                 if (i.Attempts == null) i.Attempts = new List<Attempt>();
+                i.Attempts.RemoveAll(delegate (Attempt a) { return a == null; });
+                Cap(i.Attempts, MaxPerItem, true);
+                foreach (Attempt a in i.Attempts)
+                {
+                    a.StartUtc = Txt.Sane(a.StartUtc);
+                    a.EndUtc = Txt.Sane(a.EndUtc);
+                    a.StateName = Txt.Clean(a.StateName, 64, false);
+                    a.Command = Txt.Clean(a.Command, MaxText, true);
+                    a.Context = Txt.Clean(a.Context, 64, false);
+                }
                 if (i.Info == null) i.Info = new List<Pair>();
+                Cap(i.Info, MaxPerItem, false);
+                CleanPairs(i.Info, false);
             }
-            Rebuild();
+            Events.RemoveAll(delegate (TEvent e) { return e == null; });
+            Cap(Events, MaxEvents, true);
+            foreach (TEvent e in Events)
+            {
+                e.TimeUtc = Txt.Sane(e.TimeUtc);
+                e.Source = Txt.Clean(e.Source, MaxName, false);
+                e.Text = Txt.Clean(e.Text, MaxText, true);
+                e.StateName = Txt.Clean(e.StateName, 64, false);
+                e.ItemKey = Txt.Clean(e.ItemKey, MaxKey, false);
+                Clean(e.Evidence);
+            }
+            Findings.RemoveAll(delegate (Finding f) { return f == null; });
+            Cap(Findings, MaxEntries, false);
+            foreach (Finding f in Findings)
+            {
+                f.Kind = Txt.Clean(f.Kind, MaxName, false);
+                f.ItemKey = Txt.Clean(f.ItemKey, MaxKey, false);
+                f.Title = Txt.Clean(f.Title, MaxName, false);
+                f.Message = Txt.Clean(f.Message, MaxText, true);
+                f.Hint = Txt.Clean(f.Hint, MaxText, true);
+                f.TimeUtc = Txt.Sane(f.TimeUtc);
+                Clean(f.Evidence);
+            }
+            Notes.RemoveAll(delegate (string n) { return n == null; });
+            Cap(Notes, MaxEntries, false);
+            for (int k = 0; k < Notes.Count; k++) Notes[k] = Txt.Clean(Notes[k], MaxText, true);
+            Outages.RemoveAll(delegate (NetOutage o) { return o == null; });
+            Cap(Outages, MaxEntries, true);
+            foreach (NetOutage o in Outages)
+            {
+                o.FromUtc = Txt.Sane(o.FromUtc);
+                o.ToUtc = Txt.Sane(o.ToUtc);
+                o.Reason = Txt.Clean(o.Reason, MaxName, false);
+            }
+        }
+
+        static void Clean(Evidence e)
+        {
+            if (e == null) return;
+            e.Kind = Txt.Clean(e.Kind, MaxName, false);
+            e.Path = Txt.Clean(e.Path, MaxKey, false);
+            e.Text = Txt.Clean(e.Text, MaxText, true);
+        }
+
+        // keys: both sides are keys of items, kept as they are apart from their length.
+        static void CleanPairs(List<Pair> l, bool keys)
+        {
+            l.RemoveAll(delegate (Pair p) { return p == null; });
+            foreach (Pair p in l)
+            {
+                p.Key = Txt.Clean(p.Key, keys ? MaxKey : MaxName, false);
+                p.Value = Txt.Clean(p.Value, keys ? MaxKey : MaxText, !keys);
+            }
         }
 
         static DataContractJsonSerializer Serializer()
@@ -819,12 +995,74 @@ namespace TrackVice
             DataContractJsonSerializerSettings s = new DataContractJsonSerializerSettings();
             s.DateTimeFormat = new DateTimeFormat("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffK");
             s.UseSimpleDictionaryFormat = true;
+            s.MaxItemsInObjectGraph = MaxObjects;
             return new DataContractJsonSerializer(typeof(Session), s);
         }
     }
 
     public static class Txt
     {
+        // Characters that change how the text around them reads: the marks and overrides for text direction, and the
+        // spaces without width that make two names look the same.
+        static bool Hidden(char c)
+        {
+            return c == '\u061C' || c == '\u200B' || c == '\u200E' || c == '\u200F' || (c >= '\u202A' && c <= '\u202E') || c == '\u2060'
+                || (c >= '\u2066' && c <= '\u2069') || c == '\uFEFF' || c == '\uFFFE' || c == '\uFFFF';
+        }
+
+        static bool Control(char c)
+        {
+            return c < ' ' || (c >= '\u007F' && c <= '\u009F') || c == '\u2028' || c == '\u2029';
+        }
+
+        // Text that came from a device, a log or a storage account, safe to show in a list: without control characters
+        // and without the marks that reverse or reorder text, and no longer than max. lines keeps tabs and line breaks,
+        // for text that is shown over several lines. Null stays null.
+        public static string Clean(string s, int max, bool lines)
+        {
+            if (s == null) return null;
+            bool bad = s.Length > max;
+            for (int i = 0; i < s.Length && !bad; i++)
+            {
+                char c = s[i];
+                if (Hidden(c)) bad = true;
+                else if (Control(c) && !(lines && (c == '\t' || c == '\r' || c == '\n'))) bad = true;
+            }
+            if (!bad) return s;
+            StringBuilder b = new StringBuilder(Math.Min(s.Length, max));
+            bool cut = false;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (Hidden(c)) continue;
+                if (Control(c) && !(lines && (c == '\t' || c == '\r' || c == '\n'))) c = ' ';
+                if (b.Length >= max) { cut = true; break; }
+                b.Append(c);
+            }
+            if (cut)
+            {
+                b.Length = Math.Max(0, max - 1);
+                // Half of a character outside the basic plane is not left at the end.
+                if (b.Length > 0 && char.IsHighSurrogate(b[b.Length - 1])) b.Length--;
+                b.Append('\u2026');
+            }
+            return b.ToString();
+        }
+
+        // The last time TrackVice counts with. A time a device claims beyond it is moved back to it, so adding to it
+        // cannot run off the end of the calendar.
+        public static readonly DateTime LastTime = new DateTime(9000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        public static DateTime Sane(DateTime t)
+        {
+            return t.Year >= 9000 ? DateTime.SpecifyKind(LastTime, t.Kind) : t;
+        }
+
+        public static DateTime? Sane(DateTime? t)
+        {
+            return t.HasValue ? Sane(t.Value) : t;
+        }
+
         public static string SplitCamel(string s)
         {
             if (string.IsNullOrEmpty(s)) return s;

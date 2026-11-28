@@ -187,24 +187,26 @@ namespace TrackVice
             return m;
         }
 
+        // The metadata of an upload is written by whoever can upload: texts are cleaned, counts are not below zero, and
+        // times stay inside the calendar TrackVice counts with.
         static string Str(StoreEntry e, string key)
         {
             string v;
-            return e.Meta.TryGetValue(key, out v) && v != null && v.Length > 0 ? v : null;
+            return e.Meta.TryGetValue(key, out v) && v != null && v.Length > 0 ? Txt.Clean(v, Session.MaxName, false) : null;
         }
 
         static int Int(StoreEntry e, string key)
         {
             string v;
             int n;
-            return e.Meta.TryGetValue(key, out v) && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out n) ? n : 0;
+            return e.Meta.TryGetValue(key, out v) && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out n) ? Math.Max(0, n) : 0;
         }
 
         static DateTime? Time(StoreEntry e, string key)
         {
             string v;
             DateTime t;
-            if (e.Meta.TryGetValue(key, out v) && DateTime.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out t)) return t;
+            if (e.Meta.TryGetValue(key, out v) && DateTime.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out t)) return Txt.Sane(t);
             return null;
         }
 
@@ -213,7 +215,8 @@ namespace TrackVice
             WallTile t = new WallTile();
             t.Entry = e;
             t.Key = e.Name;
-            t.Device = Str(e, "computer") ?? Path.GetFileName(e.Name);
+            // Txt.FileName, not Path.GetFileName: a blob name may hold " < > |, which Path refuses on Windows with an exception.
+            t.Device = Str(e, "computer") ?? Txt.Clean(Txt.FileName(e.Name), Session.MaxName, false);
             t.Kind = Str(e, "kind");
             t.Profile = Str(e, "profile");
             t.Current = Str(e, "current");
@@ -226,7 +229,7 @@ namespace TrackVice
             t.Active = Int(e, "active");
             t.Idle = Str(e, "idle") == "1";
             t.StartUtc = Time(e, "started");
-            t.LastUtc = Time(e, "updated") ?? e.ModifiedUtc;
+            t.LastUtc = Time(e, "updated") ?? Txt.Sane(e.ModifiedUtc);
             if (nowUtc - t.LastUtc > TimeSpan.FromMinutes(2)) t.OffUtc = Time(e, OffTime.MetaKey);
             if (t.FailedCount > 0) t.State = WallState.Failed;
             else if (t.Items > 0 && t.Active == 0 && t.Done >= t.Items) t.State = WallState.Finished;
@@ -274,7 +277,8 @@ namespace TrackVice
         public static WallSummary Summarize(List<WallTile> tiles, DateTime nowUtc, DateTime todayStartUtc)
         {
             WallSummary s = new WallSummary();
-            long ticks = 0;
+            // In seconds as a double: a few devices that claim to have run for centuries would run a sum of ticks over.
+            double seconds = 0;
             int timed = 0;
             foreach (WallTile t in tiles)
             {
@@ -285,10 +289,10 @@ namespace TrackVice
                 {
                     s.FinishedToday++;
                     TimeSpan? d = t.Elapsed(nowUtc);
-                    if (d.HasValue) { ticks += d.Value.Ticks; timed++; }
+                    if (d.HasValue) { seconds += d.Value.TotalSeconds; timed++; }
                 }
             }
-            if (timed > 0) s.Average = TimeSpan.FromTicks(ticks / timed);
+            if (timed > 0) s.Average = TimeSpan.FromSeconds(Math.Min(seconds / timed, TimeSpan.MaxValue.TotalSeconds / 2));
             return s;
         }
 

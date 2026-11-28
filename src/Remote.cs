@@ -33,6 +33,24 @@ namespace TrackVice
             DateTime e = EndUtc ?? (States.IsFinal(State) ? LastUtc : nowUtc);
             return e < StartUtc.Value ? TimeSpan.Zero : e - StartUtc.Value;
         }
+
+        // A row comes from what a device uploaded or reported, so its texts and times are made safe to show and to count
+        // with, as Session does for a whole session. The key is kept as it is: it names the upload to read.
+        public RemoteDeployment Clean()
+        {
+            Device = Txt.Clean(Device, Session.MaxName, false);
+            User = Txt.Clean(User, Session.MaxName, false);
+            Profile = Txt.Clean(Profile, Session.MaxName, false);
+            StateText = Txt.Clean(StateText, Session.MaxName, false);
+            Detail = Txt.Clean(Detail, Session.MaxName, false);
+            Serial = Txt.Clean(Serial, Session.MaxName, false);
+            EnrollUser = Txt.Clean(EnrollUser, Session.MaxName, false);
+            Version = Txt.Clean(Version, 64, false);
+            StartUtc = Txt.Sane(StartUtc);
+            EndUtc = Txt.Sane(EndUtc);
+            LastUtc = Txt.Sane(LastUtc);
+            return this;
+        }
     }
 
     // Lists deployments on other devices: Autopilot in Intune, or task sequences in SCCM.
@@ -173,6 +191,31 @@ namespace TrackVice
             return g;
         }
 
+        // The only place the access token is sent: it is a token for Microsoft Graph, and a link Graph returns, such as
+        // @odata.nextLink, is followed only when it points there too.
+        public const string GraphHost = "graph.microsoft.com";
+
+        public static bool IsGraphUrl(string url)
+        {
+            Uri u;
+            return !string.IsNullOrEmpty(url) && Uri.TryCreate(url, UriKind.Absolute, out u) && u.Scheme == Uri.UriSchemeHttps
+                && string.Equals(u.Host, GraphHost, StringComparison.OrdinalIgnoreCase) && u.IsDefaultPort && string.IsNullOrEmpty(u.UserInfo);
+        }
+
+        public const string DefaultVerificationUri = "https://microsoft.com/devicelogin";
+
+        // The sign-in page the window opens in the browser: an https page of Microsoft, else the usual one.
+        public static string SafeVerificationUri(string url)
+        {
+            Uri u;
+            if (string.IsNullOrEmpty(url) || !Uri.TryCreate(url, UriKind.Absolute, out u) || u.Scheme != Uri.UriSchemeHttps || !u.IsDefaultPort
+                || !string.IsNullOrEmpty(u.UserInfo)) return DefaultVerificationUri;
+            string h = u.Host.ToLowerInvariant();
+            foreach (string d in new string[] { "microsoft.com", "microsoftonline.com", "microsoftonline.us", "microsoft.us", "chinacloudapi.cn", "microsoftonline.cn" })
+                if (h == d || h.EndsWith("." + d, StringComparison.Ordinal)) return u.AbsoluteUri;
+            return DefaultVerificationUri;
+        }
+
         public static bool IsGuid(string s)
         {
             Guid g;
@@ -192,7 +235,7 @@ namespace TrackVice
             DeviceCode d = new DeviceCode();
             d.Code = Http.Str(r, "device_code");
             d.UserCode = Http.Str(r, "user_code");
-            d.VerificationUri = Http.Str(r, "verification_uri") ?? "https://microsoft.com/devicelogin";
+            d.VerificationUri = SafeVerificationUri(Http.Str(r, "verification_uri"));
             long? i = ImeJson.Long(ImeJson.Get(r, "interval"));
             long? e = ImeJson.Long(ImeJson.Get(r, "expires_in"));
             if (i.HasValue && i.Value > 0) d.Interval = (int)i.Value;
@@ -270,6 +313,7 @@ namespace TrackVice
 
         public Dictionary<string, object> Get(string url)
         {
+            if (!IsGraphUrl(url)) throw new GraphException("TrackVice only sends the sign-in to " + GraphHost + ", not to " + Txt.Short(url, 120) + ".");
             if (access == null && refresh == null) throw new GraphException("Not signed in.");
             if (access == null || DateTime.UtcNow > expires) Renew();
             int status;
@@ -493,7 +537,7 @@ namespace TrackVice
             d.EndUtc = Time(e, "deploymentEndDateTime");
             d.LastUtc = Time(e, "eventDateTime") ?? d.EndUtc ?? d.StartUtc ?? DateTime.UtcNow;
             d.Detail = Http.Str(e, "enrollmentFailureDetails");
-            return d;
+            return d.Clean();
         }
 
         // Graph sends 0001-01-01 for times it does not have.
@@ -763,6 +807,9 @@ namespace TrackVice
             return o;
         }
 
+        // No deployment takes longer; a longer duration is not taken, so adding it to a time cannot leave the calendar.
+        public static readonly TimeSpan MaxDuration = TimeSpan.FromDays(365);
+
         // ISO 8601 durations as Graph writes them: PT1H2M3.5S, P1DT2H.
         public static TimeSpan? Dur(string s)
         {
@@ -770,7 +817,7 @@ namespace TrackVice
             try
             {
                 TimeSpan t = System.Xml.XmlConvert.ToTimeSpan(s);
-                return t > TimeSpan.Zero ? (TimeSpan?)t : null;
+                return t > TimeSpan.Zero && t <= MaxDuration ? (TimeSpan?)t : null;
             }
             catch (Exception) { return null; }
         }

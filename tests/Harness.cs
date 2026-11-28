@@ -114,6 +114,7 @@ namespace TrackVice.Tests
             CustomerReportTests.Run();
             DiagnosticsTests.Run();
             LogSafetyTests.Run();
+            ViewerInputTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }
