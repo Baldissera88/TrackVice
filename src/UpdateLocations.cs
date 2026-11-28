@@ -185,6 +185,7 @@ namespace TrackVice
     public static class UpdateLocations
     {
         public const string OtherKeyMarker = "is signed with another update key than the one on this PC";
+        public const string UnreadableVersion = "a version that cannot be read";
         static readonly TimeSpan SignedFor = TimeSpan.FromHours(12);
 
         // ---------- the locations ----------
@@ -405,6 +406,10 @@ namespace TrackVice
                 return "That link is for the storage account " + (p == null ? "none" : p.Account) + ", not for " + l.Account + ". Make it in " + l.Account + ".";
             if (!string.Equals(p.Container, l.Container, StringComparison.OrdinalIgnoreCase))
                 return "That link is for the container " + p.Container + " in " + l.Account + ", not for " + l.Container + ".";
+            // The account is only the first part of the host name, so the whole address must be the one of the location:
+            // a link to another host with the same first part would send what is published, and what is read back, there.
+            if (l.Key.StartsWith("https://", StringComparison.Ordinal) && p.Key != l.Key)
+                return "That link is for " + HostOf(p.Key) + ", not for " + HostOf(l.Key) + ", where this location is. Make it in " + l.Account + ".";
             Uri u;
             if (Uri.TryCreate(s, UriKind.Absolute, out u) && u.AbsolutePath.Trim('/').Split('/').Length > 1)
                 return "That link is for a file in " + l.Container + ", not for the whole container. Make it for the container, under Containers > " + l.Container + " > Shared access tokens.";
@@ -429,6 +434,12 @@ namespace TrackVice
             if (st != null && DateTime.TryParse(st, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out start) && start > nowUtc.AddMinutes(5))
                 return "The link is not valid before " + start.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC. Make a new one that starts now, or check the clock of this PC.";
             return null;
+        }
+
+        static string HostOf(string key)
+        {
+            Uri u;
+            return Uri.TryCreate(key, UriKind.Absolute, out u) ? u.Host : key;
         }
 
         static string PermNames(string sp)
@@ -488,15 +499,20 @@ namespace TrackVice
             return delegate (string where)
             {
                 if (Stores.IsUrl(where)) return new WebContainer(web, where);
-                return new FolderStore(where);
+                // Read with a size limit: whoever can write to the share is not trusted.
+                return UpdateSource.Open(where);
             };
         }
 
-        static byte[] Find(ISessionStore s, string name)
+        // Null when the file is not there. A file larger than max is refused, and from a folder it is not read at all.
+        static byte[] Find(ISessionStore s, string name, long max)
         {
+            UpdateSource u = s as UpdateSource;
+            if (u != null) return u.Find(name, max);
             IFindStore f = s as IFindStore;
-            if (f != null) return f.Find(name);
-            return s.Get(name);
+            byte[] b = f != null ? f.Find(name) : s.Get(name);
+            if (b != null && b.LongLength > max) throw new StoreTooLargeException(name + " has more than the " + max + " bytes it can have.");
+            return b;
         }
 
         // Reads agent/latest.json of the location and checks it against the update key of this PC. Never throws.
@@ -509,10 +525,11 @@ namespace TrackVice
             if (!l.CanRead) { l.State = UpdateState.NoRead; return; }
             try
             {
-                byte[] b = Find(open(l.ReadLink), UpdateManifest.Name);
+                byte[] b = Find(open(l.ReadLink), UpdateManifest.Name, UpdateManifest.MaxJson);
                 if (b == null) { l.State = UpdateState.Nothing; return; }
                 UpdateManifest m = UpdateManifest.Parse(b);
-                l.Version = m.Version;
+                // The file is whatever somebody with write access put there: only a version number is shown and kept.
+                l.Version = SemVer.IsValid(m.Version) ? m.Version : UnreadableVersion;
                 l.State = UpdateState.Published;
                 if (!string.IsNullOrEmpty(publicKey))
                 {

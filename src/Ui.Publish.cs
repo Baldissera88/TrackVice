@@ -309,7 +309,7 @@ namespace TrackVice
                         OnUi(delegate
                         {
                             Menus.Copy(d.UserCode);
-                            try { System.Diagnostics.Process.Start(d.VerificationUri); }
+                            try { if (PublishAccess.IsWebPage(d.VerificationUri)) System.Diagnostics.Process.Start(d.VerificationUri.Trim()); }
                             catch (Exception) { }
                             SayAbout(p, "Open " + d.VerificationUri + " and enter the code " + d.UserCode + " (it is copied). TrackVice waits for the sign-in.");
                         });
